@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["seq-decode", "seq-bridge"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["ShowEQ Developers"]
+rust-version = "1.75"
+
+[workspace.dependencies]
+cxx = "1"
+cxx-build = "1"
+thiserror = "2"
+seq-decode = { path = "seq-decode" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
