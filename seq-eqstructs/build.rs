@@ -14,7 +14,7 @@ fn main() {
 
     if !header.exists() {
         panic!(
-            "everquest.h not found at {}. Set EVERQUEST_H or check out showeq-daemon as a sibling of showeq-rust-decoder.",
+            "everquest.h not found at {}. Set EVERQUEST_H or check out showeq-daemon as a sibling of showeq-decoder-rs.",
             header.display()
         );
     }

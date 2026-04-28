@@ -1,4 +1,4 @@
-# showeq-rust-decoder
+# showeq-decoder-rs
 
 Parallel Rust implementation of ShowEQ's packet decoder. Lives alongside
 the C++ daemon (`showeq-daemon`); migrated into the daemon per-opcode via
