@@ -10,10 +10,11 @@ directory) for the staged migration path. Stage A scope: `OP_MobUpdate`.
 
 ## Workspace
 
-| Crate         | Purpose                                              |
-|---------------|------------------------------------------------------|
-| `seq-decode`  | Pure parsers — `&[u8]` payload → typed struct.       |
-| `seq-bridge`  | `cxx` FFI shim — exposes `seq-decode` to C++ via Corrosion. |
+| Crate           | Purpose                                              |
+|-----------------|------------------------------------------------------|
+| `seq-eqstructs` | `bindgen`-generated Rust mirrors of `everquest.h`. Allowlist grows per ported opcode. |
+| `seq-decode`    | Pure parsers — `&[u8]` payload → typed struct, built on `seq-eqstructs`. |
+| `seq-bridge`    | `cxx` FFI shim — exposes `seq-decode` to C++ via Corrosion. |
 
 Future stages add `seq-opcodes` (XML opcode-table loader), `seq-replay`
 (`.vpk` reader), and `seq-cli` (standalone Rust binary that reads pcap or
@@ -22,16 +23,16 @@ Future stages add `seq-opcodes` (XML opcode-table loader), `seq-replay`
 ## Build
 
 ```sh
-cargo build         # builds both crates
-cargo test          # runs seq-decode unit tests
+cargo build         # builds all crates
+cargo test          # runs unit + golden tests
 ```
+
+`seq-eqstructs/build.rs` runs `bindgen` against
+`../../showeq-daemon/src/everquest.h` (sibling-relative). Override with
+`EVERQUEST_H=/path/to/everquest.h` for out-of-tree builds. Requires
+`libclang-dev` (Debian/Ubuntu) or equivalent on the build host.
 
 ## License
 
-Licensed under either of
-
-- Apache License, Version 2.0
-- MIT License
-
-at your option. (LICENSE files to be added before any external
-distribution.)
+GPL-2.0 — see [`LICENSE`](LICENSE). Matches `showeq` and `showeq-daemon`,
+which permits direct consumption of `everquest.h` via `bindgen`.

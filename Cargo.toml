@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["seq-decode", "seq-bridge"]
+members = ["seq-decode", "seq-bridge", "seq-eqstructs"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "GPL-2.0"
 authors = ["ShowEQ Developers"]
 rust-version = "1.75"
 
@@ -13,7 +13,9 @@ rust-version = "1.75"
 cxx = "1"
 cxx-build = "1"
 thiserror = "2"
+bindgen = "0.71"
 seq-decode = { path = "seq-decode" }
+seq-eqstructs = { path = "seq-eqstructs" }
 
 [profile.release]
 lto = "thin"
