@@ -16,3 +16,6 @@ seq-decode.workspace = true
 
 [build-dependencies]
 cxx-build.workspace = true
+
+[lints]
+workspace = true

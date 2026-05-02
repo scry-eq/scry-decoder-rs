@@ -20,3 +20,6 @@ seq-eqstructs = { path = "seq-eqstructs" }
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+[workspace.lints.rust]
+warnings = "deny"
