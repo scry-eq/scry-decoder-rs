@@ -44,4 +44,10 @@ mod tests {
         // the EQ wire format gives us.
         assert_eq!(std::mem::size_of::<spawnPositionUpdate>(), 14);
     }
+
+    #[test]
+    fn delete_spawn_struct_layout() {
+        // 4-byte fixed payload, single u32 spawnId.
+        assert_eq!(std::mem::size_of::<deleteSpawnStruct>(), 4);
+    }
 }

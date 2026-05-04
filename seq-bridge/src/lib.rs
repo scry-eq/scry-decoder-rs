@@ -23,8 +23,17 @@ mod ffi {
         ok: bool,
     }
 
+    /// Plain-old-data result of `decode_delete_spawn`. `ok=false` means
+    /// the payload was the wrong size; SZC_Match in the daemon already
+    /// guards against that so it shouldn't fire in normal operation.
+    struct DeleteSpawnOut {
+        spawn_id: u32,
+        ok: bool,
+    }
+
     extern "Rust" {
         fn decode_mob_update(bytes: &[u8]) -> MobUpdateOut;
+        fn decode_delete_spawn(bytes: &[u8]) -> DeleteSpawnOut;
     }
 }
 
@@ -49,6 +58,13 @@ fn decode_mob_update(bytes: &[u8]) -> ffi::MobUpdateOut {
     }
 }
 
+fn decode_delete_spawn(bytes: &[u8]) -> ffi::DeleteSpawnOut {
+    match seq_decode::parse_delete_spawn(bytes) {
+        Ok(d) => ffi::DeleteSpawnOut { spawn_id: d.spawn_id, ok: true },
+        Err(_) => ffi::DeleteSpawnOut { spawn_id: 0, ok: false },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,6 +80,20 @@ mod tests {
     #[test]
     fn bad_length_returns_ok_false() {
         let r = decode_mob_update(&[0u8; 13]);
+        assert!(!r.ok);
+    }
+
+    #[test]
+    fn delete_spawn_roundtrip() {
+        let bytes = [0xEF, 0xBE, 0xAD, 0xDE];
+        let r = decode_delete_spawn(&bytes);
+        assert!(r.ok);
+        assert_eq!(r.spawn_id, 0xDEADBEEF);
+    }
+
+    #[test]
+    fn delete_spawn_bad_length_returns_ok_false() {
+        let r = decode_delete_spawn(&[0u8; 3]);
         assert!(!r.ok);
     }
 }

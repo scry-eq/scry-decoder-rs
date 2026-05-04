@@ -32,6 +32,7 @@ fn main() {
         .clang_arg("-x").clang_arg("c++")
         .clang_arg("-std=c++17")
         .allowlist_type("spawnPositionUpdate")
+        .allowlist_type("deleteSpawnStruct")
         .derive_default(true)
         .derive_copy(true)
         .layout_tests(true)
