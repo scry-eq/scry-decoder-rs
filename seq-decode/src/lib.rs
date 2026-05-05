@@ -14,7 +14,11 @@
 //! Stage A+4: more small fixed-size — OP_ManaChange, OP_Stamina,
 //! OP_EndUpdate, OP_Consider, OP_SpawnRename, OP_TargetMouse,
 //! OP_Death.
+//! Stage A+5: OP_ClickObject, OP_Illusion, OP_Buff, OP_Action2.
 
+pub mod action2;
+pub mod buff;
+pub mod click_object;
 pub mod client_target;
 pub mod consider;
 pub mod cursor;
@@ -23,6 +27,7 @@ pub mod delete_spawn;
 pub mod end_update;
 pub mod exp_update;
 pub mod hp_update;
+pub mod illusion;
 pub mod level_update;
 pub mod mana_change;
 pub mod mob_health;
@@ -57,3 +62,7 @@ pub use end_update::{parse_end_update, EndUpdate, EndUpdateError};
 pub use mana_change::{parse_mana_change, ManaChange, ManaChangeError};
 pub use spawn_rename::{parse_spawn_rename, SpawnRename, SpawnRenameError};
 pub use stamina::{parse_stamina, Stamina, StaminaError};
+pub use action2::{parse_action2, Action2, Action2Error};
+pub use buff::{parse_buff, Buff, BuffError};
+pub use click_object::{parse_click_object, ClickObject, ClickObjectError};
+pub use illusion::{parse_illusion, Illusion, IllusionError};

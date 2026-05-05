@@ -144,6 +144,20 @@ mod ffi {
         ok: bool,
     }
 
+    // Stage A+5
+    struct ClickObjectOut { drop_id: u16, spawn_id: u16, ok: bool }
+    struct IllusionOut {
+        spawn_id: u32, name: [u8; 64], race: u32, gender: u8,
+        texture: u8, helm: u8, face: u32, ok: bool,
+    }
+    struct BuffOut {
+        spawn_id: u32, spell_id: u32, duration: u32, level: i8,
+        spell_slot: u32, change_type: u32, ok: bool,
+    }
+    struct Action2Out {
+        target: u16, source: u16, damage: i32, spell: i32, kind: u8, ok: bool,
+    }
+
     extern "Rust" {
         fn decode_mob_update(bytes: &[u8]) -> MobUpdateOut;
         fn decode_delete_spawn(bytes: &[u8]) -> DeleteSpawnOut;
@@ -162,6 +176,10 @@ mod ffi {
         fn decode_spawn_rename(bytes: &[u8]) -> SpawnRenameOut;
         fn decode_client_target(bytes: &[u8]) -> ClientTargetOut;
         fn decode_death(bytes: &[u8]) -> DeathOut;
+        fn decode_click_object(bytes: &[u8]) -> ClickObjectOut;
+        fn decode_illusion(bytes: &[u8]) -> IllusionOut;
+        fn decode_buff(bytes: &[u8]) -> BuffOut;
+        fn decode_action2(bytes: &[u8]) -> Action2Out;
     }
 }
 
@@ -337,6 +355,55 @@ fn decode_death(bytes: &[u8]) -> ffi::DeathOut {
         Err(_) => ffi::DeathOut {
             spawn_id: 0, killer_id: 0, corpse_id: 0, kind: 0, spell_id: 0,
             zone_id: 0, zone_instance: 0, damage: 0, ok: false,
+        },
+    }
+}
+
+fn decode_click_object(bytes: &[u8]) -> ffi::ClickObjectOut {
+    match seq_decode::parse_click_object(bytes) {
+        Ok(c) => ffi::ClickObjectOut {
+            drop_id: c.drop_id, spawn_id: c.spawn_id, ok: true,
+        },
+        Err(_) => ffi::ClickObjectOut { drop_id: 0, spawn_id: 0, ok: false },
+    }
+}
+
+fn decode_illusion(bytes: &[u8]) -> ffi::IllusionOut {
+    match seq_decode::parse_illusion(bytes) {
+        Ok(i) => ffi::IllusionOut {
+            spawn_id: i.spawn_id, name: i.name, race: i.race,
+            gender: i.gender, texture: i.texture, helm: i.helm, face: i.face,
+            ok: true,
+        },
+        Err(_) => ffi::IllusionOut {
+            spawn_id: 0, name: [0; 64], race: 0, gender: 0,
+            texture: 0, helm: 0, face: 0, ok: false,
+        },
+    }
+}
+
+fn decode_buff(bytes: &[u8]) -> ffi::BuffOut {
+    match seq_decode::parse_buff(bytes) {
+        Ok(b) => ffi::BuffOut {
+            spawn_id: b.spawn_id, spell_id: b.spell_id, duration: b.duration,
+            level: b.level, spell_slot: b.spell_slot, change_type: b.change_type,
+            ok: true,
+        },
+        Err(_) => ffi::BuffOut {
+            spawn_id: 0, spell_id: 0, duration: 0, level: 0,
+            spell_slot: 0, change_type: 0, ok: false,
+        },
+    }
+}
+
+fn decode_action2(bytes: &[u8]) -> ffi::Action2Out {
+    match seq_decode::parse_action2(bytes) {
+        Ok(a) => ffi::Action2Out {
+            target: a.target, source: a.source, damage: a.damage,
+            spell: a.spell, kind: a.kind, ok: true,
+        },
+        Err(_) => ffi::Action2Out {
+            target: 0, source: 0, damage: 0, spell: 0, kind: 0, ok: false,
         },
     }
 }

@@ -77,4 +77,14 @@ mod tests {
         assert_eq!(std::mem::size_of::<clientTargetStruct>(),    4);
         assert_eq!(std::mem::size_of::<newCorpseStruct>(),      40);
     }
+
+    #[test]
+    fn stage_a5_struct_layouts() {
+        assert_eq!(std::mem::size_of::<remDropStruct>(),        12);
+        // Struct's trailing /*0336*/ marker is wrong — actual byte
+        // sum is 332 (4+64+4+1+1+1+1+4+4+248). bindgen agrees.
+        assert_eq!(std::mem::size_of::<spawnIllusionStruct>(), 332);
+        assert_eq!(std::mem::size_of::<buffStruct>(),          168);
+        assert_eq!(std::mem::size_of::<action2Struct>(),        48);
+    }
 }
