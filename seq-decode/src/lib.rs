@@ -11,18 +11,28 @@
 //! Stage A+3: small fixed-size batch — OP_RemoveSpawn, OP_HPUpdate,
 //! OP_MobHealth, OP_SpawnAppearance, OP_ExpUpdate, OP_LevelUpdate,
 //! OP_SkillUpdate.
+//! Stage A+4: more small fixed-size — OP_ManaChange, OP_Stamina,
+//! OP_EndUpdate, OP_Consider, OP_SpawnRename, OP_TargetMouse,
+//! OP_Death.
 
+pub mod client_target;
+pub mod consider;
 pub mod cursor;
+pub mod death;
 pub mod delete_spawn;
+pub mod end_update;
 pub mod exp_update;
 pub mod hp_update;
 pub mod level_update;
+pub mod mana_change;
 pub mod mob_health;
 pub mod mob_update;
 pub mod remove_spawn;
 pub mod skill_update;
 pub mod spawn;
 pub mod spawn_appearance;
+pub mod spawn_rename;
+pub mod stamina;
 
 pub use delete_spawn::{
     parse_delete_spawn, DeleteSpawn, DeleteSpawnError, PAYLOAD_LEN as DELETE_SPAWN_LEN,
@@ -40,3 +50,10 @@ pub use spawn::{parse_spawn, Spawn, SpawnError};
 pub use spawn_appearance::{
     parse_spawn_appearance, SpawnAppearance, SpawnAppearanceError,
 };
+pub use client_target::{parse_client_target, ClientTarget, ClientTargetError};
+pub use consider::{parse_consider, Consider, ConsiderError};
+pub use death::{parse_death, Death, DeathError};
+pub use end_update::{parse_end_update, EndUpdate, EndUpdateError};
+pub use mana_change::{parse_mana_change, ManaChange, ManaChangeError};
+pub use spawn_rename::{parse_spawn_rename, SpawnRename, SpawnRenameError};
+pub use stamina::{parse_stamina, Stamina, StaminaError};

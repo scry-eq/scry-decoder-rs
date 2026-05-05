@@ -119,6 +119,31 @@ mod ffi {
         ok: bool,
     }
 
+    // Stage A+4 — 7 more small fixed-size opcodes.
+    struct ManaChangeOut {
+        new_mana: i32,
+        unknown: i32,
+        spell_id: i32,
+        ok: bool,
+    }
+    struct StaminaOut { food: u32, water: u32, ok: bool }
+    struct EndUpdateOut { spawn_id: u16, cur: u32, max: u32, ok: bool }
+    struct ConsiderOut {
+        player_id: u32, target_id: u32, faction: i32, level: i32, ok: bool,
+    }
+    struct SpawnRenameOut {
+        old_name: [u8; 64],
+        old_name_again: [u8; 64],
+        new_name: [u8; 64],
+        ok: bool,
+    }
+    struct ClientTargetOut { new_target: u32, ok: bool }
+    struct DeathOut {
+        spawn_id: u32, killer_id: u32, corpse_id: u32, kind: i32,
+        spell_id: u32, zone_id: u16, zone_instance: u16, damage: u32,
+        ok: bool,
+    }
+
     extern "Rust" {
         fn decode_mob_update(bytes: &[u8]) -> MobUpdateOut;
         fn decode_delete_spawn(bytes: &[u8]) -> DeleteSpawnOut;
@@ -130,6 +155,13 @@ mod ffi {
         fn decode_exp_update(bytes: &[u8]) -> ExpUpdateOut;
         fn decode_level_update(bytes: &[u8]) -> LevelUpdateOut;
         fn decode_skill_update(bytes: &[u8]) -> SkillUpdateOut;
+        fn decode_mana_change(bytes: &[u8]) -> ManaChangeOut;
+        fn decode_stamina(bytes: &[u8]) -> StaminaOut;
+        fn decode_end_update(bytes: &[u8]) -> EndUpdateOut;
+        fn decode_consider(bytes: &[u8]) -> ConsiderOut;
+        fn decode_spawn_rename(bytes: &[u8]) -> SpawnRenameOut;
+        fn decode_client_target(bytes: &[u8]) -> ClientTargetOut;
+        fn decode_death(bytes: &[u8]) -> DeathOut;
     }
 }
 
@@ -231,6 +263,81 @@ fn decode_skill_update(bytes: &[u8]) -> ffi::SkillUpdateOut {
             skill_id: s.skill_id, value: s.value, ok: true,
         },
         Err(_) => ffi::SkillUpdateOut { skill_id: 0, value: 0, ok: false },
+    }
+}
+
+fn decode_mana_change(bytes: &[u8]) -> ffi::ManaChangeOut {
+    match seq_decode::parse_mana_change(bytes) {
+        Ok(m) => ffi::ManaChangeOut {
+            new_mana: m.new_mana, unknown: m.unknown, spell_id: m.spell_id, ok: true,
+        },
+        Err(_) => ffi::ManaChangeOut {
+            new_mana: 0, unknown: 0, spell_id: 0, ok: false,
+        },
+    }
+}
+
+fn decode_stamina(bytes: &[u8]) -> ffi::StaminaOut {
+    match seq_decode::parse_stamina(bytes) {
+        Ok(s) => ffi::StaminaOut { food: s.food, water: s.water, ok: true },
+        Err(_) => ffi::StaminaOut { food: 0, water: 0, ok: false },
+    }
+}
+
+fn decode_end_update(bytes: &[u8]) -> ffi::EndUpdateOut {
+    match seq_decode::parse_end_update(bytes) {
+        Ok(e) => ffi::EndUpdateOut {
+            spawn_id: e.spawn_id, cur: e.cur, max: e.max, ok: true,
+        },
+        Err(_) => ffi::EndUpdateOut { spawn_id: 0, cur: 0, max: 0, ok: false },
+    }
+}
+
+fn decode_consider(bytes: &[u8]) -> ffi::ConsiderOut {
+    match seq_decode::parse_consider(bytes) {
+        Ok(c) => ffi::ConsiderOut {
+            player_id: c.player_id, target_id: c.target_id,
+            faction: c.faction, level: c.level, ok: true,
+        },
+        Err(_) => ffi::ConsiderOut {
+            player_id: 0, target_id: 0, faction: 0, level: 0, ok: false,
+        },
+    }
+}
+
+fn decode_spawn_rename(bytes: &[u8]) -> ffi::SpawnRenameOut {
+    match seq_decode::parse_spawn_rename(bytes) {
+        Ok(r) => ffi::SpawnRenameOut {
+            old_name: r.old_name,
+            old_name_again: r.old_name_again,
+            new_name: r.new_name,
+            ok: true,
+        },
+        Err(_) => ffi::SpawnRenameOut {
+            old_name: [0; 64], old_name_again: [0; 64], new_name: [0; 64],
+            ok: false,
+        },
+    }
+}
+
+fn decode_client_target(bytes: &[u8]) -> ffi::ClientTargetOut {
+    match seq_decode::parse_client_target(bytes) {
+        Ok(t) => ffi::ClientTargetOut { new_target: t.new_target, ok: true },
+        Err(_) => ffi::ClientTargetOut { new_target: 0, ok: false },
+    }
+}
+
+fn decode_death(bytes: &[u8]) -> ffi::DeathOut {
+    match seq_decode::parse_death(bytes) {
+        Ok(d) => ffi::DeathOut {
+            spawn_id: d.spawn_id, killer_id: d.killer_id, corpse_id: d.corpse_id,
+            kind: d.kind, spell_id: d.spell_id, zone_id: d.zone_id,
+            zone_instance: d.zone_instance, damage: d.damage, ok: true,
+        },
+        Err(_) => ffi::DeathOut {
+            spawn_id: 0, killer_id: 0, corpse_id: 0, kind: 0, spell_id: 0,
+            zone_id: 0, zone_instance: 0, damage: 0, ok: false,
+        },
     }
 }
 

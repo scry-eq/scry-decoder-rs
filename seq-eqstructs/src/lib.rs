@@ -64,4 +64,17 @@ mod tests {
         assert_eq!(std::mem::size_of::<levelUpUpdateStruct>(),  16);
         assert_eq!(std::mem::size_of::<skillIncStruct>(),       12);
     }
+
+    #[test]
+    fn stage_a4_struct_layouts() {
+        assert_eq!(std::mem::size_of::<manaDecrementStruct>(),  20);
+        assert_eq!(std::mem::size_of::<staminaStruct>(),         8);
+        // endUpdateStruct: 2-byte spawn_id + two u32 — packed without
+        // alignment padding (the daemon's struct lays out as 10).
+        assert_eq!(std::mem::size_of::<endUpdateStruct>(),      10);
+        assert_eq!(std::mem::size_of::<considerStruct>(),       28);
+        assert_eq!(std::mem::size_of::<spawnRenameStruct>(),   195);
+        assert_eq!(std::mem::size_of::<clientTargetStruct>(),    4);
+        assert_eq!(std::mem::size_of::<newCorpseStruct>(),      40);
+    }
 }
