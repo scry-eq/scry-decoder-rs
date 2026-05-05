@@ -122,7 +122,7 @@ mod ffi {
     // Stage A+4 — 7 more small fixed-size opcodes.
     struct ManaChangeOut {
         new_mana: i32,
-        unknown: i32,
+        max_mana: i32,
         spell_id: i32,
         ok: bool,
     }
@@ -287,10 +287,10 @@ fn decode_skill_update(bytes: &[u8]) -> ffi::SkillUpdateOut {
 fn decode_mana_change(bytes: &[u8]) -> ffi::ManaChangeOut {
     match seq_decode::parse_mana_change(bytes) {
         Ok(m) => ffi::ManaChangeOut {
-            new_mana: m.new_mana, unknown: m.unknown, spell_id: m.spell_id, ok: true,
+            new_mana: m.new_mana, max_mana: m.max_mana, spell_id: m.spell_id, ok: true,
         },
         Err(_) => ffi::ManaChangeOut {
-            new_mana: 0, unknown: 0, spell_id: 0, ok: false,
+            new_mana: 0, max_mana: 0, spell_id: 0, ok: false,
         },
     }
 }

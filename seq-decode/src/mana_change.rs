@@ -1,6 +1,6 @@
 //! Parser for `OP_ManaChange` — payload `manaDecrementStruct`,
-//! 20 bytes. The daemon only reads `newMana`; spell id and the
-//! "endurance-shaped" unknown ride along.
+//! 20 bytes. The daemon reads `newMana` for the live mana value;
+//! `maxMana` and the last spell id ride along.
 
 use seq_eqstructs::manaDecrementStruct;
 use thiserror::Error;
@@ -10,7 +10,7 @@ pub const PAYLOAD_LEN: usize = std::mem::size_of::<manaDecrementStruct>();
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ManaChange {
     pub new_mana: i32,
-    pub unknown: i32,
+    pub max_mana: i32,
     pub spell_id: i32,
 }
 
@@ -28,7 +28,7 @@ pub fn parse_mana_change(bytes: &[u8]) -> Result<ManaChange, ManaChangeError> {
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const manaDecrementStruct) };
     Ok(ManaChange {
         new_mana: unsafe { std::ptr::addr_of!(raw.newMana).read_unaligned() },
-        unknown:  unsafe { std::ptr::addr_of!(raw.unknown).read_unaligned() },
+        max_mana: unsafe { std::ptr::addr_of!(raw.maxMana).read_unaligned() },
         spell_id: unsafe { std::ptr::addr_of!(raw.spellId).read_unaligned() },
     })
 }
