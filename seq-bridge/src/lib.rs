@@ -73,10 +73,63 @@ mod ffi {
         is_mercenary: u8,
     }
 
+    // Stage A+3 — small fixed-size opcodes. Each Out struct ends with
+    // an `ok` flag mirroring DeleteSpawnOut; the daemon falls back to
+    // its C++ struct cast when ok=false (SZC_Match should already
+    // prevent that, but fall-back keeps the gate non-fatal).
+    struct RemoveSpawnOut {
+        spawn_id: u32,
+        remove_spawn: u8,
+        ok: bool,
+    }
+    struct HpUpdateOut {
+        spawn_id: u16,
+        cur_hp: i32,
+        max_hp: i32,
+        ok: bool,
+    }
+    struct MobHealthOut {
+        spawn_id: u16,
+        hp_percent: i32,
+        ok: bool,
+    }
+    struct SpawnAppearanceOut {
+        spawn_id: u16,
+        kind: u16,
+        parameter: u32,
+        ok: bool,
+    }
+    struct ExpUpdateOut {
+        exp: u32,
+        unknown0: u32,
+        kind: u32,
+        unknown1: u32,
+        ok: bool,
+    }
+    struct LevelUpdateOut {
+        level: u32,
+        level_old: u32,
+        exp: u32,
+        unknown0: u32,
+        ok: bool,
+    }
+    struct SkillUpdateOut {
+        skill_id: u32,
+        value: i32,
+        ok: bool,
+    }
+
     extern "Rust" {
         fn decode_mob_update(bytes: &[u8]) -> MobUpdateOut;
         fn decode_delete_spawn(bytes: &[u8]) -> DeleteSpawnOut;
         fn decode_spawn(bytes: &[u8]) -> SpawnOut;
+        fn decode_remove_spawn(bytes: &[u8]) -> RemoveSpawnOut;
+        fn decode_hp_update(bytes: &[u8]) -> HpUpdateOut;
+        fn decode_mob_health(bytes: &[u8]) -> MobHealthOut;
+        fn decode_spawn_appearance(bytes: &[u8]) -> SpawnAppearanceOut;
+        fn decode_exp_update(bytes: &[u8]) -> ExpUpdateOut;
+        fn decode_level_update(bytes: &[u8]) -> LevelUpdateOut;
+        fn decode_skill_update(bytes: &[u8]) -> SkillUpdateOut;
     }
 }
 
@@ -105,6 +158,79 @@ fn decode_delete_spawn(bytes: &[u8]) -> ffi::DeleteSpawnOut {
     match seq_decode::parse_delete_spawn(bytes) {
         Ok(d) => ffi::DeleteSpawnOut { spawn_id: d.spawn_id, ok: true },
         Err(_) => ffi::DeleteSpawnOut { spawn_id: 0, ok: false },
+    }
+}
+
+fn decode_remove_spawn(bytes: &[u8]) -> ffi::RemoveSpawnOut {
+    match seq_decode::parse_remove_spawn(bytes) {
+        Ok(r) => ffi::RemoveSpawnOut {
+            spawn_id: r.spawn_id, remove_spawn: r.remove_spawn, ok: true,
+        },
+        Err(_) => ffi::RemoveSpawnOut { spawn_id: 0, remove_spawn: 0, ok: false },
+    }
+}
+
+fn decode_hp_update(bytes: &[u8]) -> ffi::HpUpdateOut {
+    match seq_decode::parse_hp_update(bytes) {
+        Ok(h) => ffi::HpUpdateOut {
+            spawn_id: h.spawn_id, cur_hp: h.cur_hp, max_hp: h.max_hp, ok: true,
+        },
+        Err(_) => ffi::HpUpdateOut {
+            spawn_id: 0, cur_hp: 0, max_hp: 0, ok: false,
+        },
+    }
+}
+
+fn decode_mob_health(bytes: &[u8]) -> ffi::MobHealthOut {
+    match seq_decode::parse_mob_health(bytes) {
+        Ok(m) => ffi::MobHealthOut {
+            spawn_id: m.spawn_id, hp_percent: m.hp_percent, ok: true,
+        },
+        Err(_) => ffi::MobHealthOut { spawn_id: 0, hp_percent: 0, ok: false },
+    }
+}
+
+fn decode_spawn_appearance(bytes: &[u8]) -> ffi::SpawnAppearanceOut {
+    match seq_decode::parse_spawn_appearance(bytes) {
+        Ok(a) => ffi::SpawnAppearanceOut {
+            spawn_id: a.spawn_id, kind: a.kind, parameter: a.parameter, ok: true,
+        },
+        Err(_) => ffi::SpawnAppearanceOut {
+            spawn_id: 0, kind: 0, parameter: 0, ok: false,
+        },
+    }
+}
+
+fn decode_exp_update(bytes: &[u8]) -> ffi::ExpUpdateOut {
+    match seq_decode::parse_exp_update(bytes) {
+        Ok(e) => ffi::ExpUpdateOut {
+            exp: e.exp, unknown0: e.unknown0, kind: e.kind, unknown1: e.unknown1,
+            ok: true,
+        },
+        Err(_) => ffi::ExpUpdateOut {
+            exp: 0, unknown0: 0, kind: 0, unknown1: 0, ok: false,
+        },
+    }
+}
+
+fn decode_level_update(bytes: &[u8]) -> ffi::LevelUpdateOut {
+    match seq_decode::parse_level_update(bytes) {
+        Ok(l) => ffi::LevelUpdateOut {
+            level: l.level, level_old: l.level_old, exp: l.exp,
+            unknown0: l.unknown0, ok: true,
+        },
+        Err(_) => ffi::LevelUpdateOut {
+            level: 0, level_old: 0, exp: 0, unknown0: 0, ok: false,
+        },
+    }
+}
+
+fn decode_skill_update(bytes: &[u8]) -> ffi::SkillUpdateOut {
+    match seq_decode::parse_skill_update(bytes) {
+        Ok(s) => ffi::SkillUpdateOut {
+            skill_id: s.skill_id, value: s.value, ok: true,
+        },
+        Err(_) => ffi::SkillUpdateOut { skill_id: 0, value: 0, ok: false },
     }
 }
 

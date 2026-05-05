@@ -50,4 +50,18 @@ mod tests {
         // 4-byte fixed payload, single u32 spawnId.
         assert_eq!(std::mem::size_of::<deleteSpawnStruct>(), 4);
     }
+
+    #[test]
+    fn small_fixed_struct_layouts() {
+        // Stage A+3 batch — guards the bindgen-derived sizes against
+        // future struct edits in everquest.h. SZC_Match dispatch in
+        // the daemon enforces these wire sizes today.
+        assert_eq!(std::mem::size_of::<removeSpawnStruct>(),     5);
+        assert_eq!(std::mem::size_of::<hpNpcUpdateStruct>(),    18);
+        assert_eq!(std::mem::size_of::<mobHealthStruct>(),       6);
+        assert_eq!(std::mem::size_of::<spawnAppearanceStruct>(), 8);
+        assert_eq!(std::mem::size_of::<expUpdateStruct>(),      16);
+        assert_eq!(std::mem::size_of::<levelUpUpdateStruct>(),  16);
+        assert_eq!(std::mem::size_of::<skillIncStruct>(),       12);
+    }
 }
