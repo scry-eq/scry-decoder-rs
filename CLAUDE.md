@@ -1,1 +1,4 @@
-Build requires `libclang-dev` (apt) for bindgen against `../showeq-daemon/src/everquest.h` — override path via `EVERQUEST_H` env var if showeq-daemon is checked out elsewhere.
+Cargo workspace with 3 members: `seq-decode` (parsers), `seq-bridge` (C ABI surface the daemon consumes), `seq-eqstructs` (bindgen output for `../showeq-daemon/src/everquest.h`).
+Build: `cargo build --workspace`; tests: `cargo test --workspace`. The integration check is daemon-side — rebuild the daemon with `cmake -DSEQ_USE_RUST=ON -B build` then run `tests/replay/check.sh`; it does a second cmp pass with the Rust decoder enabled and the cross-decoder bytes must match the C++ goldens.
+Stage A scope: only `OP_MobUpdate` is routed through Rust today (daemon flag `--rust-opcodes OP_MobUpdate`). New stages = adding opcode names to that comma-separated list and the corresponding parsers in `seq-decode`.
+Build dep: `libclang-dev` (apt) for bindgen against `../showeq-daemon/src/everquest.h` — override path via the `EVERQUEST_H` env var if showeq-daemon is checked out elsewhere.
