@@ -428,6 +428,234 @@ impl Default for action2Struct {
     }
 }
 
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct SpawnUpdateStruct {
+    /// uint16_t spawnId
+    pub spawnId: u16,
+    /// uint16_t subcommand
+    pub subcommand: u16,
+    /// int16_t arg1
+    pub arg1: i16,
+    /// int16_t arg2
+    pub arg2: i16,
+    /// uint8_t arg3
+    pub arg3: u8,
+    /// uint8_t unknown0009[23]
+    pub unknown0009: [u8; 23],
+}
+
+impl Default for SpawnUpdateStruct {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct zoneChangeStruct {
+    /// char name[64]
+    pub name: [u8; 64],
+    /// uint16_t zoneId
+    pub zoneId: u16,
+    /// uint16_t zoneInstance
+    pub zoneInstance: u16,
+    /// uint8_t unknown0068[8]
+    pub unknown0068: [u8; 8],
+    /// uint8_t unknown0076[12]
+    pub unknown0076: [u8; 12],
+    /// uint8_t unknown0088[4]
+    pub unknown0088: [u8; 4],
+    /// uint8_t unknown0092[8]
+    pub unknown0092: [u8; 8],
+}
+
+impl Default for zoneChangeStruct {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct dzInfo {
+    /// uint32_t unknown0000
+    pub unknown0000: u32,
+    /// uint32_t unknown0004
+    pub unknown0004: u32,
+    /// uint8_t newDZ
+    pub newDZ: u8,
+    /// uint8_t padding0009[3]
+    pub padding0009: [u8; 3],
+    /// uint32_t maxPlayers
+    pub maxPlayers: u32,
+    /// char dzName[128]
+    pub dzName: [u8; 128],
+    /// char name[64]
+    pub name: [u8; 64],
+    /// uint32_t unknown0208
+    pub unknown0208: u32,
+}
+
+impl Default for dzInfo {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct dzSwitchInfo {
+    /// uint32_t unknown0000
+    pub unknown0000: u32,
+    /// uint32_t show
+    pub show: u32,
+    /// uint16_t zoneID
+    pub zoneID: u16,
+    /// uint16_t instanceID
+    pub instanceID: u16,
+    /// uint32_t type
+    pub type_: u32,
+    /// uint32_t unknown0016
+    pub unknown0016: u32,
+    /// float y
+    pub y: f32,
+    /// float x
+    pub x: f32,
+    /// float z
+    pub z: f32,
+}
+
+impl Default for dzSwitchInfo {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct startCastStruct {
+    /// int32_t slot
+    pub slot: i32,
+    /// uint32_t spellId
+    pub spellId: u32,
+    /// uint8_t unknown0008[10]
+    pub unknown0008: [u8; 10],
+    /// uint32_t targetId
+    pub targetId: u32,
+    /// uint8_t unknown0022[2]
+    pub unknown0022: [u8; 2],
+    /// uint8_t unknown0024[2]
+    pub unknown0024: [u8; 2],
+    /// uint8_t unknown0026[13]
+    pub unknown0026: [u8; 13],
+}
+
+impl Default for startCastStruct {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct actionStruct {
+    /// uint16_t target
+    pub target: u16,
+    /// uint16_t source
+    pub source: u16,
+    /// int16_t spell
+    pub spell: i16,
+    /// uint8_t unknown0006[6]
+    pub unknown0006: [u8; 6],
+    /// uint8_t level
+    pub level: u8,
+    /// uint8_t unknown0013[43]
+    pub unknown0013: [u8; 43],
+    /// uint8_t type
+    pub type_: u8,
+    /// uint8_t unknown0057[7]
+    pub unknown0057: [u8; 7],
+}
+
+impl Default for actionStruct {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct actionAltStruct {
+    /// uint16_t target
+    pub target: u16,
+    /// uint16_t source
+    pub source: u16,
+    /// int16_t spell
+    pub spell: i16,
+    /// uint8_t unknown0006[6]
+    pub unknown0006: [u8; 6],
+    /// uint8_t level
+    pub level: u8,
+    /// uint8_t unknown0013[43]
+    pub unknown0013: [u8; 43],
+    /// uint8_t type
+    pub type_: u8,
+    /// uint8_t unknown0057[31]
+    pub unknown0057: [u8; 31],
+}
+
+impl Default for actionAltStruct {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct groupDisbandStruct {
+    /// char yourname[64]
+    pub yourname: [u8; 64],
+    /// char membername[64]
+    pub membername: [u8; 64],
+    /// uint8_t unknown0128[24]
+    pub unknown0128: [u8; 24],
+}
+
+impl Default for groupDisbandStruct {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct corpseLocStruct {
+    /// uint32_t spawnId
+    pub spawnId: u32,
+    /// float x
+    pub x: f32,
+    /// float y
+    pub y: f32,
+    /// float z
+    pub z: f32,
+}
+
+impl Default for corpseLocStruct {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
 impl spawnPositionUpdate {
     #[inline]
     fn pack(&self) -> [u8; 10] {
@@ -491,4 +719,13 @@ mod __layout_tests {
     #[test] fn spawnIllusionStruct_size() { assert_eq!(core::mem::size_of::<spawnIllusionStruct>(), 332); }
     #[test] fn buffStruct_size() { assert_eq!(core::mem::size_of::<buffStruct>(), 168); }
     #[test] fn action2Struct_size() { assert_eq!(core::mem::size_of::<action2Struct>(), 48); }
+    #[test] fn SpawnUpdateStruct_size() { assert_eq!(core::mem::size_of::<SpawnUpdateStruct>(), 32); }
+    #[test] fn zoneChangeStruct_size() { assert_eq!(core::mem::size_of::<zoneChangeStruct>(), 100); }
+    #[test] fn dzInfo_size() { assert_eq!(core::mem::size_of::<dzInfo>(), 212); }
+    #[test] fn dzSwitchInfo_size() { assert_eq!(core::mem::size_of::<dzSwitchInfo>(), 32); }
+    #[test] fn startCastStruct_size() { assert_eq!(core::mem::size_of::<startCastStruct>(), 39); }
+    #[test] fn actionStruct_size() { assert_eq!(core::mem::size_of::<actionStruct>(), 64); }
+    #[test] fn actionAltStruct_size() { assert_eq!(core::mem::size_of::<actionAltStruct>(), 88); }
+    #[test] fn groupDisbandStruct_size() { assert_eq!(core::mem::size_of::<groupDisbandStruct>(), 152); }
+    #[test] fn corpseLocStruct_size() { assert_eq!(core::mem::size_of::<corpseLocStruct>(), 16); }
 }

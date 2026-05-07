@@ -158,6 +158,36 @@ mod ffi {
         target: u16, source: u16, damage: i32, spell: i32, kind: u8, ok: bool,
     }
 
+    // Stage A+6 — second small-fixed POD batch.
+    struct WearChangeOut {
+        spawn_id: u16, subcommand: u16, arg1: i16, arg2: i16, arg3: u8,
+        ok: bool,
+    }
+    struct ZoneChangeOut {
+        name: [u8; 64], zone_id: u16, zone_instance: u16, ok: bool,
+    }
+    struct DzInfoOut {
+        new_dz: u8, max_players: u32, dz_name: [u8; 128], name: [u8; 64],
+        ok: bool,
+    }
+    struct DzSwitchOut {
+        zone_id: u16, instance_id: u16, kind: u32,
+        x: f32, y: f32, z: f32, ok: bool,
+    }
+    struct StartCastOut {
+        slot: i32, spell_id: u32, target_id: u32, ok: bool,
+    }
+    struct ActionOut {
+        target: u16, source: u16, spell: i16, level: u8, kind: u8, ok: bool,
+    }
+    struct GroupDisbandOut {
+        yourname: [u8; 64], membername: [u8; 64], ok: bool,
+    }
+    struct GroupFollowOut { name: [u8; 64], ok: bool }
+    struct CorpseLocOut {
+        spawn_id: u32, x: f32, y: f32, z: f32, ok: bool,
+    }
+
     extern "Rust" {
         fn decode_mob_update(bytes: &[u8]) -> MobUpdateOut;
         fn decode_delete_spawn(bytes: &[u8]) -> DeleteSpawnOut;
@@ -180,6 +210,17 @@ mod ffi {
         fn decode_illusion(bytes: &[u8]) -> IllusionOut;
         fn decode_buff(bytes: &[u8]) -> BuffOut;
         fn decode_action2(bytes: &[u8]) -> Action2Out;
+        // Stage A+6
+        fn decode_wear_change(bytes: &[u8]) -> WearChangeOut;
+        fn decode_zone_change(bytes: &[u8]) -> ZoneChangeOut;
+        fn decode_dz_info(bytes: &[u8]) -> DzInfoOut;
+        fn decode_dz_switch_info(bytes: &[u8]) -> DzSwitchOut;
+        fn decode_start_cast(bytes: &[u8]) -> StartCastOut;
+        fn decode_action(bytes: &[u8]) -> ActionOut;
+        fn decode_action_alt(bytes: &[u8]) -> ActionOut;
+        fn decode_group_disband(bytes: &[u8]) -> GroupDisbandOut;
+        fn decode_group_follow(bytes: &[u8]) -> GroupFollowOut;
+        fn decode_corpse_loc(bytes: &[u8]) -> CorpseLocOut;
     }
 }
 
@@ -452,6 +493,122 @@ fn decode_spawn(bytes: &[u8]) -> ffi::SpawnOut {
             pos_data: [0; 6],
             level: 0, npc: 0, other_data: 0, char_properties: 0,
             cur_hp: 0, holding: 0, state: 0, light: 0, is_mercenary: 0,
+        },
+    }
+}
+
+// Stage A+6 — second small-fixed POD batch.
+
+fn decode_wear_change(bytes: &[u8]) -> ffi::WearChangeOut {
+    match seq_decode::parse_wear_change(bytes) {
+        Ok(w) => ffi::WearChangeOut {
+            spawn_id: w.spawn_id, subcommand: w.subcommand,
+            arg1: w.arg1, arg2: w.arg2, arg3: w.arg3, ok: true,
+        },
+        Err(_) => ffi::WearChangeOut {
+            spawn_id: 0, subcommand: 0, arg1: 0, arg2: 0, arg3: 0, ok: false,
+        },
+    }
+}
+
+fn decode_zone_change(bytes: &[u8]) -> ffi::ZoneChangeOut {
+    match seq_decode::parse_zone_change(bytes) {
+        Ok(z) => ffi::ZoneChangeOut {
+            name: z.name, zone_id: z.zone_id,
+            zone_instance: z.zone_instance, ok: true,
+        },
+        Err(_) => ffi::ZoneChangeOut {
+            name: [0; 64], zone_id: 0, zone_instance: 0, ok: false,
+        },
+    }
+}
+
+fn decode_dz_info(bytes: &[u8]) -> ffi::DzInfoOut {
+    match seq_decode::parse_dz_info(bytes) {
+        Ok(d) => ffi::DzInfoOut {
+            new_dz: d.new_dz, max_players: d.max_players,
+            dz_name: d.dz_name, name: d.name, ok: true,
+        },
+        Err(_) => ffi::DzInfoOut {
+            new_dz: 0, max_players: 0,
+            dz_name: [0; 128], name: [0; 64], ok: false,
+        },
+    }
+}
+
+fn decode_dz_switch_info(bytes: &[u8]) -> ffi::DzSwitchOut {
+    match seq_decode::parse_dz_switch_info(bytes) {
+        Ok(s) => ffi::DzSwitchOut {
+            zone_id: s.zone_id, instance_id: s.instance_id, kind: s.kind,
+            x: s.x, y: s.y, z: s.z, ok: true,
+        },
+        Err(_) => ffi::DzSwitchOut {
+            zone_id: 0, instance_id: 0, kind: 0,
+            x: 0.0, y: 0.0, z: 0.0, ok: false,
+        },
+    }
+}
+
+fn decode_start_cast(bytes: &[u8]) -> ffi::StartCastOut {
+    match seq_decode::parse_start_cast(bytes) {
+        Ok(s) => ffi::StartCastOut {
+            slot: s.slot, spell_id: s.spell_id, target_id: s.target_id, ok: true,
+        },
+        Err(_) => ffi::StartCastOut {
+            slot: 0, spell_id: 0, target_id: 0, ok: false,
+        },
+    }
+}
+
+fn decode_action(bytes: &[u8]) -> ffi::ActionOut {
+    match seq_decode::parse_action(bytes) {
+        Ok(a) => ffi::ActionOut {
+            target: a.target, source: a.source, spell: a.spell,
+            level: a.level, kind: a.kind, ok: true,
+        },
+        Err(_) => ffi::ActionOut {
+            target: 0, source: 0, spell: 0, level: 0, kind: 0, ok: false,
+        },
+    }
+}
+
+fn decode_action_alt(bytes: &[u8]) -> ffi::ActionOut {
+    match seq_decode::parse_action_alt(bytes) {
+        Ok(a) => ffi::ActionOut {
+            target: a.target, source: a.source, spell: a.spell,
+            level: a.level, kind: a.kind, ok: true,
+        },
+        Err(_) => ffi::ActionOut {
+            target: 0, source: 0, spell: 0, level: 0, kind: 0, ok: false,
+        },
+    }
+}
+
+fn decode_group_disband(bytes: &[u8]) -> ffi::GroupDisbandOut {
+    match seq_decode::parse_group_disband(bytes) {
+        Ok(g) => ffi::GroupDisbandOut {
+            yourname: g.yourname, membername: g.membername, ok: true,
+        },
+        Err(_) => ffi::GroupDisbandOut {
+            yourname: [0; 64], membername: [0; 64], ok: false,
+        },
+    }
+}
+
+fn decode_group_follow(bytes: &[u8]) -> ffi::GroupFollowOut {
+    match seq_decode::parse_group_follow(bytes) {
+        Ok(g) => ffi::GroupFollowOut { name: g.name, ok: true },
+        Err(_) => ffi::GroupFollowOut { name: [0; 64], ok: false },
+    }
+}
+
+fn decode_corpse_loc(bytes: &[u8]) -> ffi::CorpseLocOut {
+    match seq_decode::parse_corpse_loc(bytes) {
+        Ok(c) => ffi::CorpseLocOut {
+            spawn_id: c.spawn_id, x: c.x, y: c.y, z: c.z, ok: true,
+        },
+        Err(_) => ffi::CorpseLocOut {
+            spawn_id: 0, x: 0.0, y: 0.0, z: 0.0, ok: false,
         },
     }
 }

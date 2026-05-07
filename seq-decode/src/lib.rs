@@ -15,17 +15,28 @@
 //! OP_EndUpdate, OP_Consider, OP_SpawnRename, OP_TargetMouse,
 //! OP_Death.
 //! Stage A+5: OP_ClickObject, OP_Illusion, OP_Buff, OP_Action2.
+//! Stage A+6: OP_WearChange, OP_ZoneChange, OP_DzInfo,
+//! OP_DzSwitchInfo, OP_CastSpell, OP_Action (two-variant),
+//! OP_GroupDisband / OP_GroupDisband2, OP_GroupFollow,
+//! OP_CorpseLocResponse.
 
+pub mod action;
 pub mod action2;
+pub mod action_alt;
 pub mod buff;
 pub mod click_object;
 pub mod client_target;
 pub mod consider;
+pub mod corpse_loc;
 pub mod cursor;
 pub mod death;
 pub mod delete_spawn;
+pub mod dz_info;
+pub mod dz_switch_info;
 pub mod end_update;
 pub mod exp_update;
+pub mod group_disband;
+pub mod group_follow;
 pub mod hp_update;
 pub mod illusion;
 pub mod level_update;
@@ -38,6 +49,9 @@ pub mod spawn;
 pub mod spawn_appearance;
 pub mod spawn_rename;
 pub mod stamina;
+pub mod start_cast;
+pub mod wear_change;
+pub mod zone_change;
 
 pub use delete_spawn::{
     parse_delete_spawn, DeleteSpawn, DeleteSpawnError, PAYLOAD_LEN as DELETE_SPAWN_LEN,
@@ -62,7 +76,17 @@ pub use end_update::{parse_end_update, EndUpdate, EndUpdateError};
 pub use mana_change::{parse_mana_change, ManaChange, ManaChangeError};
 pub use spawn_rename::{parse_spawn_rename, SpawnRename, SpawnRenameError};
 pub use stamina::{parse_stamina, Stamina, StaminaError};
+pub use action::{parse_action, Action, ActionError};
 pub use action2::{parse_action2, Action2, Action2Error};
+pub use action_alt::{parse_action_alt, ActionAlt, ActionAltError};
 pub use buff::{parse_buff, Buff, BuffError};
 pub use click_object::{parse_click_object, ClickObject, ClickObjectError};
+pub use corpse_loc::{parse_corpse_loc, CorpseLoc, CorpseLocError};
+pub use dz_info::{parse_dz_info, DzInfo, DzInfoError};
+pub use dz_switch_info::{parse_dz_switch_info, DzSwitch, DzSwitchError};
+pub use group_disband::{parse_group_disband, GroupDisband, GroupDisbandError};
+pub use group_follow::{parse_group_follow, GroupFollow, GroupFollowError};
 pub use illusion::{parse_illusion, Illusion, IllusionError};
+pub use start_cast::{parse_start_cast, StartCast, StartCastError};
+pub use wear_change::{parse_wear_change, WearChange, WearChangeError};
+pub use zone_change::{parse_zone_change, ZoneChange, ZoneChangeError};

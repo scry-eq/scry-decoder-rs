@@ -37,6 +37,16 @@ ALLOWLIST = [
     "spawnIllusionStruct",
     "buffStruct",
     "action2Struct",
+    # Stage A+6 — second small-fixed POD batch.
+    "SpawnUpdateStruct",
+    "zoneChangeStruct",
+    "dzInfo",
+    "dzSwitchInfo",
+    "startCastStruct",
+    "actionStruct",
+    "actionAltStruct",
+    "groupDisbandStruct",
+    "corpseLocStruct",
 ]
 
 CTYPE_TO_RUST = {
@@ -51,6 +61,8 @@ CTYPE_TO_RUST = {
     "char":     ("u8",  1),
     "unsigned": ("u32", 4),
     "signed":   ("i32", 4),
+    "float":    ("f32", 4),
+    "double":   ("f64", 8),
 }
 
 # Rust reserved words that may appear as C field names. Bindgen suffixes with `_`.
