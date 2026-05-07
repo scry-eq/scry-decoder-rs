@@ -656,6 +656,76 @@ impl Default for corpseLocStruct {
     }
 }
 
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct doorStruct {
+    /// char name[32]
+    pub name: [u8; 32],
+    /// float y
+    pub y: f32,
+    /// float x
+    pub x: f32,
+    /// float z
+    pub z: f32,
+    /// float heading
+    pub heading: f32,
+    /// uint32_t incline
+    pub incline: u32,
+    /// uint8_t unknown0048[20]
+    pub unknown0048: [u8; 20],
+    /// uint32_t size
+    pub size: u32,
+    /// uint8_t unknown0056[4]
+    pub unknown0056: [u8; 4],
+    /// uint8_t doorId
+    pub doorId: u8,
+    /// uint8_t opentype
+    pub opentype: u8,
+    /// uint8_t spawnstate
+    pub spawnstate: u8,
+    /// uint8_t invertstate
+    pub invertstate: u8,
+    /// uint32_t zonePoint
+    pub zonePoint: u32,
+    /// uint8_t unknown068[28]
+    pub unknown068: [u8; 28],
+    /// uint8_t unknown096[20]
+    pub unknown096: [u8; 20],
+}
+
+impl Default for doorStruct {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct zonePointStruct {
+    /// uint32_t zoneTrigger
+    pub zoneTrigger: u32,
+    /// float y
+    pub y: f32,
+    /// float x
+    pub x: f32,
+    /// float z
+    pub z: f32,
+    /// float heading
+    pub heading: f32,
+    /// uint16_t zoneId
+    pub zoneId: u16,
+    /// uint16_t zoneInstance
+    pub zoneInstance: u16,
+}
+
+impl Default for zonePointStruct {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
 impl spawnPositionUpdate {
     #[inline]
     fn pack(&self) -> [u8; 10] {
@@ -728,4 +798,6 @@ mod __layout_tests {
     #[test] fn actionAltStruct_size() { assert_eq!(core::mem::size_of::<actionAltStruct>(), 88); }
     #[test] fn groupDisbandStruct_size() { assert_eq!(core::mem::size_of::<groupDisbandStruct>(), 152); }
     #[test] fn corpseLocStruct_size() { assert_eq!(core::mem::size_of::<corpseLocStruct>(), 16); }
+    #[test] fn doorStruct_size() { assert_eq!(core::mem::size_of::<doorStruct>(), 136); }
+    #[test] fn zonePointStruct_size() { assert_eq!(core::mem::size_of::<zonePointStruct>(), 24); }
 }

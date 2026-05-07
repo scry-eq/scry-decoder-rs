@@ -188,6 +188,23 @@ mod ffi {
         spawn_id: u32, x: f32, y: f32, z: f32, ok: bool,
     }
 
+    // Stage A+7 — variable-length / array opcodes.
+    struct DoorOut {
+        name: [u8; 32],
+        y: f32, x: f32, z: f32, heading: f32,
+        incline: u32, size: u32,
+        door_id: u8, opentype: u8, spawnstate: u8, invertstate: u8,
+        zone_point: u32,
+        ok: bool,
+    }
+    struct GroundSpawnOut {
+        drop_id: u32,
+        id_file: [u8; 30],
+        heading: f32, y: f32, x: f32, z: f32,
+        bytes_consumed: u32,
+        ok: bool,
+    }
+
     extern "Rust" {
         fn decode_mob_update(bytes: &[u8]) -> MobUpdateOut;
         fn decode_delete_spawn(bytes: &[u8]) -> DeleteSpawnOut;
@@ -221,6 +238,9 @@ mod ffi {
         fn decode_group_disband(bytes: &[u8]) -> GroupDisbandOut;
         fn decode_group_follow(bytes: &[u8]) -> GroupFollowOut;
         fn decode_corpse_loc(bytes: &[u8]) -> CorpseLocOut;
+        // Stage A+7
+        fn decode_door(bytes: &[u8]) -> DoorOut;
+        fn decode_ground_spawn(bytes: &[u8]) -> GroundSpawnOut;
     }
 }
 
@@ -609,6 +629,49 @@ fn decode_corpse_loc(bytes: &[u8]) -> ffi::CorpseLocOut {
         },
         Err(_) => ffi::CorpseLocOut {
             spawn_id: 0, x: 0.0, y: 0.0, z: 0.0, ok: false,
+        },
+    }
+}
+
+// Stage A+7
+
+fn decode_door(bytes: &[u8]) -> ffi::DoorOut {
+    match seq_decode::parse_door(bytes) {
+        Ok(d) => ffi::DoorOut {
+            name: d.name,
+            y: d.y, x: d.x, z: d.z, heading: d.heading,
+            incline: d.incline, size: d.size,
+            door_id: d.door_id, opentype: d.opentype,
+            spawnstate: d.spawnstate, invertstate: d.invertstate,
+            zone_point: d.zone_point,
+            ok: true,
+        },
+        Err(_) => ffi::DoorOut {
+            name: [0; 32],
+            y: 0.0, x: 0.0, z: 0.0, heading: 0.0,
+            incline: 0, size: 0,
+            door_id: 0, opentype: 0, spawnstate: 0, invertstate: 0,
+            zone_point: 0,
+            ok: false,
+        },
+    }
+}
+
+fn decode_ground_spawn(bytes: &[u8]) -> ffi::GroundSpawnOut {
+    match seq_decode::parse_ground_spawn(bytes) {
+        Ok(g) => ffi::GroundSpawnOut {
+            drop_id: g.drop_id,
+            id_file: g.id_file,
+            heading: g.heading, y: g.y, x: g.x, z: g.z,
+            bytes_consumed: g.bytes_consumed,
+            ok: true,
+        },
+        Err(_) => ffi::GroundSpawnOut {
+            drop_id: 0,
+            id_file: [0; 30],
+            heading: 0.0, y: 0.0, x: 0.0, z: 0.0,
+            bytes_consumed: 0,
+            ok: false,
         },
     }
 }

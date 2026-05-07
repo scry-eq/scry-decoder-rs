@@ -47,6 +47,9 @@ ALLOWLIST = [
     "actionAltStruct",
     "groupDisbandStruct",
     "corpseLocStruct",
+    # Stage A+7 — variable-length / array opcodes.
+    "doorStruct",
+    "zonePointStruct",
 ]
 
 CTYPE_TO_RUST = {

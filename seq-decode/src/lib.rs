@@ -19,6 +19,8 @@
 //! OP_DzSwitchInfo, OP_CastSpell, OP_Action (two-variant),
 //! OP_GroupDisband / OP_GroupDisband2, OP_GroupFollow,
 //! OP_CorpseLocResponse.
+//! Stage A+7: OP_SpawnDoor (per-element), OP_GroundSpawn
+//! (NetStream-style variable text).
 
 pub mod action;
 pub mod action2;
@@ -35,6 +37,7 @@ pub mod dz_info;
 pub mod dz_switch_info;
 pub mod end_update;
 pub mod exp_update;
+pub mod ground_spawn;
 pub mod group_disband;
 pub mod group_follow;
 pub mod hp_update;
@@ -47,6 +50,7 @@ pub mod remove_spawn;
 pub mod skill_update;
 pub mod spawn;
 pub mod spawn_appearance;
+pub mod spawn_door;
 pub mod spawn_rename;
 pub mod stamina;
 pub mod start_cast;
@@ -87,6 +91,8 @@ pub use dz_switch_info::{parse_dz_switch_info, DzSwitch, DzSwitchError};
 pub use group_disband::{parse_group_disband, GroupDisband, GroupDisbandError};
 pub use group_follow::{parse_group_follow, GroupFollow, GroupFollowError};
 pub use illusion::{parse_illusion, Illusion, IllusionError};
+pub use ground_spawn::{parse_ground_spawn, GroundSpawn, GroundSpawnError};
+pub use spawn_door::{parse_door, Door, DoorError};
 pub use start_cast::{parse_start_cast, StartCast, StartCastError};
 pub use wear_change::{parse_wear_change, WearChange, WearChangeError};
 pub use zone_change::{parse_zone_change, ZoneChange, ZoneChangeError};
