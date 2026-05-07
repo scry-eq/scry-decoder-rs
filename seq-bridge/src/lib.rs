@@ -205,6 +205,31 @@ mod ffi {
         ok: bool,
     }
 
+    // Stage A+8 — bitfield-laden / BitStream-packed opcodes.
+    struct PlayerSelfPosOut {
+        spawn_id: u16,
+        x: f32, y: f32, z: f32,
+        delta_x: f32, delta_y: f32, delta_z: f32,
+        heading: u16, delta_heading: i16, animation: i16,
+        pitch: u16,
+        ok: bool,
+    }
+    struct PlayerSpawnPosOut {
+        spawn_id: u16, spawn_id2: u16,
+        x: i32, y: i32, z: i32,
+        delta_x: i32, delta_y: i32, delta_z: i32,
+        heading: u16, delta_heading: i16, animation: i16,
+        pitch: u16,
+        ok: bool,
+    }
+    struct NpcMoveOut {
+        spawn_id: u16,
+        x: i16, y: i16, z: i16, heading: i16,
+        delta_x: i16, delta_y: i16, delta_z: i16,
+        delta_heading: i8, animation: i16,
+        ok: bool,
+    }
+
     extern "Rust" {
         fn decode_mob_update(bytes: &[u8]) -> MobUpdateOut;
         fn decode_delete_spawn(bytes: &[u8]) -> DeleteSpawnOut;
@@ -241,6 +266,10 @@ mod ffi {
         // Stage A+7
         fn decode_door(bytes: &[u8]) -> DoorOut;
         fn decode_ground_spawn(bytes: &[u8]) -> GroundSpawnOut;
+        // Stage A+8
+        fn decode_player_self_pos(bytes: &[u8]) -> PlayerSelfPosOut;
+        fn decode_player_spawn_pos(bytes: &[u8]) -> PlayerSpawnPosOut;
+        fn decode_npc_move_update(bytes: &[u8]) -> NpcMoveOut;
     }
 }
 
@@ -671,6 +700,67 @@ fn decode_ground_spawn(bytes: &[u8]) -> ffi::GroundSpawnOut {
             id_file: [0; 30],
             heading: 0.0, y: 0.0, x: 0.0, z: 0.0,
             bytes_consumed: 0,
+            ok: false,
+        },
+    }
+}
+
+// Stage A+8
+
+fn decode_player_self_pos(bytes: &[u8]) -> ffi::PlayerSelfPosOut {
+    match seq_decode::parse_player_self_pos(bytes) {
+        Ok(p) => ffi::PlayerSelfPosOut {
+            spawn_id: p.spawn_id,
+            x: p.x, y: p.y, z: p.z,
+            delta_x: p.delta_x, delta_y: p.delta_y, delta_z: p.delta_z,
+            heading: p.heading, delta_heading: p.delta_heading,
+            animation: p.animation, pitch: p.pitch,
+            ok: true,
+        },
+        Err(_) => ffi::PlayerSelfPosOut {
+            spawn_id: 0,
+            x: 0.0, y: 0.0, z: 0.0,
+            delta_x: 0.0, delta_y: 0.0, delta_z: 0.0,
+            heading: 0, delta_heading: 0, animation: 0, pitch: 0,
+            ok: false,
+        },
+    }
+}
+
+fn decode_player_spawn_pos(bytes: &[u8]) -> ffi::PlayerSpawnPosOut {
+    match seq_decode::parse_player_spawn_pos(bytes) {
+        Ok(p) => ffi::PlayerSpawnPosOut {
+            spawn_id: p.spawn_id, spawn_id2: p.spawn_id2,
+            x: p.x, y: p.y, z: p.z,
+            delta_x: p.delta_x, delta_y: p.delta_y, delta_z: p.delta_z,
+            heading: p.heading, delta_heading: p.delta_heading,
+            animation: p.animation, pitch: p.pitch,
+            ok: true,
+        },
+        Err(_) => ffi::PlayerSpawnPosOut {
+            spawn_id: 0, spawn_id2: 0,
+            x: 0, y: 0, z: 0,
+            delta_x: 0, delta_y: 0, delta_z: 0,
+            heading: 0, delta_heading: 0, animation: 0, pitch: 0,
+            ok: false,
+        },
+    }
+}
+
+fn decode_npc_move_update(bytes: &[u8]) -> ffi::NpcMoveOut {
+    match seq_decode::parse_npc_move_update(bytes) {
+        Ok(n) => ffi::NpcMoveOut {
+            spawn_id: n.spawn_id,
+            x: n.x, y: n.y, z: n.z, heading: n.heading,
+            delta_x: n.delta_x, delta_y: n.delta_y, delta_z: n.delta_z,
+            delta_heading: n.delta_heading, animation: n.animation,
+            ok: true,
+        },
+        Err(_) => ffi::NpcMoveOut {
+            spawn_id: 0,
+            x: 0, y: 0, z: 0, heading: 0,
+            delta_x: 0, delta_y: 0, delta_z: 0,
+            delta_heading: 0, animation: 0,
             ok: false,
         },
     }

@@ -21,6 +21,9 @@
 //! OP_CorpseLocResponse.
 //! Stage A+7: OP_SpawnDoor (per-element), OP_GroundSpawn
 //! (NetStream-style variable text).
+//! Stage A+8: OP_ClientUpdate (playerSelfPosStruct 42b +
+//! playerSpawnPosStruct 28b — bitfield-laden), OP_NpcMoveUpdate
+//! (variable-length 13..24b BitStream / sign-magnitude packing).
 
 pub mod action;
 pub mod action2;
@@ -46,6 +49,9 @@ pub mod level_update;
 pub mod mana_change;
 pub mod mob_health;
 pub mod mob_update;
+pub mod npc_move_update;
+pub mod player_self_pos;
+pub mod player_spawn_pos;
 pub mod remove_spawn;
 pub mod skill_update;
 pub mod spawn;
@@ -92,6 +98,9 @@ pub use group_disband::{parse_group_disband, GroupDisband, GroupDisbandError};
 pub use group_follow::{parse_group_follow, GroupFollow, GroupFollowError};
 pub use illusion::{parse_illusion, Illusion, IllusionError};
 pub use ground_spawn::{parse_ground_spawn, GroundSpawn, GroundSpawnError};
+pub use npc_move_update::{parse_npc_move_update, NpcMoveUpdate, NpcMoveUpdateError};
+pub use player_self_pos::{parse_player_self_pos, PlayerSelfPos, PlayerSelfPosError};
+pub use player_spawn_pos::{parse_player_spawn_pos, PlayerSpawnPos, PlayerSpawnPosError};
 pub use spawn_door::{parse_door, Door, DoorError};
 pub use start_cast::{parse_start_cast, StartCast, StartCastError};
 pub use wear_change::{parse_wear_change, WearChange, WearChangeError};
