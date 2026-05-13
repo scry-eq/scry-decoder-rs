@@ -15,7 +15,7 @@ pub struct Buff {
     pub spawn_id: u32,
     pub spell_id: u32,
     pub duration: u32,
-    pub level: i8,
+    pub level: u8,
     pub spell_slot: u32,
     pub change_type: u32,
 }
@@ -59,7 +59,7 @@ mod tests {
         buf[0..4].copy_from_slice(&123u32.to_le_bytes());      // spawnid
         buf[116..120].copy_from_slice(&5024u32.to_le_bytes()); // spellid
         buf[120..124].copy_from_slice(&3600u32.to_le_bytes()); // duration
-        buf[153] = 60i8 as u8;                                   // level
+        buf[152] = 60u8;                                          // level
         buf[160..164].copy_from_slice(&3u32.to_le_bytes());    // spell_slot
         buf[164..168].copy_from_slice(&2u32.to_le_bytes());    // changetype
         let b = parse_buff(&buf).unwrap();

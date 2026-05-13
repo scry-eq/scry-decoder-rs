@@ -151,7 +151,7 @@ mod ffi {
         texture: u8, helm: u8, face: u32, ok: bool,
     }
     struct BuffOut {
-        spawn_id: u32, spell_id: u32, duration: u32, level: i8,
+        spawn_id: u32, spell_id: u32, duration: u32, level: u8,
         spell_slot: u32, change_type: u32, ok: bool,
     }
     struct Action2Out {

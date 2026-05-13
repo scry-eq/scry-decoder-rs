@@ -371,20 +371,28 @@ impl Default for spawnIllusionStruct {
 pub struct buffStruct {
     /// uint32_t spawnid
     pub spawnid: u32,
-    /// uint8_t unknown0004[112]
-    pub unknown0004: [u8; 112],
+    /// uint8_t unknown0004[4]
+    pub unknown0004: [u8; 4],
+    /// uint8_t unknown0008[4]
+    pub unknown0008: [u8; 4],
+    /// uint8_t unknown0012[104]
+    pub unknown0012: [u8; 104],
     /// uint32_t spellid
     pub spellid: u32,
     /// uint32_t duration
     pub duration: u32,
-    /// int32_t unknown0024
-    pub unknown0024: i32,
-    /// uint8_t unknown0080[25]
-    pub unknown0080: [u8; 25],
-    /// int8_t level
-    pub level: i8,
-    /// uint8_t unknown0106[6]
-    pub unknown0106: [u8; 6],
+    /// uint32_t initialDuration
+    pub initialDuration: u32,
+    /// uint8_t unknown0128[8]
+    pub unknown0128: [u8; 8],
+    /// float unknown0136
+    pub unknown0136: f32,
+    /// uint8_t unknown0140[12]
+    pub unknown0140: [u8; 12],
+    /// uint8_t level
+    pub level: u8,
+    /// uint8_t unknown0153[7]
+    pub unknown0153: [u8; 7],
     /// uint32_t spellslot
     pub spellslot: u32,
     /// uint32_t changetype
