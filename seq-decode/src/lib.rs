@@ -60,6 +60,7 @@ pub mod spawn_door;
 pub mod spawn_rename;
 pub mod stamina;
 pub mod start_cast;
+pub mod channel_message;
 pub mod formatted_message;
 pub mod simple_message;
 pub mod special_message;
@@ -108,6 +109,9 @@ pub use player_spawn_pos::{parse_player_spawn_pos, PlayerSpawnPos, PlayerSpawnPo
 pub use spawn_door::{parse_door, Door, DoorError};
 pub use start_cast::{parse_start_cast, StartCast, StartCastError};
 pub use wear_change::{parse_wear_change, WearChange, WearChangeError};
+pub use channel_message::{
+    parse_channel_message, ChannelMessage, ChannelMessageError,
+};
 pub use formatted_message::{
     parse_formatted_message, FormattedMessage, FormattedMessageError,
 };

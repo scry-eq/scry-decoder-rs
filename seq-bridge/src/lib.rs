@@ -232,6 +232,15 @@ mod ffi {
         message: String,
         ok: bool,
     }
+    struct ChannelMessage {
+        sender: String,
+        target: String,
+        language: u32,
+        chan_num: u32,
+        skill_in_language: u32,
+        message: String,
+        ok: bool,
+    }
 
     // Stage A+8 — bitfield-laden / BitStream-packed opcodes.
     struct PlayerSelfPos {
@@ -299,6 +308,7 @@ mod ffi {
         fn decode_simple_message(bytes: &[u8]) -> SimpleMessage;
         fn decode_formatted_message(bytes: &[u8]) -> FormattedMessage;
         fn decode_special_message(bytes: &[u8]) -> SpecialMessage;
+        fn decode_channel_message(bytes: &[u8]) -> ChannelMessage;
         // Stage A+8
         fn decode_player_self_pos(bytes: &[u8]) -> PlayerSelfPos;
         fn decode_player_spawn_pos(bytes: &[u8]) -> PlayerSpawnPos;
@@ -796,6 +806,29 @@ fn decode_special_message(bytes: &[u8]) -> ffi::SpecialMessage {
             message_color: 0,
             target: 0,
             source: String::new(),
+            message: String::new(),
+            ok: false,
+        },
+    }
+}
+
+fn decode_channel_message(bytes: &[u8]) -> ffi::ChannelMessage {
+    match seq_decode::parse_channel_message(bytes) {
+        Ok(m) => ffi::ChannelMessage {
+            sender: m.sender,
+            target: m.target,
+            language: m.language,
+            chan_num: m.chan_num,
+            skill_in_language: m.skill_in_language,
+            message: m.message,
+            ok: true,
+        },
+        Err(_) => ffi::ChannelMessage {
+            sender: String::new(),
+            target: String::new(),
+            language: 0,
+            chan_num: 0,
+            skill_in_language: 0,
             message: String::new(),
             ok: false,
         },
