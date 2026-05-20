@@ -201,6 +201,38 @@ mod ffi {
         ok: bool,
     }
 
+    // Per-element decode for OP_SendZonePoints. Daemon reads the 4-byte
+    // count off the front, then invokes this on each 24-byte
+    // zonePointStruct slice.
+    struct ZonePoint {
+        zone_trigger: u32,
+        y: f32, x: f32, z: f32, heading: f32,
+        zone_id: u16, zone_instance: u16,
+        ok: bool,
+    }
+
+    // Message opcode payloads. OP_SimpleMessage is fixed 12b; OP_FormattedMessage
+    // has a 13b header + variable-length text array (daemon slices the
+    // tail off the raw payload); OP_SpecialMesg has two embedded
+    // NUL-terminated strings the parser surfaces directly.
+    struct SimpleMessage {
+        message_format: u32,
+        message_color: u32,
+        ok: bool,
+    }
+    struct FormattedMessage {
+        message_format: u32,
+        message_color: u32,
+        ok: bool,
+    }
+    struct SpecialMessage {
+        message_color: u32,
+        target: u16,
+        source: String,
+        message: String,
+        ok: bool,
+    }
+
     // Stage A+8 — bitfield-laden / BitStream-packed opcodes.
     struct PlayerSelfPos {
         spawn_id: u16,
@@ -262,6 +294,11 @@ mod ffi {
         // Stage A+7
         fn decode_door(bytes: &[u8]) -> Door;
         fn decode_ground_spawn(bytes: &[u8]) -> GroundSpawn;
+        fn decode_zone_point(bytes: &[u8]) -> ZonePoint;
+        // Message opcodes
+        fn decode_simple_message(bytes: &[u8]) -> SimpleMessage;
+        fn decode_formatted_message(bytes: &[u8]) -> FormattedMessage;
+        fn decode_special_message(bytes: &[u8]) -> SpecialMessage;
         // Stage A+8
         fn decode_player_self_pos(bytes: &[u8]) -> PlayerSelfPos;
         fn decode_player_spawn_pos(bytes: &[u8]) -> PlayerSpawnPos;
@@ -698,6 +735,68 @@ fn decode_ground_spawn(bytes: &[u8]) -> ffi::GroundSpawn {
             id_file: String::new(),
             heading: 0.0, y: 0.0, x: 0.0, z: 0.0,
             bytes_consumed: 0,
+            ok: false,
+        },
+    }
+}
+
+fn decode_zone_point(bytes: &[u8]) -> ffi::ZonePoint {
+    match seq_decode::parse_zone_point(bytes) {
+        Ok(p) => ffi::ZonePoint {
+            zone_trigger: p.zone_trigger,
+            y: p.y, x: p.x, z: p.z, heading: p.heading,
+            zone_id: p.zone_id, zone_instance: p.zone_instance,
+            ok: true,
+        },
+        Err(_) => ffi::ZonePoint {
+            zone_trigger: 0,
+            y: 0.0, x: 0.0, z: 0.0, heading: 0.0,
+            zone_id: 0, zone_instance: 0,
+            ok: false,
+        },
+    }
+}
+
+fn decode_simple_message(bytes: &[u8]) -> ffi::SimpleMessage {
+    match seq_decode::parse_simple_message(bytes) {
+        Ok(m) => ffi::SimpleMessage {
+            message_format: m.message_format,
+            message_color:  m.message_color,
+            ok: true,
+        },
+        Err(_) => ffi::SimpleMessage {
+            message_format: 0, message_color: 0, ok: false,
+        },
+    }
+}
+
+fn decode_formatted_message(bytes: &[u8]) -> ffi::FormattedMessage {
+    match seq_decode::parse_formatted_message(bytes) {
+        Ok(m) => ffi::FormattedMessage {
+            message_format: m.message_format,
+            message_color:  m.message_color,
+            ok: true,
+        },
+        Err(_) => ffi::FormattedMessage {
+            message_format: 0, message_color: 0, ok: false,
+        },
+    }
+}
+
+fn decode_special_message(bytes: &[u8]) -> ffi::SpecialMessage {
+    match seq_decode::parse_special_message(bytes) {
+        Ok(m) => ffi::SpecialMessage {
+            message_color: m.message_color,
+            target: m.target,
+            source: m.source,
+            message: m.message,
+            ok: true,
+        },
+        Err(_) => ffi::SpecialMessage {
+            message_color: 0,
+            target: 0,
+            source: String::new(),
+            message: String::new(),
             ok: false,
         },
     }

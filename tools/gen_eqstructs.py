@@ -50,6 +50,9 @@ ALLOWLIST = [
     # Stage A+7 — variable-length / array opcodes.
     "doorStruct",
     "zonePointStruct",
+    # Message opcodes — fixed header + variable-length text follow.
+    "simpleMessageStruct",
+    "formattedMessageStruct",
 ]
 
 CTYPE_TO_RUST = {
@@ -66,6 +69,9 @@ CTYPE_TO_RUST = {
     "signed":   ("i32", 4),
     "float":    ("f32", 4),
     "double":   ("f64", 8),
+    # `enum ChatColor` — backing storage is u32 on all current targets;
+    # the daemon writes it as a 4-byte field over the wire.
+    "ChatColor": ("u32", 4),
 }
 
 # Rust reserved words that may appear as C field names. Bindgen suffixes with `_`.

@@ -60,8 +60,12 @@ pub mod spawn_door;
 pub mod spawn_rename;
 pub mod stamina;
 pub mod start_cast;
+pub mod formatted_message;
+pub mod simple_message;
+pub mod special_message;
 pub mod wear_change;
 pub mod zone_change;
+pub mod zone_point;
 
 pub use delete_spawn::{
     parse_delete_spawn, DeleteSpawn, DeleteSpawnError, PAYLOAD_LEN as DELETE_SPAWN_LEN,
@@ -104,7 +108,13 @@ pub use player_spawn_pos::{parse_player_spawn_pos, PlayerSpawnPos, PlayerSpawnPo
 pub use spawn_door::{parse_door, Door, DoorError};
 pub use start_cast::{parse_start_cast, StartCast, StartCastError};
 pub use wear_change::{parse_wear_change, WearChange, WearChangeError};
+pub use formatted_message::{
+    parse_formatted_message, FormattedMessage, FormattedMessageError,
+};
+pub use simple_message::{parse_simple_message, SimpleMessage, SimpleMessageError};
+pub use special_message::{parse_special_message, SpecialMessage, SpecialMessageError};
 pub use zone_change::{parse_zone_change, ZoneChange, ZoneChangeError};
+pub use zone_point::{parse_zone_point, ZonePoint, ZonePointError};
 
 /// Decode a NUL-padded byte buffer (a wire-format C-string field) into
 /// an owned `String`. Bytes after the first NUL are dropped; invalid
