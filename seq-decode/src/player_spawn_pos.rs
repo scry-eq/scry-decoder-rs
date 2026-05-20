@@ -20,7 +20,7 @@
 //! values; the bridge layer applies the shift to keep behaviour
 //! identical to the existing C++ `pupdate->y >> 3` cast.
 
-use seq_eqstructs::sign_extend;
+use seq_eqstructs_live::sign_extend;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = 28;

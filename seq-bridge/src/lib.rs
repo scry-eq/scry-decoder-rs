@@ -4,6 +4,30 @@
 //! `seq-decode` so it remains usable from pure-Rust contexts (replay
 //! tools, the eventual standalone daemon). This crate is the
 //! `staticlib` Corrosion links into `seq-daemon-core`.
+//!
+//! Backend selection happens via Cargo features. Today only
+//! `backend-live` is real; `backend-quarm` and `backend-test` are
+//! placeholders that fail to compile so consumer builds picking
+//! `-DSEQ_TARGET=quarm` get a clear "backend not implemented" error
+//! rather than silently using the Live wire format.
+
+#[cfg(all(feature = "backend-quarm", not(feature = "backend-live")))]
+compile_error!(
+    "seq-bridge: backend-quarm is a placeholder; the Quarm parser \
+     crate has not been written yet. Use --features backend-live."
+);
+
+#[cfg(all(feature = "backend-test", not(feature = "backend-live")))]
+compile_error!(
+    "seq-bridge: backend-test is a placeholder; the Test parser \
+     crate has not been written yet. Use --features backend-live."
+);
+
+#[cfg(not(any(feature = "backend-live", feature = "backend-quarm", feature = "backend-test")))]
+compile_error!(
+    "seq-bridge: at least one backend feature must be enabled \
+     (default: backend-live)."
+);
 
 #[cxx::bridge(namespace = "seq::rust")]
 mod ffi {

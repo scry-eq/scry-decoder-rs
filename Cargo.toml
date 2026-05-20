@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["seq-decode", "seq-bridge", "seq-eqstructs"]
+# Backend-keyed layout: each `seq-eqstructs-<backend>` crate mirrors the
+# corresponding everquest.h. `seq-decode` and `seq-bridge` stay
+# backend-agnostic at the crate level — the active backend is selected
+# via the `backend-live` / `backend-quarm` / `backend-test` Cargo
+# features on `seq-bridge` (only `backend-live` exists today).
+members = ["seq-decode", "seq-bridge", "seq-eqstructs-live"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,7 +19,7 @@ cxx = "1"
 cxx-build = "1"
 thiserror = "2"
 seq-decode = { path = "seq-decode" }
-seq-eqstructs = { path = "seq-eqstructs" }
+seq-eqstructs-live = { path = "seq-eqstructs-live" }
 
 [profile.release]
 lto = "thin"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate seq-eqstructs/src/bindings.rs from showeq-daemon/src/everquest.h.
+"""Generate seq-eqstructs-live/src/bindings.rs from showeq-daemon/src/everquest.h.
 
 Replaces bindgen for the explicit allowlist of EQ wire structs. Parses each
 struct's `/*OFFSET*/` field comments to derive layout, emits #[repr(C, packed)]
@@ -344,7 +344,7 @@ def main(argv: list[str]) -> int:
             return 1
         structs.append((name, fields, size))
 
-    out_path = here / "seq-eqstructs" / "src" / "bindings.rs"
+    out_path = here / "seq-eqstructs-live" / "src" / "bindings.rs"
     out_path.write_text(emit_rust(structs))
     print(f"wrote {out_path} ({len(structs)} structs)")
     return 0

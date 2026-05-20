@@ -5,7 +5,7 @@
 //! element; the daemon slices the payload at `data + 4 + i * 24` and
 //! invokes once per record.
 
-use seq_eqstructs::zonePointStruct;
+use seq_eqstructs_live::zonePointStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<zonePointStruct>();

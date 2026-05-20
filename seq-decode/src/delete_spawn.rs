@@ -4,9 +4,9 @@
 //! is overkill for the field count but keeps the layout tied to
 //! `everquest.h` in case the wire ever grows fields (a `reason` byte,
 //! e.g.) — bindgen would catch the size change at build time via the
-//! `delete_spawn_struct_layout` test in `seq-eqstructs`.
+//! `delete_spawn_struct_layout` test in `seq-eqstructs-live`.
 
-use seq_eqstructs::deleteSpawnStruct;
+use seq_eqstructs_live::deleteSpawnStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<deleteSpawnStruct>();

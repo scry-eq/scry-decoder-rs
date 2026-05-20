@@ -5,7 +5,7 @@
 //! decode that mirrors that loop body — it yields one Door per call,
 //! and the C++ side either iterates or invokes once per door.
 
-use seq_eqstructs::doorStruct;
+use seq_eqstructs_live::doorStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<doorStruct>();

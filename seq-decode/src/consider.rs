@@ -3,7 +3,7 @@
 //! the daemon's existing forwarder can still see them; only the
 //! first four fields drive observable behavior.
 
-use seq_eqstructs::considerStruct;
+use seq_eqstructs_live::considerStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<considerStruct>();

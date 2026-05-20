@@ -1,7 +1,7 @@
 //! Parser for `OP_RemoveSpawn` — payload `removeSpawnStruct`, 5 bytes.
 //! `removeSpawn` is 0 when the spawn left your update radius.
 
-use seq_eqstructs::removeSpawnStruct;
+use seq_eqstructs_live::removeSpawnStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<removeSpawnStruct>();

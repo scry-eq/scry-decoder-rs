@@ -3,7 +3,7 @@
 //! `parse_delete_spawn`; kept as its own opcode-named module for
 //! consistency with the rest of the Stage A+ batch.
 
-use seq_eqstructs::clientTargetStruct;
+use seq_eqstructs_live::clientTargetStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<clientTargetStruct>();

@@ -2,7 +2,7 @@
 //! 8 bytes. `type` is the appearance subcommand (anim, light, AFK,
 //! etc.); `parameter` is the value.
 
-use seq_eqstructs::spawnAppearanceStruct;
+use seq_eqstructs_live::spawnAppearanceStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<spawnAppearanceStruct>();

@@ -3,7 +3,7 @@
 //! type, and damage. The 12-byte trailing placeholder is consumed
 //! for cursor accounting but not surfaced.
 
-use seq_eqstructs::newCorpseStruct;
+use seq_eqstructs_live::newCorpseStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<newCorpseStruct>();

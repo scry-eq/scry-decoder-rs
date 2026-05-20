@@ -2,7 +2,7 @@
 //! 16 bytes. Fires once on level transition; `exp` is the post-level
 //! exp value that cross-references the next OP_ExpUpdate.
 
-use seq_eqstructs::levelUpUpdateStruct;
+use seq_eqstructs_live::levelUpUpdateStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<levelUpUpdateStruct>();

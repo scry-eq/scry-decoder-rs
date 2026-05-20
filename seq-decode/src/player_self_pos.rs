@@ -14,7 +14,7 @@
 //!   - bits 10..22 → heading
 //!   - bits 22..32 → padding (ignored)
 
-use seq_eqstructs::sign_extend;
+use seq_eqstructs_live::sign_extend;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = 42;

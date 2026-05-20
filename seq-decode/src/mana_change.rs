@@ -2,7 +2,7 @@
 //! 20 bytes. The daemon reads `newMana` for the live mana value;
 //! `maxMana` and the last spell id ride along.
 
-use seq_eqstructs::manaDecrementStruct;
+use seq_eqstructs_live::manaDecrementStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<manaDecrementStruct>();

@@ -4,7 +4,7 @@
 //! sandwich `kind`; preserved as raw fields so cross-decoder bytes
 //! stay byte-identical.
 
-use seq_eqstructs::expUpdateStruct;
+use seq_eqstructs_live::expUpdateStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<expUpdateStruct>();

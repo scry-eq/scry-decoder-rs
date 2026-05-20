@@ -2,7 +2,7 @@
 //! bytes. Daemon uses spawn_id + subcommand + arg1; arg2/arg3 are
 //! decoded for completeness.
 
-use seq_eqstructs::SpawnUpdateStruct;
+use seq_eqstructs_live::SpawnUpdateStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<SpawnUpdateStruct>();

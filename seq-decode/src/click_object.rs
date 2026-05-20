@@ -2,7 +2,7 @@
 //! Fires when a player picks up a ground item; the daemon uses
 //! `dropId` (the ground-item slot) and `spawnId` (the picker).
 
-use seq_eqstructs::remDropStruct;
+use seq_eqstructs_live::remDropStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<remDropStruct>();
