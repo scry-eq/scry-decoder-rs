@@ -10,9 +10,9 @@ use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<doorStruct>();
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Door {
-    pub name: [u8; 32],
+    pub name: String,
     pub y: f32,
     pub x: f32,
     pub z: f32,
@@ -38,9 +38,9 @@ pub fn parse_door(bytes: &[u8]) -> Result<Door, DoorError> {
     }
     let raw: doorStruct =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const doorStruct) };
-    let name = unsafe { std::ptr::addr_of!(raw.name).read_unaligned() };
+    let name_raw: [u8; 32] = unsafe { std::ptr::addr_of!(raw.name).read_unaligned() };
     Ok(Door {
-        name,
+        name: crate::cstr_field(&name_raw),
         y:           unsafe { std::ptr::addr_of!(raw.y).read_unaligned() },
         x:           unsafe { std::ptr::addr_of!(raw.x).read_unaligned() },
         z:           unsafe { std::ptr::addr_of!(raw.z).read_unaligned() },
@@ -81,7 +81,7 @@ mod tests {
         buf[83] = 1; // invertstate
         buf[84..88].copy_from_slice(&100u32.to_le_bytes()); // zonePoint
         let d = parse_door(&buf).unwrap();
-        assert_eq!(&d.name[..4], b"OAK1");
+        assert_eq!(d.name, "OAK1");
         assert_eq!(d.y, 1.5);
         assert_eq!(d.x, 2.5);
         assert_eq!(d.z, 3.5);

@@ -37,12 +37,12 @@ mod ffi {
         ok: bool,
         bytes_consumed: u32,
 
-        // Strings — NUL-padded; daemon strcpy()s up to first NUL into
-        // its fixed-size char buffers (everquest.h spawnStruct).
-        name: [u8; 64],
-        last_name: [u8; 32],
-        title: [u8; 32],
-        suffix: [u8; 32],
+        // Daemon strncpy's into its fixed-size char buffers
+        // (everquest.h spawnStruct).
+        name: String,
+        last_name: String,
+        title: String,
+        suffix: String,
 
         spawn_id: u32,
         misc_data: u32,
@@ -128,9 +128,9 @@ mod ffi {
         player_id: u32, target_id: u32, faction: i32, level: i32, ok: bool,
     }
     struct SpawnRename {
-        old_name: [u8; 64],
-        old_name_again: [u8; 64],
-        new_name: [u8; 64],
+        old_name: String,
+        old_name_again: String,
+        new_name: String,
         ok: bool,
     }
     struct ClientTarget { new_target: u32, ok: bool }
@@ -143,7 +143,7 @@ mod ffi {
     // Stage A+5
     struct ClickObject { drop_id: u16, spawn_id: u16, ok: bool }
     struct Illusion {
-        spawn_id: u32, name: [u8; 64], race: u32, gender: u8,
+        spawn_id: u32, name: String, race: u32, gender: u8,
         texture: u8, helm: u8, face: u32, ok: bool,
     }
     struct Buff {
@@ -160,10 +160,10 @@ mod ffi {
         ok: bool,
     }
     struct ZoneChange {
-        name: [u8; 64], zone_id: u16, zone_instance: u16, ok: bool,
+        name: String, zone_id: u16, zone_instance: u16, ok: bool,
     }
     struct DzInfo {
-        new_dz: u8, max_players: u32, dz_name: [u8; 128], name: [u8; 64],
+        new_dz: u8, max_players: u32, dz_name: String, name: String,
         ok: bool,
     }
     struct DzSwitch {
@@ -177,16 +177,16 @@ mod ffi {
         target: u16, source: u16, spell: i16, level: u8, kind: u8, ok: bool,
     }
     struct GroupDisband {
-        yourname: [u8; 64], membername: [u8; 64], ok: bool,
+        yourname: String, membername: String, ok: bool,
     }
-    struct GroupFollow { name: [u8; 64], ok: bool }
+    struct GroupFollow { name: String, ok: bool }
     struct CorpseLoc {
         spawn_id: u32, x: f32, y: f32, z: f32, ok: bool,
     }
 
     // Stage A+7 — variable-length / array opcodes.
     struct Door {
-        name: [u8; 32],
+        name: String,
         y: f32, x: f32, z: f32, heading: f32,
         incline: u32, size: u32,
         door_id: u8, opentype: u8, spawnstate: u8, invertstate: u8,
@@ -195,7 +195,7 @@ mod ffi {
     }
     struct GroundSpawn {
         drop_id: u32,
-        id_file: [u8; 30],
+        id_file: String,
         heading: f32, y: f32, x: f32, z: f32,
         bytes_consumed: u32,
         ok: bool,
@@ -418,7 +418,9 @@ fn decode_spawn_rename(bytes: &[u8]) -> ffi::SpawnRename {
             ok: true,
         },
         Err(_) => ffi::SpawnRename {
-            old_name: [0; 64], old_name_again: [0; 64], new_name: [0; 64],
+            old_name: String::new(),
+            old_name_again: String::new(),
+            new_name: String::new(),
             ok: false,
         },
     }
@@ -462,7 +464,7 @@ fn decode_illusion(bytes: &[u8]) -> ffi::Illusion {
             ok: true,
         },
         Err(_) => ffi::Illusion {
-            spawn_id: 0, name: [0; 64], race: 0, gender: 0,
+            spawn_id: 0, name: String::new(), race: 0, gender: 0,
             texture: 0, helm: 0, face: 0, ok: false,
         },
     }
@@ -527,10 +529,10 @@ fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
         Err(_) => ffi::Spawn {
             ok: false,
             bytes_consumed: 0,
-            name: [0; 64],
-            last_name: [0; 32],
-            title: [0; 32],
-            suffix: [0; 32],
+            name: String::new(),
+            last_name: String::new(),
+            title: String::new(),
+            suffix: String::new(),
             spawn_id: 0, misc_data: 0, body_type: 0, race: 0,
             deity: 0, guild_id: 0, guild_server_id: 0, class_: 0,
             pet_owner_id: 0,
@@ -563,7 +565,7 @@ fn decode_zone_change(bytes: &[u8]) -> ffi::ZoneChange {
             zone_instance: z.zone_instance, ok: true,
         },
         Err(_) => ffi::ZoneChange {
-            name: [0; 64], zone_id: 0, zone_instance: 0, ok: false,
+            name: String::new(), zone_id: 0, zone_instance: 0, ok: false,
         },
     }
 }
@@ -576,7 +578,7 @@ fn decode_dz_info(bytes: &[u8]) -> ffi::DzInfo {
         },
         Err(_) => ffi::DzInfo {
             new_dz: 0, max_players: 0,
-            dz_name: [0; 128], name: [0; 64], ok: false,
+            dz_name: String::new(), name: String::new(), ok: false,
         },
     }
 }
@@ -635,7 +637,7 @@ fn decode_group_disband(bytes: &[u8]) -> ffi::GroupDisband {
             yourname: g.yourname, membername: g.membername, ok: true,
         },
         Err(_) => ffi::GroupDisband {
-            yourname: [0; 64], membername: [0; 64], ok: false,
+            yourname: String::new(), membername: String::new(), ok: false,
         },
     }
 }
@@ -643,7 +645,7 @@ fn decode_group_disband(bytes: &[u8]) -> ffi::GroupDisband {
 fn decode_group_follow(bytes: &[u8]) -> ffi::GroupFollow {
     match seq_decode::parse_group_follow(bytes) {
         Ok(g) => ffi::GroupFollow { name: g.name, ok: true },
-        Err(_) => ffi::GroupFollow { name: [0; 64], ok: false },
+        Err(_) => ffi::GroupFollow { name: String::new(), ok: false },
     }
 }
 
@@ -672,7 +674,7 @@ fn decode_door(bytes: &[u8]) -> ffi::Door {
             ok: true,
         },
         Err(_) => ffi::Door {
-            name: [0; 32],
+            name: String::new(),
             y: 0.0, x: 0.0, z: 0.0, heading: 0.0,
             incline: 0, size: 0,
             door_id: 0, opentype: 0, spawnstate: 0, invertstate: 0,
@@ -693,7 +695,7 @@ fn decode_ground_spawn(bytes: &[u8]) -> ffi::GroundSpawn {
         },
         Err(_) => ffi::GroundSpawn {
             drop_id: 0,
-            id_file: [0; 30],
+            id_file: String::new(),
             heading: 0.0, y: 0.0, x: 0.0, z: 0.0,
             bytes_consumed: 0,
             ok: false,

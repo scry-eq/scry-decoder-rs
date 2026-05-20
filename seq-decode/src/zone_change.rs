@@ -7,9 +7,9 @@ use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<zoneChangeStruct>();
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ZoneChange {
-    pub name: [u8; 64],
+    pub name: String,
     pub zone_id: u16,
     pub zone_instance: u16,
 }
@@ -26,9 +26,9 @@ pub fn parse_zone_change(bytes: &[u8]) -> Result<ZoneChange, ZoneChangeError> {
     }
     let raw: zoneChangeStruct =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const zoneChangeStruct) };
-    let raw_name = unsafe { std::ptr::addr_of!(raw.name).read_unaligned() };
+    let raw_name: [u8; 64] = unsafe { std::ptr::addr_of!(raw.name).read_unaligned() };
     Ok(ZoneChange {
-        name: raw_name,
+        name: crate::cstr_field(&raw_name),
         zone_id:       unsafe { std::ptr::addr_of!(raw.zoneId).read_unaligned() },
         zone_instance: unsafe { std::ptr::addr_of!(raw.zoneInstance).read_unaligned() },
     })
@@ -51,7 +51,7 @@ mod tests {
         buf[64..66].copy_from_slice(&57u16.to_le_bytes());
         buf[66..68].copy_from_slice(&3u16.to_le_bytes());
         let z = parse_zone_change(&buf).unwrap();
-        assert_eq!(&z.name[..3], b"Bob");
+        assert_eq!(z.name, "Bob");
         assert_eq!(z.zone_id, 57);
         assert_eq!(z.zone_instance, 3);
     }

@@ -105,3 +105,12 @@ pub use spawn_door::{parse_door, Door, DoorError};
 pub use start_cast::{parse_start_cast, StartCast, StartCastError};
 pub use wear_change::{parse_wear_change, WearChange, WearChangeError};
 pub use zone_change::{parse_zone_change, ZoneChange, ZoneChangeError};
+
+/// Decode a NUL-padded byte buffer (a wire-format C-string field) into
+/// an owned `String`. Bytes after the first NUL are dropped; invalid
+/// UTF-8 is replaced with U+FFFD. Used by parsers whose payload mirrors
+/// `char[N]` fields on the C side.
+pub(crate) fn cstr_field(bytes: &[u8]) -> String {
+    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    String::from_utf8_lossy(&bytes[..end]).into_owned()
+}

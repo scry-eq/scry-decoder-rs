@@ -7,10 +7,10 @@ use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<groupDisbandStruct>();
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GroupDisband {
-    pub yourname: [u8; 64],
-    pub membername: [u8; 64],
+    pub yourname: String,
+    pub membername: String,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -25,9 +25,14 @@ pub fn parse_group_disband(bytes: &[u8]) -> Result<GroupDisband, GroupDisbandErr
     }
     let raw: groupDisbandStruct =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const groupDisbandStruct) };
-    let yourname   = unsafe { std::ptr::addr_of!(raw.yourname).read_unaligned() };
-    let membername = unsafe { std::ptr::addr_of!(raw.membername).read_unaligned() };
-    Ok(GroupDisband { yourname, membername })
+    let yourname_raw: [u8; 64] =
+        unsafe { std::ptr::addr_of!(raw.yourname).read_unaligned() };
+    let membername_raw: [u8; 64] =
+        unsafe { std::ptr::addr_of!(raw.membername).read_unaligned() };
+    Ok(GroupDisband {
+        yourname: crate::cstr_field(&yourname_raw),
+        membername: crate::cstr_field(&membername_raw),
+    })
 }
 
 #[cfg(test)]
@@ -46,7 +51,7 @@ mod tests {
         buf[0..3].copy_from_slice(b"Bob");
         buf[64..68].copy_from_slice(b"Sam!");
         let g = parse_group_disband(&buf).unwrap();
-        assert_eq!(&g.yourname[..3], b"Bob");
-        assert_eq!(&g.membername[..4], b"Sam!");
+        assert_eq!(g.yourname, "Bob");
+        assert_eq!(g.membername, "Sam!");
     }
 }

@@ -14,12 +14,12 @@ use thiserror::Error;
 pub const ID_FILE_LEN: usize = 30;
 const FIXED_AROUND_TEXT: usize = 4 + 4 * 3 + 4 + 4 * 3 + 4 * 3; // 44
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct GroundSpawn {
     pub drop_id: u32,
-    /// First 30 bytes of the NUL-terminated idFile string,
-    /// NUL-padded to fit the legacy fixed field.
-    pub id_file: [u8; ID_FILE_LEN],
+    /// NUL-terminated idFile text from the payload, truncated to
+    /// `ID_FILE_LEN` bytes to match the legacy fixed field.
+    pub id_file: String,
     pub heading: f32,
     pub y: f32,
     pub x: f32,
@@ -66,9 +66,11 @@ pub fn parse_ground_spawn(bytes: &[u8]) -> Result<GroundSpawn, GroundSpawnError>
     let text_len = p - text_start;
     let text_end = p + 1; // skip the NUL
 
-    let mut id_file = [0u8; ID_FILE_LEN];
     let copy_len = text_len.min(ID_FILE_LEN);
-    id_file[..copy_len].copy_from_slice(&bytes[text_start..text_start + copy_len]);
+    let id_file = String::from_utf8_lossy(
+        &bytes[text_start..text_start + copy_len],
+    )
+    .into_owned();
 
     // After the text, the netstream layout is:
     //   3× u32 skip (zoneId, zoneInstance, unknown)
@@ -136,7 +138,7 @@ mod tests {
 
         let g = parse_ground_spawn(&buf).unwrap();
         assert_eq!(g.drop_id, 42);
-        assert_eq!(&g.id_file[..13], b"IT63_ACTORDEF");
+        assert_eq!(g.id_file, "IT63_ACTORDEF");
         assert_eq!(g.heading, 90.0);
         assert_eq!(g.y, 1.0);
         assert_eq!(g.x, 2.0);
@@ -155,6 +157,6 @@ mod tests {
         buf.push(0);
         buf.extend_from_slice(&[0u8; FIXED_AROUND_TEXT - 4]);
         let g = parse_ground_spawn(&buf).unwrap();
-        assert_eq!(&g.id_file[..ID_FILE_LEN], &long_name[..ID_FILE_LEN]);
+        assert_eq!(g.id_file.as_bytes(), &long_name[..ID_FILE_LEN]);
     }
 }

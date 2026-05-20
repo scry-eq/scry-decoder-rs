@@ -8,10 +8,11 @@ use thiserror::Error;
 
 pub const NAME_LEN: usize = 64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GroupFollow {
-    /// First NAME_LEN bytes of the payload, NUL-padded.
-    pub name: [u8; NAME_LEN],
+    /// Member name, decoded from the first NAME_LEN bytes of the
+    /// payload, truncated at the first NUL.
+    pub name: String,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -24,9 +25,7 @@ pub fn parse_group_follow(bytes: &[u8]) -> Result<GroupFollow, GroupFollowError>
     if bytes.len() < NAME_LEN {
         return Err(GroupFollowError::BadLength(bytes.len()));
     }
-    let mut name = [0u8; NAME_LEN];
-    name.copy_from_slice(&bytes[..NAME_LEN]);
-    Ok(GroupFollow { name })
+    Ok(GroupFollow { name: crate::cstr_field(&bytes[..NAME_LEN]) })
 }
 
 #[cfg(test)]
@@ -43,7 +42,6 @@ mod tests {
         let mut buf = [0u8; 68];
         buf[..3].copy_from_slice(b"Joe");
         let g = parse_group_follow(&buf).unwrap();
-        assert_eq!(&g.name[..3], b"Joe");
-        assert_eq!(g.name[3], 0);
+        assert_eq!(g.name, "Joe");
     }
 }

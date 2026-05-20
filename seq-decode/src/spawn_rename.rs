@@ -10,9 +10,9 @@ pub const PAYLOAD_LEN: usize = std::mem::size_of::<spawnRenameStruct>();
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpawnRename {
-    pub old_name: [u8; 64],
-    pub old_name_again: [u8; 64],
-    pub new_name: [u8; 64],
+    pub old_name: String,
+    pub old_name_again: String,
+    pub new_name: String,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -25,13 +25,11 @@ pub fn parse_spawn_rename(bytes: &[u8]) -> Result<SpawnRename, SpawnRenameError>
     if bytes.len() != PAYLOAD_LEN {
         return Err(SpawnRenameError::BadLength(bytes.len()));
     }
-    let mut out = SpawnRename {
-        old_name: [0; 64], old_name_again: [0; 64], new_name: [0; 64],
-    };
-    out.old_name.copy_from_slice(&bytes[0..64]);
-    out.old_name_again.copy_from_slice(&bytes[64..128]);
-    out.new_name.copy_from_slice(&bytes[128..192]);
-    Ok(out)
+    Ok(SpawnRename {
+        old_name:       crate::cstr_field(&bytes[0..64]),
+        old_name_again: crate::cstr_field(&bytes[64..128]),
+        new_name:       crate::cstr_field(&bytes[128..192]),
+    })
 }
 
 #[cfg(test)]
@@ -51,7 +49,7 @@ mod tests {
         buf[64..70].copy_from_slice(b"orcLvl");
         buf[128..136].copy_from_slice(b"a goblin");
         let r = parse_spawn_rename(&buf).unwrap();
-        assert_eq!(&r.old_name[..6], b"orcLvl");
-        assert_eq!(&r.new_name[..8], b"a goblin");
+        assert_eq!(r.old_name, "orcLvl");
+        assert_eq!(r.new_name, "a goblin");
     }
 }

@@ -26,17 +26,17 @@ pub enum SpawnError {
 
 /// Mirror of the `spawnStruct` fields populated by `fillSpawnStruct`,
 /// stored as plain data so the FFI bridge can hand the parsed result
-/// back to C++ for assignment into the daemon's `spawnStruct`. String
-/// fields are NUL-padded to match the fixed-size buffers in
-/// `everquest.h:1058+` (name 64, lastName 32, title 32, suffix 32).
+/// back to C++ for assignment into the daemon's `spawnStruct`. Text
+/// fields cross the FFI as owned strings; the daemon truncates them to
+/// the fixed-size buffers in `everquest.h:1058+`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Spawn {
     pub bytes_consumed: u32,
 
-    pub name: [u8; 64],
-    pub last_name: [u8; 32],
-    pub title: [u8; 32],
-    pub suffix: [u8; 32],
+    pub name: String,
+    pub last_name: String,
+    pub title: String,
+    pub suffix: String,
 
     pub spawn_id: u32,
     pub misc_data: u32,
@@ -71,10 +71,10 @@ impl Default for Spawn {
     fn default() -> Self {
         Self {
             bytes_consumed: 0,
-            name: [0; 64],
-            last_name: [0; 32],
-            title: [0; 32],
-            suffix: [0; 32],
+            name: String::new(),
+            last_name: String::new(),
+            title: String::new(),
+            suffix: String::new(),
             spawn_id: 0, misc_data: 0, body_type: 0, race: 0, deity: 0,
             guild_id: 0, guild_server_id: 0, class_: 0, pet_owner_id: 0,
             equip_data: [0; 45], pos_data: [0; 6],
@@ -91,10 +91,8 @@ const OTHER_DATA_AURA:       u8 = 1 << 2;
 const OTHER_DATA_HAS_TITLE:  u8 = 1 << 4;
 const OTHER_DATA_HAS_SUFFIX: u8 = 1 << 5;
 
-fn copy_into(dst: &mut [u8], src: &[u8]) {
-    let n = src.len().min(dst.len().saturating_sub(1));
-    dst[..n].copy_from_slice(&src[..n]);
-    // remaining bytes already zero (caller passed a Default-ed buffer)
+fn bytes_to_string(src: &[u8]) -> String {
+    String::from_utf8_lossy(src).into_owned()
 }
 
 pub fn parse_spawn(bytes: &[u8]) -> Result<Spawn, SpawnError> {
@@ -102,7 +100,7 @@ pub fn parse_spawn(bytes: &[u8]) -> Result<Spawn, SpawnError> {
     let mut out = Spawn::default();
 
     let name = c.read_cstr()?;
-    copy_into(&mut out.name, name);
+    out.name = bytes_to_string(name);
 
     out.spawn_id = c.read_u32_le()?;
     out.level    = c.read_u8()?;
@@ -156,10 +154,12 @@ pub fn parse_spawn(bytes: &[u8]) -> Result<Spawn, SpawnError> {
     c.skip(1)?;
 
     let last_name = c.read_cstr()?;
-    // Daemon's strict check: only copy when name fits the 32-byte
-    // buffer (with room for NUL). Longer names silently dropped.
-    if !last_name.is_empty() && last_name.len() < out.last_name.len() {
-        copy_into(&mut out.last_name, last_name);
+    // Daemon's strict check: only surface when the name fits the
+    // legacy 32-byte buffer (room for NUL). Longer names silently
+    // dropped; the daemon's strncpy on the other side would otherwise
+    // overflow.
+    if !last_name.is_empty() && last_name.len() < 32 {
+        out.last_name = bytes_to_string(last_name);
     }
 
     c.skip(2)?;
@@ -203,12 +203,10 @@ pub fn parse_spawn(bytes: &[u8]) -> Result<Spawn, SpawnError> {
     }
 
     if (out.other_data & OTHER_DATA_HAS_TITLE) != 0 {
-        let s = c.read_cstr()?;
-        copy_into(&mut out.title, s);
+        out.title = bytes_to_string(c.read_cstr()?);
     }
     if (out.other_data & OTHER_DATA_HAS_SUFFIX) != 0 {
-        let s = c.read_cstr()?;
-        copy_into(&mut out.suffix, s);
+        out.suffix = bytes_to_string(c.read_cstr()?);
     }
 
     c.skip(8)?; // unknowns
@@ -291,7 +289,7 @@ mod tests {
         buf.extend_from_slice(&[0; 66]); // tail unknowns
 
         let s = parse_spawn(&buf).unwrap();
-        assert_eq!(&s.name[..8], b"a goblin");
+        assert_eq!(s.name, "a goblin");
         assert_eq!(s.spawn_id, 123);
         assert_eq!(s.level, 40);
         assert_eq!(s.npc, 1);
@@ -370,8 +368,8 @@ mod tests {
         // First slot fields = (0, 1, 2, 3, 4); slot 8 = (800..804).
         assert_eq!(&s.equip_data[..5], &[0, 1, 2, 3, 4]);
         assert_eq!(&s.equip_data[40..45], &[800, 801, 802, 803, 804]);
-        assert_eq!(&s.title[..8],  b"My Title");
-        assert_eq!(&s.suffix[..12], b"the Suffixed");
+        assert_eq!(s.title,  "My Title");
+        assert_eq!(s.suffix, "the Suffixed");
     }
 
     #[test]

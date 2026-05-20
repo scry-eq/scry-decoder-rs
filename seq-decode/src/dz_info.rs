@@ -7,12 +7,12 @@ use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<dzInfo>();
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DzInfo {
     pub new_dz: u8,
     pub max_players: u32,
-    pub dz_name: [u8; 128],
-    pub name: [u8; 64],
+    pub dz_name: String,
+    pub name: String,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -27,13 +27,13 @@ pub fn parse_dz_info(bytes: &[u8]) -> Result<DzInfo, DzInfoError> {
     }
     let raw: dzInfo =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const dzInfo) };
-    let dz_name = unsafe { std::ptr::addr_of!(raw.dzName).read_unaligned() };
-    let name    = unsafe { std::ptr::addr_of!(raw.name).read_unaligned() };
+    let dz_name_raw: [u8; 128] = unsafe { std::ptr::addr_of!(raw.dzName).read_unaligned() };
+    let name_raw: [u8; 64]     = unsafe { std::ptr::addr_of!(raw.name).read_unaligned() };
     Ok(DzInfo {
         new_dz:      unsafe { std::ptr::addr_of!(raw.newDZ).read_unaligned() },
         max_players: unsafe { std::ptr::addr_of!(raw.maxPlayers).read_unaligned() },
-        dz_name,
-        name,
+        dz_name:     crate::cstr_field(&dz_name_raw),
+        name:        crate::cstr_field(&name_raw),
     })
 }
 
@@ -57,7 +57,7 @@ mod tests {
         let d = parse_dz_info(&buf).unwrap();
         assert_eq!(d.new_dz, 1);
         assert_eq!(d.max_players, 6);
-        assert_eq!(&d.dz_name[..5], b"DZ-9!");
-        assert_eq!(&d.name[..3], b"Bob");
+        assert_eq!(d.dz_name, "DZ-9!");
+        assert_eq!(d.name, "Bob");
     }
 }
