@@ -62,6 +62,7 @@ pub mod stamina;
 pub mod start_cast;
 pub mod channel_message;
 pub mod formatted_message;
+pub mod new_zone;
 pub mod simple_message;
 pub mod special_message;
 pub mod wear_change;
@@ -112,6 +113,7 @@ pub use wear_change::{parse_wear_change, WearChange, WearChangeError};
 pub use channel_message::{
     parse_channel_message, ChannelMessage, ChannelMessageError,
 };
+pub use new_zone::{parse_new_zone, NewZone, NewZoneError};
 pub use formatted_message::{
     parse_formatted_message, FormattedMessage, FormattedMessageError,
 };

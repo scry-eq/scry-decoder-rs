@@ -1,0 +1,130 @@
+//! Parser for `OP_NewZone`. The modern wire format is a NetStream walk
+//! over three NUL-terminated text fields plus the exp multiplier and
+//! safe-point coords — the legacy `newZoneStruct` layout in
+//! `everquest.h` is fixed-size and no longer matches what the client
+//! actually receives.
+//!
+//! Layout from `ZoneMgr::zoneNew`:
+//!   short_name : NUL-terminated text
+//!   long_name  : NUL-terminated text
+//!   skip       : 2 bytes
+//!   zonefile   : NUL-terminated text
+//!   skip       : 90 bytes
+//!   exp_mult   : f32 LE
+//!   skip       : 28 bytes
+//!   safe_y     : f32 LE
+//!   safe_x     : f32 LE
+//!   safe_z     : f32 LE
+
+use thiserror::Error;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewZone {
+    pub short_name: String,
+    pub long_name: String,
+    pub zonefile: String,
+    pub zone_exp_multiplier: f32,
+    pub safe_y: f32,
+    pub safe_x: f32,
+    pub safe_z: f32,
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum NewZoneError {
+    #[error("payload truncated at {0}, need at least {1} more bytes")]
+    Truncated(usize, usize),
+    #[error("{0} not NUL-terminated within payload")]
+    UnterminatedText(&'static str),
+}
+
+struct R<'a> { bytes: &'a [u8], p: usize }
+
+impl<'a> R<'a> {
+    fn need(&self, n: usize) -> Result<(), NewZoneError> {
+        if self.bytes.len() < self.p + n {
+            Err(NewZoneError::Truncated(self.bytes.len(), n))
+        } else { Ok(()) }
+    }
+    fn skip(&mut self, n: usize) -> Result<(), NewZoneError> {
+        self.need(n)?; self.p += n; Ok(())
+    }
+    fn f32(&mut self) -> Result<f32, NewZoneError> {
+        self.need(4)?;
+        let v = f32::from_le_bytes(self.bytes[self.p..self.p + 4].try_into().unwrap());
+        self.p += 4; Ok(v)
+    }
+    fn text(&mut self, which: &'static str) -> Result<String, NewZoneError> {
+        let end = self.bytes[self.p..].iter().position(|&b| b == 0)
+            .ok_or(NewZoneError::UnterminatedText(which))?;
+        let s = String::from_utf8_lossy(&self.bytes[self.p..self.p + end]).into_owned();
+        self.p += end + 1;
+        Ok(s)
+    }
+}
+
+pub fn parse_new_zone(bytes: &[u8]) -> Result<NewZone, NewZoneError> {
+    let mut r = R { bytes, p: 0 };
+    let short_name = r.text("short_name")?;
+    let long_name  = r.text("long_name")?;
+    r.skip(2)?;
+    let zonefile   = r.text("zonefile")?;
+    r.skip(90)?;
+    let zone_exp_multiplier = r.f32()?;
+    r.skip(28)?;
+    let safe_y = r.f32()?;
+    let safe_x = r.f32()?;
+    let safe_z = r.f32()?;
+    Ok(NewZone {
+        short_name, long_name, zonefile,
+        zone_exp_multiplier, safe_y, safe_x, safe_z,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build(short_name: &[u8], long_name: &[u8], zonefile: &[u8],
+             exp_mult: f32, safe_y: f32, safe_x: f32, safe_z: f32) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(short_name); buf.push(0);
+        buf.extend_from_slice(long_name);  buf.push(0);
+        buf.extend_from_slice(&[0u8; 2]);
+        buf.extend_from_slice(zonefile);   buf.push(0);
+        buf.extend_from_slice(&[0u8; 90]);
+        buf.extend_from_slice(&exp_mult.to_le_bytes());
+        buf.extend_from_slice(&[0u8; 28]);
+        buf.extend_from_slice(&safe_y.to_le_bytes());
+        buf.extend_from_slice(&safe_x.to_le_bytes());
+        buf.extend_from_slice(&safe_z.to_le_bytes());
+        buf
+    }
+
+    #[test]
+    fn parses_fields() {
+        let buf = build(b"ecommons", b"East Commonlands", b"ecommons",
+                        1.0, -100.0, 200.0, -50.0);
+        let z = parse_new_zone(&buf).unwrap();
+        assert_eq!(z.short_name, "ecommons");
+        assert_eq!(z.long_name, "East Commonlands");
+        assert_eq!(z.zonefile, "ecommons");
+        assert_eq!(z.zone_exp_multiplier, 1.0);
+        assert_eq!(z.safe_y, -100.0);
+        assert_eq!(z.safe_x, 200.0);
+        assert_eq!(z.safe_z, -50.0);
+    }
+
+    #[test]
+    fn rejects_truncated() {
+        assert!(parse_new_zone(b"short\0long\0").is_err());
+    }
+
+    #[test]
+    fn empty_strings_are_legal() {
+        let buf = build(b"", b"", b"", 0.0, 0.0, 0.0, 0.0);
+        let z = parse_new_zone(&buf).unwrap();
+        assert_eq!(z.short_name, "");
+        assert_eq!(z.long_name, "");
+        assert_eq!(z.zonefile, "");
+    }
+}

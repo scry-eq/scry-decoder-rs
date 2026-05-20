@@ -241,6 +241,14 @@ mod ffi {
         message: String,
         ok: bool,
     }
+    struct NewZone {
+        short_name: String,
+        long_name: String,
+        zonefile: String,
+        zone_exp_multiplier: f32,
+        safe_y: f32, safe_x: f32, safe_z: f32,
+        ok: bool,
+    }
 
     // Stage A+8 — bitfield-laden / BitStream-packed opcodes.
     struct PlayerSelfPos {
@@ -309,6 +317,7 @@ mod ffi {
         fn decode_formatted_message(bytes: &[u8]) -> FormattedMessage;
         fn decode_special_message(bytes: &[u8]) -> SpecialMessage;
         fn decode_channel_message(bytes: &[u8]) -> ChannelMessage;
+        fn decode_new_zone(bytes: &[u8]) -> NewZone;
         // Stage A+8
         fn decode_player_self_pos(bytes: &[u8]) -> PlayerSelfPos;
         fn decode_player_spawn_pos(bytes: &[u8]) -> PlayerSpawnPos;
@@ -830,6 +839,27 @@ fn decode_channel_message(bytes: &[u8]) -> ffi::ChannelMessage {
             chan_num: 0,
             skill_in_language: 0,
             message: String::new(),
+            ok: false,
+        },
+    }
+}
+
+fn decode_new_zone(bytes: &[u8]) -> ffi::NewZone {
+    match seq_decode::parse_new_zone(bytes) {
+        Ok(z) => ffi::NewZone {
+            short_name: z.short_name,
+            long_name:  z.long_name,
+            zonefile:   z.zonefile,
+            zone_exp_multiplier: z.zone_exp_multiplier,
+            safe_y: z.safe_y, safe_x: z.safe_x, safe_z: z.safe_z,
+            ok: true,
+        },
+        Err(_) => ffi::NewZone {
+            short_name: String::new(),
+            long_name:  String::new(),
+            zonefile:   String::new(),
+            zone_exp_multiplier: 0.0,
+            safe_y: 0.0, safe_x: 0.0, safe_z: 0.0,
             ok: false,
         },
     }
