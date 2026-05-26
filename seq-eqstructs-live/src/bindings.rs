@@ -239,6 +239,8 @@ pub struct considerStruct {
     pub unknown0020: i32,
     /// int32_t unknown0024
     pub unknown0024: i32,
+    /// int32_t unknown0028
+    pub unknown0028: i32,
 }
 
 impl Default for considerStruct {
@@ -829,7 +831,7 @@ mod __layout_tests {
     #[test] fn manaDecrementStruct_size() { assert_eq!(core::mem::size_of::<manaDecrementStruct>(), 20); }
     #[test] fn staminaStruct_size() { assert_eq!(core::mem::size_of::<staminaStruct>(), 8); }
     #[test] fn endUpdateStruct_size() { assert_eq!(core::mem::size_of::<endUpdateStruct>(), 10); }
-    #[test] fn considerStruct_size() { assert_eq!(core::mem::size_of::<considerStruct>(), 28); }
+    #[test] fn considerStruct_size() { assert_eq!(core::mem::size_of::<considerStruct>(), 32); }
     #[test] fn spawnRenameStruct_size() { assert_eq!(core::mem::size_of::<spawnRenameStruct>(), 195); }
     #[test] fn clientTargetStruct_size() { assert_eq!(core::mem::size_of::<clientTargetStruct>(), 4); }
     #[test] fn newCorpseStruct_size() { assert_eq!(core::mem::size_of::<newCorpseStruct>(), 40); }
