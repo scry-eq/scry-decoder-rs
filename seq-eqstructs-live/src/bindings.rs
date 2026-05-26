@@ -139,6 +139,10 @@ pub struct levelUpUpdateStruct {
     pub exp: u32,
     /// uint32_t unknown0012
     pub unknown0012: u32,
+    /// uint32_t unknown0016
+    pub unknown0016: u32,
+    /// uint32_t unknown0020
+    pub unknown0020: u32,
 }
 
 impl Default for levelUpUpdateStruct {
@@ -826,7 +830,7 @@ mod __layout_tests {
     #[test] fn mobHealthStruct_size() { assert_eq!(core::mem::size_of::<mobHealthStruct>(), 6); }
     #[test] fn spawnAppearanceStruct_size() { assert_eq!(core::mem::size_of::<spawnAppearanceStruct>(), 8); }
     #[test] fn expUpdateStruct_size() { assert_eq!(core::mem::size_of::<expUpdateStruct>(), 16); }
-    #[test] fn levelUpUpdateStruct_size() { assert_eq!(core::mem::size_of::<levelUpUpdateStruct>(), 16); }
+    #[test] fn levelUpUpdateStruct_size() { assert_eq!(core::mem::size_of::<levelUpUpdateStruct>(), 24); }
     #[test] fn skillIncStruct_size() { assert_eq!(core::mem::size_of::<skillIncStruct>(), 12); }
     #[test] fn manaDecrementStruct_size() { assert_eq!(core::mem::size_of::<manaDecrementStruct>(), 20); }
     #[test] fn staminaStruct_size() { assert_eq!(core::mem::size_of::<staminaStruct>(), 8); }
