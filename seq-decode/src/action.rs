@@ -12,7 +12,7 @@ pub const PAYLOAD_LEN: usize = std::mem::size_of::<actionStruct>();
 pub struct Action {
     pub target: u16,
     pub source: u16,
-    pub spell: i16,
+    pub spell: u16,   // unsigned: modern spell IDs exceed 32767
     pub level: u8,
     pub kind: u8,
 }
@@ -53,13 +53,13 @@ mod tests {
         let mut buf = [0u8; PAYLOAD_LEN];
         buf[0..2].copy_from_slice(&100u16.to_le_bytes());
         buf[2..4].copy_from_slice(&200u16.to_le_bytes());
-        buf[4..6].copy_from_slice(&(-5i16).to_le_bytes());
+        buf[4..6].copy_from_slice(&40000u16.to_le_bytes());  // > 32767
         buf[12] = 65;
         buf[56] = 0xe7;
         let a = parse_action(&buf).unwrap();
         assert_eq!(a.target, 100);
         assert_eq!(a.source, 200);
-        assert_eq!(a.spell, -5);
+        assert_eq!(a.spell, 40000);
         assert_eq!(a.level, 65);
         assert_eq!(a.kind, 0xe7);
     }

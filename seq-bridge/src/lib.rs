@@ -198,7 +198,7 @@ mod ffi {
         slot: i32, spell_id: u32, target_id: u32, ok: bool,
     }
     struct Action {
-        target: u16, source: u16, spell: i16, level: u8, kind: u8, ok: bool,
+        target: u16, source: u16, spell: u16, level: u8, kind: u8, ok: bool,
     }
     struct GroupDisband {
         yourname: String, membername: String, ok: bool,

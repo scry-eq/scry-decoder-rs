@@ -1,6 +1,8 @@
 //! Parser for `OP_ManaChange` — payload `manaDecrementStruct`,
-//! 20 bytes. The daemon reads `newMana` for the live mana value;
-//! `maxMana` and the last spell id ride along.
+//! 20 bytes. The daemon reads `newMana` for the live mana value; the
+//! `curEndurance` field (formerly mislabelled `maxMana` in everquest.h) and
+//! the last spell id ride along. The daemon computes max mana client-side,
+//! so this `max_mana` output carries the raw curEndurance bytes and is unused.
 
 use seq_eqstructs_live::manaDecrementStruct;
 use thiserror::Error;
@@ -28,7 +30,7 @@ pub fn parse_mana_change(bytes: &[u8]) -> Result<ManaChange, ManaChangeError> {
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const manaDecrementStruct) };
     Ok(ManaChange {
         new_mana: unsafe { std::ptr::addr_of!(raw.newMana).read_unaligned() },
-        max_mana: unsafe { std::ptr::addr_of!(raw.maxMana).read_unaligned() },
+        max_mana: unsafe { std::ptr::addr_of!(raw.curEndurance).read_unaligned() },
         spell_id: unsafe { std::ptr::addr_of!(raw.spellId).read_unaligned() },
     })
 }

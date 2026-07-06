@@ -175,8 +175,8 @@ impl Default for skillIncStruct {
 pub struct manaDecrementStruct {
     /// int32_t newMana
     pub newMana: i32,
-    /// int32_t maxMana
-    pub maxMana: i32,
+    /// int32_t curEndurance
+    pub curEndurance: i32,
     /// int32_t spellId
     pub spellId: i32,
     /// uint8_t unknown0012[4]
@@ -583,8 +583,8 @@ pub struct actionStruct {
     pub target: u16,
     /// uint16_t source
     pub source: u16,
-    /// int16_t spell
-    pub spell: i16,
+    /// uint16_t spell
+    pub spell: u16,
     /// uint8_t unknown0006[6]
     pub unknown0006: [u8; 6],
     /// uint8_t level
@@ -611,8 +611,8 @@ pub struct actionAltStruct {
     pub target: u16,
     /// uint16_t source
     pub source: u16,
-    /// int16_t spell
-    pub spell: i16,
+    /// uint16_t spell
+    pub spell: u16,
     /// uint8_t unknown0006[6]
     pub unknown0006: [u8; 6],
     /// uint8_t level

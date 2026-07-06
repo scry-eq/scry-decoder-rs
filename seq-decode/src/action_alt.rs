@@ -11,7 +11,7 @@ pub const PAYLOAD_LEN: usize = std::mem::size_of::<actionAltStruct>();
 pub struct ActionAlt {
     pub target: u16,
     pub source: u16,
-    pub spell: i16,
+    pub spell: u16,   // unsigned: modern spell IDs exceed 32767
     pub level: u8,
     pub kind: u8,
 }
