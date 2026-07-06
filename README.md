@@ -28,7 +28,7 @@ cargo test          # runs unit + golden tests
 ```
 
 `seq-eqstructs/build.rs` runs `bindgen` against
-`../../showeq-daemon/src/everquest.h` (sibling-relative). Override with
+`../../showeq-daemon/src/backend/live/everquest.h` (sibling-relative). Override with
 `EVERQUEST_H=/path/to/everquest.h` for out-of-tree builds. Requires
 `libclang-dev` (Debian/Ubuntu) or equivalent on the build host.
 

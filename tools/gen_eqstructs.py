@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate seq-eqstructs-live/src/bindings.rs from showeq-daemon/src/everquest.h.
+"""Generate seq-eqstructs-live/src/bindings.rs from showeq-daemon/src/backend/live/everquest.h.
 
 Replaces bindgen for the explicit allowlist of EQ wire structs. Parses each
 struct's `/*OFFSET*/` field comments to derive layout, emits #[repr(C, packed)]
@@ -324,7 +324,8 @@ def emit_rust(structs: list[tuple[str, list[tuple[str, str, str]], int]]) -> str
 
 def main(argv: list[str]) -> int:
     here = Path(__file__).resolve().parent.parent
-    default_header = here.parent.parent / "showeq-daemon" / "src" / "everquest.h"
+    # Sibling checkout: ../showeq-daemon relative to this repo root (matches README).
+    default_header = here.parent / "showeq-daemon" / "src" / "backend" / "live" / "everquest.h"
     header_path = Path(argv[1]) if len(argv) > 1 else default_header
     if not header_path.exists():
         print(f"error: {header_path} not found", file=sys.stderr)
