@@ -1,6 +1,7 @@
 //! Parser for `OP_LevelUpdate` — payload `levelUpUpdateStruct`,
-//! 16 bytes. Fires once on level transition; `exp` is the post-level
-//! exp value that cross-references the next OP_ExpUpdate.
+//! 24 bytes (grew from 16 with two trailing u32 padding fields in the
+//! 2026-05-22 patch). Fires once on level transition; `exp` is the
+//! post-level exp value that cross-references the next OP_ExpUpdate.
 
 use seq_eqstructs_live::levelUpUpdateStruct;
 use thiserror::Error;
@@ -41,18 +42,20 @@ mod tests {
 
     #[test]
     fn rejects_wrong_length() {
-        assert!(parse_level_update(&[0; 15]).is_err());
-        assert!(parse_level_update(&[0; 17]).is_err());
+        assert!(parse_level_update(&[0; 23]).is_err());
+        assert!(parse_level_update(&[0; 25]).is_err());
     }
 
     #[test]
     fn parses_fields() {
         // Sample bytes from 2026-05-01 confirmation log:
-        // {level=2, levelOld=1, exp=814}
+        // {level=2, levelOld=1, exp=814}; +8 trailing padding bytes (24B total).
         let buf = [
             0x02, 0x00, 0x00, 0x00,
             0x01, 0x00, 0x00, 0x00,
             0x2e, 0x03, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00,
         ];
         let l = parse_level_update(&buf).unwrap();

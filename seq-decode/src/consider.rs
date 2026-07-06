@@ -1,7 +1,6 @@
-//! Parser for `OP_Consider` — payload `considerStruct`, 28 bytes.
-//! Three trailing u32 unknowns are preserved in the FFI struct so
-//! the daemon's existing forwarder can still see them; only the
-//! first four fields drive observable behavior.
+//! Parser for `OP_Consider` — payload `considerStruct`, 32 bytes.
+//! Only the first four fields (player/target ids, faction, level) drive
+//! observable behavior; the four trailing u32 unknowns are ignored.
 
 use seq_eqstructs_live::considerStruct;
 use thiserror::Error;
@@ -42,13 +41,13 @@ mod tests {
 
     #[test]
     fn rejects_wrong_length() {
-        assert!(parse_consider(&[0; 27]).is_err());
-        assert!(parse_consider(&[0; 29]).is_err());
+        assert!(parse_consider(&[0; 31]).is_err());
+        assert!(parse_consider(&[0; 33]).is_err());
     }
 
     #[test]
     fn parses_fields() {
-        let mut buf = [0u8; 28];
+        let mut buf = [0u8; 32];
         buf[0..4].copy_from_slice(&100u32.to_le_bytes());
         buf[4..8].copy_from_slice(&200u32.to_le_bytes());
         buf[8..12].copy_from_slice(&(-1i32).to_le_bytes()); // faction
