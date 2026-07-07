@@ -14,12 +14,12 @@
 //!   - bits 10..22 → heading
 //!   - bits 22..32 → padding (ignored)
 
-use seq_eqstructs_live::sign_extend;
+use crate::eqstructs::sign_extend;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = 42;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct PlayerSelfPos {
     pub spawn_id: u16,
     pub x: f32,

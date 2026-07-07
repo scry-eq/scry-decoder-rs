@@ -5,7 +5,7 @@
 //! `changetype` (1 = fading, 2 = duration update). Daemon uses
 //! spawn_id, spell_id, duration, level, spell_slot, change_type.
 
-use seq_eqstructs_live::buffStruct;
+use crate::eqstructs::buffStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<buffStruct>();

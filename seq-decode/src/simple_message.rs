@@ -3,7 +3,7 @@
 //! `message_color` (mapped to a MessageType + forwarded to the web
 //! client). The trailing `unknown` u32 is consumed but unused.
 
-use seq_eqstructs_live::simpleMessageStruct;
+use crate::eqstructs::simpleMessageStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<simpleMessageStruct>();

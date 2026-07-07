@@ -6,7 +6,7 @@
 //! daemon already has a working formatMessage and can slice the
 //! `messages` pointer off the raw payload at `data + 13`.
 
-use seq_eqstructs_live::formattedMessageStruct;
+use crate::eqstructs::formattedMessageStruct;
 use thiserror::Error;
 
 pub const HEADER_LEN: usize = std::mem::offset_of!(formattedMessageStruct, messages);

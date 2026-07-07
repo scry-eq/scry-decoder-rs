@@ -2,7 +2,7 @@
 //! payload `groupDisbandStruct`, 152 bytes. Daemon reads
 //! yourname + membername (both 64-byte NUL-padded char arrays).
 
-use seq_eqstructs_live::groupDisbandStruct;
+use crate::eqstructs::groupDisbandStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<groupDisbandStruct>();

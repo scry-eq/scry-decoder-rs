@@ -4,7 +4,7 @@
 //! S>C unknown). Self-only — `spawn_id` always matches the local
 //! player.
 
-use seq_eqstructs_live::endUpdateStruct;
+use crate::eqstructs::endUpdateStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<endUpdateStruct>();

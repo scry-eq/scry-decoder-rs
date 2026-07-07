@@ -25,6 +25,17 @@
 //! playerSpawnPosStruct 28b — bitfield-laden), OP_NpcMoveUpdate
 //! (variable-length 13..24b BitStream / sign-magnitude packing).
 
+// Backend-selected struct bindings. Parsers reference `crate::eqstructs::<name>`;
+// this aliases the generated crate for the active backend. live+eql share the
+// Live struct set; test has its own. Exactly one backend feature is enabled
+// (Corrosion builds seq-bridge with NO_DEFAULT_FEATURES + one backend-*).
+#[cfg(not(any(feature = "backend-live", feature = "backend-test", feature = "backend-eql")))]
+compile_error!("seq-decode: enable exactly one backend feature (default: backend-live)");
+#[cfg(any(feature = "backend-live", feature = "backend-eql"))]
+pub(crate) use seq_eqstructs_live as eqstructs;
+#[cfg(feature = "backend-test")]
+pub(crate) use seq_eqstructs_test as eqstructs;
+
 pub mod action;
 pub mod action2;
 pub mod action_alt;
@@ -69,6 +80,12 @@ pub mod special_message;
 pub mod wear_change;
 pub mod zone_change;
 pub mod zone_point;
+
+// EverQuest Legends offset parsers — the 5 opcodes whose wire diverges from
+// Live (spawn, profile, self-pos, new-zone, mob-update). Shared Live decoders
+// cover the rest of eql's opcode set.
+#[cfg(feature = "backend-eql")]
+pub mod legends;
 
 pub use delete_spawn::{
     parse_delete_spawn, DeleteSpawn, DeleteSpawnError, PAYLOAD_LEN as DELETE_SPAWN_LEN,

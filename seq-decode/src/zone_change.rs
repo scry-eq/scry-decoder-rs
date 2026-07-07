@@ -2,7 +2,7 @@
 //! bytes. Daemon reads zone_id; name and zone_instance are surfaced
 //! for completeness.
 
-use seq_eqstructs_live::zoneChangeStruct;
+use crate::eqstructs::zoneChangeStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<zoneChangeStruct>();

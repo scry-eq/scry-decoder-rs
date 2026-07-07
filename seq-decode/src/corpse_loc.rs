@@ -1,7 +1,7 @@
 //! Parser for `OP_CorpseLocResponse` — payload `corpseLocStruct`,
 //! 16 bytes. spawn_id + (x, y, z) floats.
 
-use seq_eqstructs_live::corpseLocStruct;
+use crate::eqstructs::corpseLocStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<corpseLocStruct>();

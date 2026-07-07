@@ -3,7 +3,7 @@
 //! (signed only because raw negative values appeared during early
 //! probes — practically a u8 0..N).
 
-use seq_eqstructs_live::skillIncStruct;
+use crate::eqstructs::skillIncStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<skillIncStruct>();

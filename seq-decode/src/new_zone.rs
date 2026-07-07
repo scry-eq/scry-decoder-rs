@@ -18,7 +18,7 @@
 
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct NewZone {
     pub short_name: String,
     pub long_name: String,

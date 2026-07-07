@@ -3,7 +3,7 @@
 //! expedition"); this parser only handles the 32-byte struct path.
 //! The daemon falls back to the C++ branch when bytes != 32.
 
-use seq_eqstructs_live::dzSwitchInfo;
+use crate::eqstructs::dzSwitchInfo;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<dzSwitchInfo>();

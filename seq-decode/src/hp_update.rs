@@ -3,7 +3,7 @@
 //! daemon's C++ path discards them too. Output keeps the three
 //! semantic fields plus the spawn id.
 
-use seq_eqstructs_live::hpNpcUpdateStruct;
+use crate::eqstructs::hpNpcUpdateStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<hpNpcUpdateStruct>();

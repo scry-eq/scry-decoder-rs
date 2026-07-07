@@ -4,7 +4,7 @@
 //! the last spell id ride along. The daemon computes max mana client-side,
 //! so this `max_mana` output carries the raw curEndurance bytes and is unused.
 
-use seq_eqstructs_live::manaDecrementStruct;
+use crate::eqstructs::manaDecrementStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<manaDecrementStruct>();

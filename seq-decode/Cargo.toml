@@ -9,7 +9,16 @@ rust-version.workspace = true
 
 [dependencies]
 thiserror.workspace = true
-seq-eqstructs-live.workspace = true
+seq-eqstructs-live = { workspace = true, optional = true }
+seq-eqstructs-test = { workspace = true, optional = true }
+
+# Backend selection (forwarded from seq-bridge). live+eql share the Live struct
+# set; test has its own bindings crate; eql adds Legends offset parsers.
+[features]
+default = ["backend-live"]
+backend-live = ["dep:seq-eqstructs-live"]
+backend-test = ["dep:seq-eqstructs-test"]
+backend-eql  = ["dep:seq-eqstructs-live"]
 
 [lints]
 workspace = true

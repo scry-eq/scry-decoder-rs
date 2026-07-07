@@ -2,7 +2,7 @@
 //! Only the first four fields (player/target ids, faction, level) drive
 //! observable behavior; the four trailing u32 unknowns are ignored.
 
-use seq_eqstructs_live::considerStruct;
+use crate::eqstructs::considerStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<considerStruct>();

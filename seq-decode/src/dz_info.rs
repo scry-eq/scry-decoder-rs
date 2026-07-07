@@ -2,7 +2,7 @@
 //! daemon reads `new_dz` (clears DZ-state when zero); the rest is
 //! surfaced for completeness.
 
-use seq_eqstructs_live::dzInfo;
+use crate::eqstructs::dzInfo;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<dzInfo>();

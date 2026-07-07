@@ -1,7 +1,7 @@
 //! Parser for `OP_CastSpell` — payload `startCastStruct`, 39 bytes.
 //! Daemon reads slot, spell_id, target_id.
 
-use seq_eqstructs_live::startCastStruct;
+use crate::eqstructs::startCastStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<startCastStruct>();

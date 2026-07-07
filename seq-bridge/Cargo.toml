@@ -10,19 +10,18 @@ rust-version.workspace = true
 [lib]
 crate-type = ["staticlib", "rlib"]
 
-# Backend selection. Today only `backend-live` exists; `backend-quarm`
-# and `backend-test` are placeholders so consumer CMake builds can
-# already pass `-DSEQ_TARGET=quarm` etc. and get a clean "backend not
-# implemented" error rather than a silent fallthrough to Live.
+# Backend selection — forwarded to seq-decode (which selects the bindings
+# crate + Legends parsers). live+test share the Live decoders (different
+# bindings); eql swaps the 5 diverged opcodes for Legends parsers.
 [features]
 default = ["backend-live"]
-backend-live = []
-backend-quarm = []
-backend-test = []
+backend-live = ["seq-decode/backend-live"]
+backend-test = ["seq-decode/backend-test"]
+backend-eql  = ["seq-decode/backend-eql"]
 
 [dependencies]
 cxx.workspace = true
-seq-decode.workspace = true
+seq-decode = { workspace = true, default-features = false }
 
 [build-dependencies]
 cxx-build.workspace = true

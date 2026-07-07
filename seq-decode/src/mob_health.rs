@@ -2,7 +2,7 @@
 //! `hpPercent` is the spawn's HP as a percentage (0..100), not raw HP
 //! (resolved 2026-05-01 — see OPCODES_LIVE_TODO.md).
 
-use seq_eqstructs_live::mobHealthStruct;
+use crate::eqstructs::mobHealthStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<mobHealthStruct>();

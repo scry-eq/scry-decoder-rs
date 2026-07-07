@@ -3,7 +3,7 @@
 //! capture). The daemon's combat router uses target, source, damage,
 //! spell, and type.
 
-use seq_eqstructs_live::action2Struct;
+use crate::eqstructs::action2Struct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<action2Struct>();

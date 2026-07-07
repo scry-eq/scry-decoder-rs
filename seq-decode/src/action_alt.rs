@@ -2,7 +2,7 @@
 //! The wire field set is identical to `actionStruct` — only the
 //! trailing placeholder grew. Same surfaced fields as `action.rs`.
 
-use seq_eqstructs_live::actionAltStruct;
+use crate::eqstructs::actionAltStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<actionAltStruct>();

@@ -6,7 +6,7 @@
 //! e.g.) — bindgen would catch the size change at build time via the
 //! `delete_spawn_struct_layout` test in `seq-eqstructs-live`.
 
-use seq_eqstructs_live::deleteSpawnStruct;
+use crate::eqstructs::deleteSpawnStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<deleteSpawnStruct>();

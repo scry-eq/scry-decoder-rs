@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Generate seq-eqstructs-live/src/bindings.rs from showeq-daemon/src/backend/live/everquest.h.
+"""Generate seq-eqstructs-<target>/src/bindings.rs from showeq-daemon/src/backend/<target>/everquest.h.
 
 Replaces bindgen for the explicit allowlist of EQ wire structs. Parses each
 struct's `/*OFFSET*/` field comments to derive layout, emits #[repr(C, packed)]
 Rust mirrors with original C field names, and emits size_of layout tests.
 
 Run manually after editing everquest.h:
-  python3 tools/gen_eqstructs.py [path/to/everquest.h]
+  python3 tools/gen_eqstructs.py [live|test|all]   # default: live
+  python3 tools/gen_eqstructs.py path/to/everquest.h   # explicit header -> live
 """
 
 from __future__ import annotations
@@ -322,11 +323,13 @@ def emit_rust(structs: list[tuple[str, list[tuple[str, str, str]], int]]) -> str
     return "\n".join(out)
 
 
-def main(argv: list[str]) -> int:
-    here = Path(__file__).resolve().parent.parent
-    # Sibling checkout: ../showeq-daemon relative to this repo root (matches README).
-    default_header = here.parent / "showeq-daemon" / "src" / "backend" / "live" / "everquest.h"
-    header_path = Path(argv[1]) if len(argv) > 1 else default_header
+# Backends with their own bindings crate. live+test each mirror
+# showeq-daemon/src/backend/<target>/everquest.h; eql owns no wire structs
+# (its Legends parsers are hand-rolled in seq-decode/src/legends.rs).
+TARGETS = ("live", "test")
+
+
+def gen_one(here: Path, target: str, header_path: Path) -> int:
     if not header_path.exists():
         print(f"error: {header_path} not found", file=sys.stderr)
         return 1
@@ -345,10 +348,36 @@ def main(argv: list[str]) -> int:
             return 1
         structs.append((name, fields, size))
 
-    out_path = here / "seq-eqstructs-live" / "src" / "bindings.rs"
+    out_path = here / f"seq-eqstructs-{target}" / "src" / "bindings.rs"
     out_path.write_text(emit_rust(structs))
     print(f"wrote {out_path} ({len(structs)} structs)")
     return 0
+
+
+def main(argv: list[str]) -> int:
+    here = Path(__file__).resolve().parent.parent
+    # Sibling checkout: ../showeq-daemon relative to this repo root (matches README).
+    daemon = here.parent / "showeq-daemon"
+
+    # Usage:
+    #   gen_eqstructs.py                 -> live (default)
+    #   gen_eqstructs.py live|test       -> that backend from backend/<t>/everquest.h
+    #   gen_eqstructs.py all             -> every backend in TARGETS
+    #   gen_eqstructs.py <path/to/h>     -> live output from an explicit header
+    arg = argv[1] if len(argv) > 1 else "live"
+
+    if arg == "all":
+        for t in TARGETS:
+            rc = gen_one(here, t, daemon / "src" / "backend" / t / "everquest.h")
+            if rc:
+                return rc
+        return 0
+
+    if arg in TARGETS:
+        return gen_one(here, arg, daemon / "src" / "backend" / arg / "everquest.h")
+
+    # Explicit header path — writes the live bindings crate (back-compat).
+    return gen_one(here, "live", Path(arg))
 
 
 if __name__ == "__main__":

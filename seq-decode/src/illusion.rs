@@ -3,7 +3,7 @@
 //! face. The 248-byte trailing placeholder is consumed for the
 //! length match but not surfaced.
 
-use seq_eqstructs_live::spawnIllusionStruct;
+use crate::eqstructs::spawnIllusionStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<spawnIllusionStruct>();

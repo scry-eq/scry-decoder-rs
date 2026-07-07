@@ -26,7 +26,7 @@ const BIND_STRUCT_SIZE: usize = 20;
 const EQUIP_STRUCT_SIZE: usize = 20;
 const TRIBUTE_STRUCT_SIZE: usize = 8;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct PlayerProfile {
     pub bytes_consumed: u32,
     pub checksum: u32,

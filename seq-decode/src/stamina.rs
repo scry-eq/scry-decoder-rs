@@ -3,7 +3,7 @@
 //! `OP_EndUpdate`). Both fields are u32 ticks-till-next-eat / drink,
 //! capped at ~127 in practice.
 
-use seq_eqstructs_live::staminaStruct;
+use crate::eqstructs::staminaStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<staminaStruct>();

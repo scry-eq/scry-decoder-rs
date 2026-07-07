@@ -5,28 +5,15 @@
 //! tools, the eventual standalone daemon). This crate is the
 //! `staticlib` Corrosion links into `seq-daemon-core`.
 //!
-//! Backend selection happens via Cargo features. Today only
-//! `backend-live` is real; `backend-quarm` and `backend-test` are
-//! placeholders that fail to compile so consumer builds picking
-//! `-DSEQ_TARGET=quarm` get a clear "backend not implemented" error
-//! rather than silently using the Live wire format.
+//! Backend selection via Cargo features, forwarded to `seq-decode`:
+//! `backend-live`, `backend-test` (own bindings, same decoders as live),
+//! `backend-eql` (Live decoders for shared opcodes + Legends parsers for the
+//! 5 diverged ones). The uniform `decode_*` FFI surface is the same for every
+//! backend; the linked feature decides each function's implementation.
 
-#[cfg(all(feature = "backend-quarm", not(feature = "backend-live")))]
+#[cfg(not(any(feature = "backend-live", feature = "backend-test", feature = "backend-eql")))]
 compile_error!(
-    "seq-bridge: backend-quarm is a placeholder; the Quarm parser \
-     crate has not been written yet. Use --features backend-live."
-);
-
-#[cfg(all(feature = "backend-test", not(feature = "backend-live")))]
-compile_error!(
-    "seq-bridge: backend-test is a placeholder; the Test parser \
-     crate has not been written yet. Use --features backend-live."
-);
-
-#[cfg(not(any(feature = "backend-live", feature = "backend-quarm", feature = "backend-test")))]
-compile_error!(
-    "seq-bridge: at least one backend feature must be enabled \
-     (default: backend-live)."
+    "seq-bridge: enable exactly one backend feature (default: backend-live)."
 );
 
 #[cxx::bridge(namespace = "seq::rust")]
@@ -92,6 +79,14 @@ mod ffi {
         state: u8,
         light: u8,
         is_mercenary: u8,
+
+        // Decoded position + hp, filled only by backends whose spawn wire is
+        // already decoded (eql). Live leaves these zero and uses pos_data /
+        // cur_hp; eql leaves the raw arrays zero and fills these.
+        x: i16,
+        y: i16,
+        z: i16,
+        max_hp: u8,
     }
 
     // Stage A+3 — small fixed-size opcodes. Each struct ends with an
@@ -423,7 +418,11 @@ mod ffi {
 }
 
 fn decode_mob_update(bytes: &[u8]) -> ffi::MobUpdate {
-    match seq_decode::parse_mob_update(bytes) {
+    #[cfg(not(feature = "backend-eql"))]
+    let parsed = seq_decode::parse_mob_update(bytes);
+    #[cfg(feature = "backend-eql")]
+    let parsed = seq_decode::legends::parse_legends_mob_update(bytes);
+    match parsed {
         Ok(m) => ffi::MobUpdate {
             spawn_id: m.spawn_id,
             x: m.x,
@@ -649,6 +648,29 @@ fn decode_action2(bytes: &[u8]) -> ffi::Action2 {
     }
 }
 
+// Zeroed sentinel for a bad/absent spawn payload. Also the field base for
+// eql's partial fill (its Legends spawn only decodes id/name/pos/level/hp; the
+// Live-only raw equipment/position arrays stay zero).
+fn spawn_err() -> ffi::Spawn {
+    ffi::Spawn {
+        ok: false,
+        bytes_consumed: 0,
+        name: String::new(),
+        last_name: String::new(),
+        title: String::new(),
+        suffix: String::new(),
+        spawn_id: 0, misc_data: 0, body_type: 0, race: 0,
+        deity: 0, guild_id: 0, guild_server_id: 0, class_: 0,
+        pet_owner_id: 0,
+        equip_data: [0; 45],
+        pos_data: [0; 6],
+        level: 0, npc: 0, other_data: 0, char_properties: 0,
+        cur_hp: 0, holding: 0, state: 0, light: 0, is_mercenary: 0,
+        x: 0, y: 0, z: 0, max_hp: 0,
+    }
+}
+
+#[cfg(not(feature = "backend-eql"))]
 fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
     match seq_decode::parse_spawn(bytes) {
         Ok(s) => ffi::Spawn {
@@ -678,22 +700,29 @@ fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
             state: s.state,
             light: s.light,
             is_mercenary: s.is_mercenary,
+            x: 0, y: 0, z: 0, max_hp: 0,
         },
-        Err(_) => ffi::Spawn {
-            ok: false,
-            bytes_consumed: 0,
-            name: String::new(),
-            last_name: String::new(),
-            title: String::new(),
-            suffix: String::new(),
-            spawn_id: 0, misc_data: 0, body_type: 0, race: 0,
-            deity: 0, guild_id: 0, guild_server_id: 0, class_: 0,
-            pet_owner_id: 0,
-            equip_data: [0; 45],
-            pos_data: [0; 6],
-            level: 0, npc: 0, other_data: 0, char_properties: 0,
-            cur_hp: 0, holding: 0, state: 0, light: 0, is_mercenary: 0,
+        Err(_) => spawn_err(),
+    }
+}
+
+// eql: Legends spawn decodes id/name/decoded-pos/level/hp; the rest stays zero.
+#[cfg(feature = "backend-eql")]
+fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
+    match seq_decode::legends::parse_legends_zone_spawn(bytes) {
+        Ok(s) => ffi::Spawn {
+            ok: true,
+            name: s.name,
+            spawn_id: u32::from(s.id),
+            level: s.level,
+            cur_hp: s.cur_hp,
+            max_hp: s.max_hp,
+            x: s.x,
+            y: s.y,
+            z: s.z,
+            ..spawn_err()
         },
+        Err(_) => spawn_err(),
     }
 }
 
@@ -942,7 +971,11 @@ fn decode_channel_message(bytes: &[u8]) -> ffi::ChannelMessage {
 }
 
 fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
-    match seq_decode::parse_player_profile(bytes) {
+    #[cfg(not(feature = "backend-eql"))]
+    let parsed = seq_decode::parse_player_profile(bytes);
+    #[cfg(feature = "backend-eql")]
+    let parsed = seq_decode::legends::parse_legends_profile(bytes);
+    match parsed {
         Ok(p) => ffi::PlayerProfile {
             ok: true,
             bytes_consumed: p.bytes_consumed,
@@ -1064,7 +1097,11 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
 }
 
 fn decode_new_zone(bytes: &[u8]) -> ffi::NewZone {
-    match seq_decode::parse_new_zone(bytes) {
+    #[cfg(not(feature = "backend-eql"))]
+    let parsed = seq_decode::parse_new_zone(bytes);
+    #[cfg(feature = "backend-eql")]
+    let parsed = seq_decode::legends::parse_legends_new_zone(bytes);
+    match parsed {
         Ok(z) => ffi::NewZone {
             short_name: z.short_name,
             long_name:  z.long_name,
@@ -1087,7 +1124,11 @@ fn decode_new_zone(bytes: &[u8]) -> ffi::NewZone {
 // Stage A+8
 
 fn decode_player_self_pos(bytes: &[u8]) -> ffi::PlayerSelfPos {
-    match seq_decode::parse_player_self_pos(bytes) {
+    #[cfg(not(feature = "backend-eql"))]
+    let parsed = seq_decode::parse_player_self_pos(bytes);
+    #[cfg(feature = "backend-eql")]
+    let parsed = seq_decode::legends::parse_legends_self_pos(bytes);
+    match parsed {
         Ok(p) => ffi::PlayerSelfPos {
             spawn_id: p.spawn_id,
             x: p.x, y: p.y, z: p.z,

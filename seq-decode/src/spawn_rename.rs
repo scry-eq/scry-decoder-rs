@@ -3,7 +3,7 @@
 //! `old_name_again` field is identical to `old_name` in observed
 //! payloads; both are preserved for parity.
 
-use seq_eqstructs_live::spawnRenameStruct;
+use crate::eqstructs::spawnRenameStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<spawnRenameStruct>();

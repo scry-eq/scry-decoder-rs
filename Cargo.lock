@@ -198,11 +198,16 @@ name = "seq-decode"
 version = "0.1.0"
 dependencies = [
  "seq-eqstructs-live",
+ "seq-eqstructs-test",
  "thiserror",
 ]
 
 [[package]]
 name = "seq-eqstructs-live"
+version = "0.1.0"
+
+[[package]]
+name = "seq-eqstructs-test"
 version = "0.1.0"
 
 [[package]]

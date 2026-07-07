@@ -3,7 +3,7 @@
 //! dispatch in the C++ daemon also accepts `actionAltStruct` (88
 //! bytes) — see `action_alt.rs`.
 
-use seq_eqstructs_live::actionStruct;
+use crate::eqstructs::actionStruct;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = std::mem::size_of::<actionStruct>();
