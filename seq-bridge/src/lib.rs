@@ -167,8 +167,9 @@ mod ffi {
         texture: u8, helm: u8, face: u32, ok: bool,
     }
     struct Buff {
-        spawn_id: u32, spell_id: u32, duration: u32, level: u8,
-        spell_slot: u32, change_type: u32, ok: bool,
+        spawn_id: u32, spell_id: u32,
+        // form: 0=fade(13b) | 1=initial(30b) | 2=live-update(34+b).
+        form: u8, slot: u8, dur_ticks: u32, ok: bool,
     }
     struct Action2 {
         target: u16, source: u16, damage: i32, spell: i32, kind: u8, ok: bool,
@@ -200,6 +201,13 @@ mod ffi {
         yourname: String, membername: String, ok: bool,
     }
     struct GroupFollow { name: String, ok: bool }
+    struct GroupMemberList {
+        group_id: u32,
+        member_count: u32,
+        // scanned member names, '\n'-separated (daemon splits + dedups + self-filters).
+        names: String,
+        ok: bool,
+    }
     struct CorpseLoc {
         spawn_id: u32, x: f32, y: f32, z: f32, ok: bool,
     }
@@ -399,6 +407,7 @@ mod ffi {
         fn decode_action_alt(bytes: &[u8]) -> Action;
         fn decode_group_disband(bytes: &[u8]) -> GroupDisband;
         fn decode_group_follow(bytes: &[u8]) -> GroupFollow;
+        fn decode_group_member_list(bytes: &[u8]) -> GroupMemberList;
         fn decode_corpse_loc(bytes: &[u8]) -> CorpseLoc;
         // Stage A+7
         fn decode_door(bytes: &[u8]) -> Door;
@@ -626,13 +635,12 @@ fn decode_illusion(bytes: &[u8]) -> ffi::Illusion {
 fn decode_buff(bytes: &[u8]) -> ffi::Buff {
     match seq_decode::parse_buff(bytes) {
         Ok(b) => ffi::Buff {
-            spawn_id: b.spawn_id, spell_id: b.spell_id, duration: b.duration,
-            level: b.level, spell_slot: b.spell_slot, change_type: b.change_type,
+            spawn_id: b.spawn_id, spell_id: b.spell_id,
+            form: b.form, slot: b.slot, dur_ticks: b.dur_ticks,
             ok: true,
         },
         Err(_) => ffi::Buff {
-            spawn_id: 0, spell_id: 0, duration: 0, level: 0,
-            spell_slot: 0, change_type: 0, ok: false,
+            spawn_id: 0, spell_id: 0, form: 0, slot: 0, dur_ticks: 0, ok: false,
         },
     }
 }
@@ -829,6 +837,23 @@ fn decode_group_follow(bytes: &[u8]) -> ffi::GroupFollow {
     match seq_decode::parse_group_follow(bytes) {
         Ok(g) => ffi::GroupFollow { name: g.name, ok: true },
         Err(_) => ffi::GroupFollow { name: String::new(), ok: false },
+    }
+}
+
+fn decode_group_member_list(bytes: &[u8]) -> ffi::GroupMemberList {
+    match seq_decode::group_member_list::parse_group_member_list(bytes) {
+        Ok(g) => ffi::GroupMemberList {
+            group_id: g.group_id,
+            member_count: g.member_count,
+            names: g.names.join("\n"),
+            ok: true,
+        },
+        Err(_) => ffi::GroupMemberList {
+            group_id: 0,
+            member_count: 0,
+            names: String::new(),
+            ok: false,
+        },
     }
 }
 

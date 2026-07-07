@@ -1,45 +1,66 @@
-//! Parser for `OP_Buff` — payload `buffStruct`, 168 bytes.
-//! Resolved 2026-04-25/28 (combat + buff captures, n=3 cumulative
-//! at 168B S>C with zero competitors). The same opcode handles
-//! buff application, refresh, and fade — distinguished by
-//! `changetype` (1 = fading, 2 = duration update). Daemon uses
-//! spawn_id, spell_id, duration, level, spell_slot, change_type.
+//! Parser for the post-2026-05-22 variable-size `OP_Buff` broadcast. The legacy
+//! 168-byte `buffStruct` is dead. Wire forms cracked from captures:
+//!
+//! ```text
+//!   Header (all forms): u32 spawnID @0, u32 spellID @4
+//!   13b "fade"
+//!   30b "initial sync": buff slot @9
+//!   34+b "live update": block-1 duration ticks (u32) @15
+//! ```
+//!
+//! This only extracts the wire fields. The application logic — the spell-DB
+//! level-scaled duration for the 30b form, the self-spawn / null-spell filter,
+//! and SpellItem management — stays daemon-side (it needs the Player + Spells
+//! DB, which don't cross the FFI).
 
-use crate::eqstructs::buffStruct;
 use thiserror::Error;
 
-pub const PAYLOAD_LEN: usize = std::mem::size_of::<buffStruct>();
+/// Buff wire-form discriminators (see [`Buff::form`]).
+pub const FORM_FADE: u8 = 0;
+pub const FORM_INITIAL: u8 = 1;
+pub const FORM_UPDATE: u8 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Buff {
     pub spawn_id: u32,
     pub spell_id: u32,
-    pub duration: u32,
-    pub level: u8,
-    pub spell_slot: u32,
-    pub change_type: u32,
+    /// [`FORM_FADE`] (13b) | [`FORM_INITIAL`] (30b) | [`FORM_UPDATE`] (34+b).
+    pub form: u8,
+    /// Buff slot — valid for [`FORM_INITIAL`] only (`0xff` otherwise).
+    pub slot: u8,
+    /// Block-1 duration in ticks — valid for [`FORM_UPDATE`] only (0 otherwise).
+    pub dur_ticks: u32,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum BuffError {
-    #[error("expected {PAYLOAD_LEN} bytes, got {0}")]
-    BadLength(usize),
+    #[error("payload too short: {0} bytes")]
+    Short(usize),
+    #[error("unrecognized OP_Buff form: {0} bytes")]
+    BadForm(usize),
+}
+
+fn rd_u32(b: &[u8], o: usize) -> u32 {
+    u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
 }
 
 pub fn parse_buff(bytes: &[u8]) -> Result<Buff, BuffError> {
-    if bytes.len() != PAYLOAD_LEN {
-        return Err(BuffError::BadLength(bytes.len()));
+    if bytes.len() < 8 {
+        return Err(BuffError::Short(bytes.len()));
     }
-    let raw: buffStruct =
-        unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const buffStruct) };
-    Ok(Buff {
-        spawn_id:    unsafe { std::ptr::addr_of!(raw.spawnid).read_unaligned() },
-        spell_id:    unsafe { std::ptr::addr_of!(raw.spellid).read_unaligned() },
-        duration:    unsafe { std::ptr::addr_of!(raw.duration).read_unaligned() },
-        level:       unsafe { std::ptr::addr_of!(raw.level).read_unaligned() },
-        spell_slot:  unsafe { std::ptr::addr_of!(raw.spellslot).read_unaligned() },
-        change_type: unsafe { std::ptr::addr_of!(raw.changetype).read_unaligned() },
-    })
+    let spawn_id = rd_u32(bytes, 0);
+    let spell_id = rd_u32(bytes, 4);
+
+    let (form, slot, dur_ticks) = match bytes.len() {
+        13 => (FORM_FADE, 0xff, 0),
+        30 => (FORM_INITIAL, bytes[9], 0),
+        // block 1 starts after the 15-byte header; its tick count is the
+        // player's remaining time.
+        n if n >= 34 => (FORM_UPDATE, 0xff, rd_u32(bytes, 15)),
+        n => return Err(BuffError::BadForm(n)),
+    };
+
+    Ok(Buff { spawn_id, spell_id, form, slot, dur_ticks })
 }
 
 #[cfg(test)]
@@ -47,27 +68,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rejects_wrong_length() {
-        assert!(parse_buff(&[0; 167]).is_err());
-        assert!(parse_buff(&[0; 169]).is_err());
+    fn rejects_short() {
+        assert!(parse_buff(&[0u8; 7]).is_err());
     }
 
     #[test]
-    fn parses_buff_apply() {
-        // changetype=2 (duration update) at offset 164.
-        let mut buf = vec![0u8; PAYLOAD_LEN];
-        buf[0..4].copy_from_slice(&123u32.to_le_bytes());      // spawnid
-        buf[116..120].copy_from_slice(&5024u32.to_le_bytes()); // spellid
-        buf[120..124].copy_from_slice(&3600u32.to_le_bytes()); // duration
-        buf[152] = 60u8;                                          // level
-        buf[160..164].copy_from_slice(&3u32.to_le_bytes());    // spell_slot
-        buf[164..168].copy_from_slice(&2u32.to_le_bytes());    // changetype
-        let b = parse_buff(&buf).unwrap();
-        assert_eq!(b.spawn_id, 123);
-        assert_eq!(b.spell_id, 5024);
-        assert_eq!(b.duration, 3600);
-        assert_eq!(b.level, 60);
-        assert_eq!(b.spell_slot, 3);
-        assert_eq!(b.change_type, 2);
+    fn rejects_unrecognized_form() {
+        assert!(matches!(parse_buff(&[0u8; 20]), Err(BuffError::BadForm(20))));
+    }
+
+    #[test]
+    fn fade_form_13b() {
+        let mut b = [0u8; 13];
+        b[0..4].copy_from_slice(&123u32.to_le_bytes());
+        b[4..8].copy_from_slice(&5024u32.to_le_bytes());
+        let out = parse_buff(&b).unwrap();
+        assert_eq!(out.spawn_id, 123);
+        assert_eq!(out.spell_id, 5024);
+        assert_eq!(out.form, FORM_FADE);
+    }
+
+    #[test]
+    fn initial_form_30b_reads_slot() {
+        let mut b = [0u8; 30];
+        b[0..4].copy_from_slice(&7u32.to_le_bytes());
+        b[4..8].copy_from_slice(&42u32.to_le_bytes());
+        b[9] = 3; // slot
+        let out = parse_buff(&b).unwrap();
+        assert_eq!(out.form, FORM_INITIAL);
+        assert_eq!(out.slot, 3);
+    }
+
+    #[test]
+    fn update_form_reads_dur_ticks() {
+        let mut b = [0u8; 34];
+        b[0..4].copy_from_slice(&7u32.to_le_bytes());
+        b[4..8].copy_from_slice(&42u32.to_le_bytes());
+        b[15..19].copy_from_slice(&600u32.to_le_bytes()); // dur ticks
+        let out = parse_buff(&b).unwrap();
+        assert_eq!(out.form, FORM_UPDATE);
+        assert_eq!(out.dur_ticks, 600);
     }
 }
