@@ -1,15 +1,16 @@
-//! C++ FFI bridge — exposes `seq-decode` parsers across the cxx ABI.
+//! C++ FFI bridge — exposes the Rust decoders across the cxx ABI.
 //!
-//! The bridge is intentionally a thin shim. Parsing logic stays in
-//! `seq-decode` so it remains usable from pure-Rust contexts (replay
-//! tools, the eventual standalone daemon). This crate is the
-//! `staticlib` Corrosion links into `seq-daemon-core`.
+//! The bridge is intentionally a thin shim. Parsing logic stays in the decode
+//! crates (`seq-decode` for the shared/Live path, `seq-eqstructs-eql` for eql's
+//! diverged opcodes) so it remains usable from pure-Rust contexts (replay
+//! tools, the eventual standalone daemon). This crate is the `staticlib`
+//! Corrosion links into `seq-daemon-core`.
 //!
-//! Backend selection via Cargo features, forwarded to `seq-decode`:
-//! `backend-live`, `backend-test` (own bindings, same decoders as live),
-//! `backend-eql` (Live decoders for shared opcodes + Legends parsers for the
-//! 5 diverged ones). The uniform `decode_*` FFI surface is the same for every
-//! backend; the linked feature decides each function's implementation.
+//! Backend selection via Cargo features: `backend-live` / `backend-test` pick
+//! the bindings crate in `seq-decode`; `backend-eql` reuses the Live decoders
+//! and pulls in `seq-eqstructs-eql` for the 5 diverged opcodes. The uniform
+//! `decode_*` FFI surface is identical for every backend; the linked feature
+//! decides each function's implementation.
 
 #[cfg(not(any(feature = "backend-live", feature = "backend-test", feature = "backend-eql")))]
 compile_error!(
@@ -421,7 +422,7 @@ fn decode_mob_update(bytes: &[u8]) -> ffi::MobUpdate {
     #[cfg(not(feature = "backend-eql"))]
     let parsed = seq_decode::parse_mob_update(bytes);
     #[cfg(feature = "backend-eql")]
-    let parsed = seq_decode::legends::parse_legends_mob_update(bytes);
+    let parsed = seq_eqstructs_eql::parse_legends_mob_update(bytes);
     match parsed {
         Ok(m) => ffi::MobUpdate {
             spawn_id: m.spawn_id,
@@ -709,7 +710,7 @@ fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
 // eql: Legends spawn decodes id/name/decoded-pos/level/hp; the rest stays zero.
 #[cfg(feature = "backend-eql")]
 fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
-    match seq_decode::legends::parse_legends_zone_spawn(bytes) {
+    match seq_eqstructs_eql::parse_legends_zone_spawn(bytes) {
         Ok(s) => ffi::Spawn {
             ok: true,
             name: s.name,
@@ -974,7 +975,7 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
     #[cfg(not(feature = "backend-eql"))]
     let parsed = seq_decode::parse_player_profile(bytes);
     #[cfg(feature = "backend-eql")]
-    let parsed = seq_decode::legends::parse_legends_profile(bytes);
+    let parsed = seq_eqstructs_eql::parse_legends_profile(bytes);
     match parsed {
         Ok(p) => ffi::PlayerProfile {
             ok: true,
@@ -1100,7 +1101,7 @@ fn decode_new_zone(bytes: &[u8]) -> ffi::NewZone {
     #[cfg(not(feature = "backend-eql"))]
     let parsed = seq_decode::parse_new_zone(bytes);
     #[cfg(feature = "backend-eql")]
-    let parsed = seq_decode::legends::parse_legends_new_zone(bytes);
+    let parsed = seq_eqstructs_eql::parse_legends_new_zone(bytes);
     match parsed {
         Ok(z) => ffi::NewZone {
             short_name: z.short_name,
@@ -1127,7 +1128,7 @@ fn decode_player_self_pos(bytes: &[u8]) -> ffi::PlayerSelfPos {
     #[cfg(not(feature = "backend-eql"))]
     let parsed = seq_decode::parse_player_self_pos(bytes);
     #[cfg(feature = "backend-eql")]
-    let parsed = seq_decode::legends::parse_legends_self_pos(bytes);
+    let parsed = seq_eqstructs_eql::parse_legends_self_pos(bytes);
     match parsed {
         Ok(p) => ffi::PlayerSelfPos {
             spawn_id: p.spawn_id,

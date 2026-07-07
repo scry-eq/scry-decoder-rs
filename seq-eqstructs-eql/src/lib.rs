@@ -1,19 +1,25 @@
-//! EverQuest Legends offset+scale parsers.
+//! EverQuest Legends wire decoders.
 //!
 //! eql owns no wire-struct types: the Legends wire is read here by byte offset
-//! plus per-axis scale (ported 1:1 from the C++ `EqlDispatch`). Live and eql share
-//! the daemon's neutral output structs — these parsers fill the eql-relevant
-//! fields (the rest stay `Default`) so the uniform `seq::rust::decode_*` bridge
-//! surface maps them exactly like the Live decoders. Field offsets/scales are
-//! /loc-confirmed — see showeq-daemon `OPCODES_LEGENDS.md`. Layout shuffles per
-//! patch; re-derive from captures, don't memorize.
+//! plus per-axis scale (ported 1:1 from the C++ `EqlDispatch`). Live and eql
+//! share the daemon's neutral output structs — these parsers fill the
+//! eql-relevant fields (the rest stay `Default`) so the uniform
+//! `seq::rust::decode_*` bridge surface maps them exactly like the Live
+//! decoders. Field offsets/scales are /loc-confirmed — see showeq-daemon
+//! `OPCODES_LEGENDS.md`. Layout shuffles per patch; re-derive from captures,
+//! don't memorize.
+//!
+//! This is the eql analogue of `seq-eqstructs-{live,test}`: it encapsulates
+//! everything backend-specific about reading eql's wire. `seq-decode` stays the
+//! backend-neutral shared decode layer (eql reuses it for the ~38 opcodes whose
+//! wire matches Live).
 
 use thiserror::Error;
 
-use crate::mob_update::MobUpdate;
-use crate::new_zone::NewZone;
-use crate::player_profile::PlayerProfile;
-use crate::player_self_pos::PlayerSelfPos;
+use seq_decode::mob_update::MobUpdate;
+use seq_decode::new_zone::NewZone;
+use seq_decode::player_profile::PlayerProfile;
+use seq_decode::player_self_pos::PlayerSelfPos;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum LegendsError {

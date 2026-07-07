@@ -191,6 +191,7 @@ dependencies = [
  "cxx",
  "cxx-build",
  "seq-decode",
+ "seq-eqstructs-eql",
 ]
 
 [[package]]
@@ -199,6 +200,14 @@ version = "0.1.0"
 dependencies = [
  "seq-eqstructs-live",
  "seq-eqstructs-test",
+ "thiserror",
+]
+
+[[package]]
+name = "seq-eqstructs-eql"
+version = "0.1.0"
+dependencies = [
+ "seq-decode",
  "thiserror",
 ]
 

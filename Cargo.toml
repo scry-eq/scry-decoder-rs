@@ -6,7 +6,7 @@ resolver = "2"
 # `seq-decode` (forwarded from `seq-bridge`): live+eql share the Live struct
 # set (`seq-eqstructs-live`); test has its own (`seq-eqstructs-test`); eql adds
 # offset-based Legends parsers on top of the shared Live decoders.
-members = ["seq-decode", "seq-bridge", "seq-eqstructs-live", "seq-eqstructs-test"]
+members = ["seq-decode", "seq-bridge", "seq-eqstructs-live", "seq-eqstructs-test", "seq-eqstructs-eql"]
 
 [workspace.package]
 version = "0.1.0"
@@ -22,6 +22,7 @@ thiserror = "2"
 seq-decode = { path = "seq-decode", default-features = false }
 seq-eqstructs-live = { path = "seq-eqstructs-live" }
 seq-eqstructs-test = { path = "seq-eqstructs-test" }
+seq-eqstructs-eql = { path = "seq-eqstructs-eql" }
 
 [profile.release]
 lto = "thin"

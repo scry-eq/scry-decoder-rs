@@ -26,12 +26,14 @@
 //! (variable-length 13..24b BitStream / sign-magnitude packing).
 
 // Backend-selected struct bindings. Parsers reference `crate::eqstructs::<name>`;
-// this aliases the generated crate for the active backend. live+eql share the
-// Live struct set; test has its own. Exactly one backend feature is enabled
-// (Corrosion builds seq-bridge with NO_DEFAULT_FEATURES + one backend-*).
-#[cfg(not(any(feature = "backend-live", feature = "backend-test", feature = "backend-eql")))]
+// this aliases the generated crate for the active backend. seq-decode is the
+// shared Live decode layer: `backend-live` and `backend-test` pick the matching
+// struct-mirror crate. eql reuses `backend-live` (its wire matches Live for the
+// ~38 shared opcodes) and layers `seq-eqstructs-eql` on top for the 5 diverged
+// ones — so seq-decode itself has no `backend-eql` feature.
+#[cfg(not(any(feature = "backend-live", feature = "backend-test")))]
 compile_error!("seq-decode: enable exactly one backend feature (default: backend-live)");
-#[cfg(any(feature = "backend-live", feature = "backend-eql"))]
+#[cfg(feature = "backend-live")]
 pub(crate) use seq_eqstructs_live as eqstructs;
 #[cfg(feature = "backend-test")]
 pub(crate) use seq_eqstructs_test as eqstructs;
@@ -80,12 +82,6 @@ pub mod special_message;
 pub mod wear_change;
 pub mod zone_change;
 pub mod zone_point;
-
-// EverQuest Legends offset parsers — the 5 opcodes whose wire diverges from
-// Live (spawn, profile, self-pos, new-zone, mob-update). Shared Live decoders
-// cover the rest of eql's opcode set.
-#[cfg(feature = "backend-eql")]
-pub mod legends;
 
 pub use delete_spawn::{
     parse_delete_spawn, DeleteSpawn, DeleteSpawnError, PAYLOAD_LEN as DELETE_SPAWN_LEN,
