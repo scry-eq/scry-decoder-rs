@@ -69,7 +69,7 @@ mod ffi {
         // 9 slots × 5 u32s — same memory layout as
         // EquipStruct equipment[9] on the C++ side.
         equip_data: [u32; 45],
-        pos_data: [u32; 6],
+        pos_data: [u32; 5],
 
         level: u8,
         npc: u8,
@@ -664,7 +664,7 @@ fn spawn_err() -> ffi::Spawn {
         deity: 0, guild_id: 0, guild_server_id: 0, class_: 0,
         pet_owner_id: 0,
         equip_data: [0; 45],
-        pos_data: [0; 6],
+        pos_data: [0; 5],
         level: 0, npc: 0, other_data: 0, char_properties: 0,
         cur_hp: 0, holding: 0, state: 0, light: 0, is_mercenary: 0,
         x: 0, y: 0, z: 0, max_hp: 0,

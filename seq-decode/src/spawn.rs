@@ -54,7 +54,7 @@ pub struct Spawn {
     /// Slots not populated by this payload (PC-only with the abridged
     /// equipment layout) stay zero.
     pub equip_data: [u32; 45],
-    pub pos_data: [u32; 6],
+    pub pos_data: [u32; 5],
 
     pub level: u8,
     pub npc: u8,
@@ -77,7 +77,7 @@ impl Default for Spawn {
             suffix: String::new(),
             spawn_id: 0, misc_data: 0, body_type: 0, race: 0, deity: 0,
             guild_id: 0, guild_server_id: 0, class_: 0, pet_owner_id: 0,
-            equip_data: [0; 45], pos_data: [0; 6],
+            equip_data: [0; 45], pos_data: [0; 5],
             level: 0, npc: 0, other_data: 0, char_properties: 0,
             cur_hp: 0, holding: 0, state: 0, light: 0, is_mercenary: 0,
         }
@@ -198,7 +198,10 @@ pub fn parse_spawn(bytes: &[u8]) -> Result<Spawn, SpawnError> {
         }
     }
 
-    for slot in 0..6 {
+    // Position block: 5 raw u32 (the bitfield packing is decoded C++-side via
+    // spawnStruct's position union). Was 6 in feat's era — a post-feat patch
+    // dropped one u32 (posData[6] -> posData[5]).
+    for slot in 0..5 {
         out.pos_data[slot] = c.read_u32_le()?;
     }
 
@@ -280,8 +283,8 @@ mod tests {
         for v in [70u32, 71, 72, 73, 74, 80, 81, 82, 83, 84] {
             buf.extend_from_slice(&v.to_le_bytes());
         }
-        // posData[6]
-        for v in [1u32, 2, 3, 4, 5, 6] {
+        // posData[5]
+        for v in [1u32, 2, 3, 4, 5] {
             buf.extend_from_slice(&v.to_le_bytes());
         }
         buf.extend_from_slice(&[0; 8]); // unknowns
@@ -314,7 +317,7 @@ mod tests {
             }
         }
         assert_eq!(&s.equip_data[35..45], &[70, 71, 72, 73, 74, 80, 81, 82, 83, 84]);
-        assert_eq!(s.pos_data, [1, 2, 3, 4, 5, 6]);
+        assert_eq!(s.pos_data, [1, 2, 3, 4, 5]);
         assert_eq!(s.is_mercenary, 1);
         assert_eq!(s.bytes_consumed as usize, buf.len());
     }
@@ -353,7 +356,7 @@ mod tests {
                 buf.extend_from_slice(&v.to_le_bytes());
             }
         }
-        for v in [10u32, 20, 30, 40, 50, 60] {
+        for v in [10u32, 20, 30, 40, 50] {
             buf.extend_from_slice(&v.to_le_bytes());
         }
         buf.extend_from_slice(b"My Title\0");
