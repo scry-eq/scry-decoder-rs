@@ -111,28 +111,22 @@ pub fn parse_legends_self_pos(b: &[u8]) -> Result<PlayerSelfPos, LegendsError> {
     })
 }
 
-/// `OP_NewZone` (Legends) S>C: null-terminated short name, then long name.
+/// `OP_NewZone` (Legends, id 0x4bc8 post-2026-07-07) S>C, 14B: the zone is now
+/// a NUMERIC id (no name text on the wire — swept all 177 opcodes). zoneId =
+/// u32@6 (=25 nektulos in the confirming capture; a u16@12 copies it). Names are
+/// left empty; the daemon resolves id -> short/long via zones.h
+/// (`ZoneMgr::setZoneById`).
 ///
-/// TODO(2026-07-07 re-map): post-patch the zone is sent as a NUMERIC id (no
-/// zone-name text on the wire — swept all 177 opcodes). This name-based parser
-/// is unused until the zone-id opcode is found + an id→shortname table added.
+/// Single-fire / single-zone confirmation — @6 vs @12 not yet distinguished;
+/// re-check the offset against a capture from a different zone.
 pub fn parse_legends_new_zone(b: &[u8]) -> Result<NewZone, LegendsError> {
-    if b.len() < 2 {
+    if b.len() < 10 {
         return Err(LegendsError::Short(b.len()));
     }
-    let nul0 = b.iter().position(|&c| c == 0).unwrap_or(b.len());
-    if nul0 == 0 {
-        return Err(LegendsError::Short(0)); // empty short name
-    }
-    let short_name = latin1(&b[..nul0]);
-    let ls = nul0 + 1;
-    let long_name = if ls >= b.len() {
-        String::new()
-    } else {
-        let nul1 = b[ls..].iter().position(|&c| c == 0).map_or(b.len(), |p| ls + p);
-        latin1(&b[ls..nul1])
-    };
-    Ok(NewZone { short_name, long_name, ..Default::default() })
+    Ok(NewZone {
+        zone_id: rd_u32(b, 6),
+        ..Default::default()
+    })
 }
 
 /// `OP_MobUpdate` (Legends) S>C, 14B: spawnId u32 @0; position int16 fixed-point.
@@ -293,5 +287,15 @@ mod tests {
         assert_eq!(c.faction, 4);
         assert_eq!(c.level, 0);
         assert!(parse_legends_consider(&[0u8; 23]).is_err());
+    }
+
+    #[test]
+    fn new_zone_reads_numeric_id() {
+        let mut b = [0u8; 14];
+        b[6..10].copy_from_slice(&25u32.to_le_bytes()); // zoneId @6 (nektulos)
+        let z = parse_legends_new_zone(&b).unwrap();
+        assert_eq!(z.zone_id, 25);
+        assert!(z.short_name.is_empty());
+        assert!(parse_legends_new_zone(&[0u8; 9]).is_err());
     }
 }

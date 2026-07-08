@@ -275,6 +275,7 @@ mod ffi {
         zonefile: String,
         zone_exp_multiplier: f32,
         safe_y: f32, safe_x: f32, safe_z: f32,
+        zone_id: u32,
         ok: bool,
     }
 
@@ -1138,6 +1139,7 @@ fn decode_new_zone(bytes: &[u8]) -> ffi::NewZone {
             zonefile:   z.zonefile,
             zone_exp_multiplier: z.zone_exp_multiplier,
             safe_y: z.safe_y, safe_x: z.safe_x, safe_z: z.safe_z,
+            zone_id: z.zone_id,
             ok: true,
         },
         Err(_) => ffi::NewZone {
@@ -1146,6 +1148,7 @@ fn decode_new_zone(bytes: &[u8]) -> ffi::NewZone {
             zonefile:   String::new(),
             zone_exp_multiplier: 0.0,
             safe_y: 0.0, safe_x: 0.0, safe_z: 0.0,
+            zone_id: 0,
             ok: false,
         },
     }

@@ -27,6 +27,9 @@ pub struct NewZone {
     pub safe_y: f32,
     pub safe_x: f32,
     pub safe_z: f32,
+    /// Classic zone id. Live's name-based OP_NewZone leaves this 0; the eql
+    /// backend's numeric OP_NewZone sets it and the daemon resolves id->name.
+    pub zone_id: u32,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -77,6 +80,7 @@ pub fn parse_new_zone(bytes: &[u8]) -> Result<NewZone, NewZoneError> {
     Ok(NewZone {
         short_name, long_name, zonefile,
         zone_exp_multiplier, safe_y, safe_x, safe_z,
+        zone_id: 0,
     })
 }
 
