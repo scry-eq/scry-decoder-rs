@@ -82,10 +82,18 @@ pub fn parse_legends_profile(b: &[u8]) -> Result<PlayerProfile, LegendsError> {
     if b.len() < 34 {
         return Err(LegendsError::Short(b.len()));
     }
+    // Current zone (classic id) lives deep at u16@36211 — the {zoneId, x, y, z}
+    // current-location record. CONFIRMED by cross-diffing two zones (the only
+    // field that flips: nektulos=25 -> guktop=65). This is the CURRENT zone; the
+    // BIND zone (@39, and 0x4bc8@6) is a different field — don't confuse them.
+    // NOTE: deep offset in a ~40KB variable-length payload — may shift with big
+    // inventory changes; re-derive if the resolved zone comes out wrong.
+    let zone_id = if b.len() >= 36213 { rd_u16(b, 36211) } else { 0 };
     Ok(PlayerProfile {
         race: rd_u32(b, 21),
         class_: rd_u32(b, 25),
         level: b[33],
+        zone_id,
         ..Default::default()
     })
 }
@@ -111,14 +119,11 @@ pub fn parse_legends_self_pos(b: &[u8]) -> Result<PlayerSelfPos, LegendsError> {
     })
 }
 
-/// `OP_NewZone` (Legends, id 0x4bc8 post-2026-07-07) S>C, 14B: the zone is now
-/// a NUMERIC id (no name text on the wire — swept all 177 opcodes). zoneId =
-/// u32@6 (=25 nektulos in the confirming capture; a u16@12 copies it). Names are
-/// left empty; the daemon resolves id -> short/long via zones.h
-/// (`ZoneMgr::setZoneById`).
-///
-/// Single-fire / single-zone confirmation — @6 vs @12 not yet distinguished;
-/// re-check the offset against a capture from a different zone.
+/// `OP_NewZone` (Legends, id 0x4bc8) S>C, 14B, once at zone-in. **UNWIRED**:
+/// its `u32@6` is the **BIND** zone (identical across zones — confirmed
+/// nektulos-vs-upperguk both read 25), NOT the current zone. The current zone is
+/// read from `OP_PlayerProfile` (`parse_legends_profile`, u16@36211) instead.
+/// Kept for the uniform `decode_new_zone` surface; the returned `zone_id` is bind.
 pub fn parse_legends_new_zone(b: &[u8]) -> Result<NewZone, LegendsError> {
     if b.len() < 10 {
         return Err(LegendsError::Short(b.len()));
