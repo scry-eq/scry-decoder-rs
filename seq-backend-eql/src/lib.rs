@@ -67,13 +67,17 @@ pub struct LegendsSpawn {
     pub max_hp: u8,
 }
 
-/// `OP_PlayerProfile` (Legends) S>C: identity header — race u32 @21, class u32
-/// @25, level u8 @33. Truncation to the daemon's u16 race / u8 class happens on
-/// the C++ side (`setIdentity`), same as the Live path.
+/// `OP_PlayerProfile` (Legends, id 0x62f0 post-patch) S>C: identity header —
+/// race u32 @21, class u32 @25, level u8 @33. Truncation to the daemon's u16
+/// race / u8 class happens on the C++ side (`setIdentity`), same as the Live
+/// path.
 ///
-/// TODO(2026-07-07 re-map): opcode id moved to 0x62f0; these offsets are the
-/// pre-patch layout, NOT yet re-verified (needs a capture where the char's
-/// race/class/level are known ground truth). Identity may read wrong until then.
+/// The header offsets survived the 2026-07-07 patch — VERIFIED against a known
+/// char (L12, race DarkElf=6@21, level 12@33). `class` @25 is the **primary of
+/// three** (Legends chars have 3 simultaneous classes, e.g. SHD/DRU/MNK = 5/6/7);
+/// the 2nd/3rd class ids live in a separate block (~@12094), not surfaced — the
+/// daemon's neutral `setIdentity` carries a single class. Add a 3-class field to
+/// the profile output + proto if/when the client should show all three.
 pub fn parse_legends_profile(b: &[u8]) -> Result<PlayerProfile, LegendsError> {
     if b.len() < 34 {
         return Err(LegendsError::Short(b.len()));
