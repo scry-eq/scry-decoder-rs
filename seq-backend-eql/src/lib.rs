@@ -98,14 +98,13 @@ pub fn parse_legends_profile(b: &[u8]) -> Result<PlayerProfile, LegendsError> {
     })
 }
 
-/// `OP_ClientUpdate` (Legends) C>S, 42B: IEEE-float position. spawnId u16 @2;
-/// **post-2026-07-07 layout**: x @10, y @18, z @30 (/loc-confirmed via a
-/// standing-still packet — all other f32 offsets read 0 at rest).
-///
-/// TODO(2026-07-07 re-map): deltas + heading offsets not yet re-derived (the
-/// patch moved position from 22/34/38 onto the old delta/heading offsets). Left
-/// 0 → speed reads 0 between updates and the facing arrow doesn't rotate; the
-/// dot still tracks correctly. Pin from a turn/jump capture.
+/// `OP_ClientUpdate` (Legends) C>S, 42B: IEEE-float position + velocity + heading.
+/// **post-2026-07-07 layout** (fully cracked 2026-07-08): spawnId u16 @2;
+/// position x @10 / y @18 / z @30 (/loc-confirmed); velocity deltaX f32 @6 /
+/// deltaY f32 @26 (correlated with Δposition, ±2 = full run speed); **heading =
+/// u16 @14, 11-bit (0–2047 = full circle), North≈0** — confirmed against a Sense
+/// Heading capture (N=2043, E=1542, S=1036, W=492, i.e. value falls ~256 per 45°).
+/// deltaZ candidate @22 (0 on flat ground, unconfirmed).
 pub fn parse_legends_self_pos(b: &[u8]) -> Result<PlayerSelfPos, LegendsError> {
     if b.len() != 42 {
         return Err(LegendsError::BadLength(b.len()));
@@ -115,6 +114,10 @@ pub fn parse_legends_self_pos(b: &[u8]) -> Result<PlayerSelfPos, LegendsError> {
         x: rd_f32(b, 10),
         y: rd_f32(b, 18),
         z: rd_f32(b, 30),
+        delta_x: rd_f32(b, 6),
+        delta_y: rd_f32(b, 26),
+        delta_z: rd_f32(b, 22), // candidate; 0 on flat ground, unconfirmed
+        heading: rd_u16(b, 14) & 0x7FF,
         ..Default::default()
     })
 }
@@ -226,11 +229,17 @@ mod tests {
         b[10..14].copy_from_slice(&2246.5f32.to_le_bytes()); // x
         b[18..22].copy_from_slice(&(-954.77f32).to_le_bytes()); // y
         b[30..34].copy_from_slice(&(-4.97f32).to_le_bytes()); // z
+        b[6..10].copy_from_slice(&1.5f32.to_le_bytes()); // deltaX
+        b[26..30].copy_from_slice(&(-2.0f32).to_le_bytes()); // deltaY
+        b[14..16].copy_from_slice(&512u16.to_le_bytes()); // heading (11-bit)
         let p = parse_legends_self_pos(&b).unwrap();
         assert_eq!(p.spawn_id, 7);
         assert_eq!(p.x, 2246.5);
         assert_eq!(p.y, -954.77);
         assert_eq!(p.z, -4.97);
+        assert_eq!(p.delta_x, 1.5);
+        assert_eq!(p.delta_y, -2.0);
+        assert_eq!(p.heading, 512);
     }
 
     #[test]
