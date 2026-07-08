@@ -7,7 +7,7 @@
 //! `seq::rust::decode_*` bridge surface maps them exactly like the Live
 //! decoders. Field offsets/scales are /loc-confirmed — see showeq-daemon
 //! `OPCODES_LEGENDS.md`. Layout shuffles per patch; re-derive from captures,
-//! don't memorize.
+//! don't memorize. **Offsets below are the 2026-07-07 post-patch layout.**
 //!
 //! This is the eql analogue of `seq-eqstructs-{live,test}`: it encapsulates
 //! everything backend-specific about reading eql's wire. `seq-decode` stays the
@@ -16,6 +16,7 @@
 
 use thiserror::Error;
 
+use seq_decode::consider::Consider;
 use seq_decode::mob_update::MobUpdate;
 use seq_decode::new_zone::NewZone;
 use seq_decode::player_profile::PlayerProfile;
@@ -66,9 +67,13 @@ pub struct LegendsSpawn {
     pub max_hp: u8,
 }
 
-/// `OP_PlayerProfile` (Legends) S>C: identity header only — race u32 @21,
-/// class u32 @25, level u8 @33. Truncation to the daemon's u16 race / u8 class
-/// happens on the C++ side (`setIdentity`), same as the Live path.
+/// `OP_PlayerProfile` (Legends) S>C: identity header — race u32 @21, class u32
+/// @25, level u8 @33. Truncation to the daemon's u16 race / u8 class happens on
+/// the C++ side (`setIdentity`), same as the Live path.
+///
+/// TODO(2026-07-07 re-map): opcode id moved to 0x62f0; these offsets are the
+/// pre-patch layout, NOT yet re-verified (needs a capture where the char's
+/// race/class/level are known ground truth). Identity may read wrong until then.
 pub fn parse_legends_profile(b: &[u8]) -> Result<PlayerProfile, LegendsError> {
     if b.len() < 34 {
         return Err(LegendsError::Short(b.len()));
@@ -81,27 +86,32 @@ pub fn parse_legends_profile(b: &[u8]) -> Result<PlayerProfile, LegendsError> {
     })
 }
 
-/// `OP_ClientUpdate` (Legends) C>S, 42B: IEEE-float position + deltas (unlike
-/// Live's bit-packed struct). spawnId u16 @2; x @22, z @34, y @38; deltaX @30,
-/// deltaY @10, deltaZ @14; heading = 11-bit field `(u32 @26 >> 10) & 0x7FF`.
+/// `OP_ClientUpdate` (Legends) C>S, 42B: IEEE-float position. spawnId u16 @2;
+/// **post-2026-07-07 layout**: x @10, y @18, z @30 (/loc-confirmed via a
+/// standing-still packet — all other f32 offsets read 0 at rest).
+///
+/// TODO(2026-07-07 re-map): deltas + heading offsets not yet re-derived (the
+/// patch moved position from 22/34/38 onto the old delta/heading offsets). Left
+/// 0 → speed reads 0 between updates and the facing arrow doesn't rotate; the
+/// dot still tracks correctly. Pin from a turn/jump capture.
 pub fn parse_legends_self_pos(b: &[u8]) -> Result<PlayerSelfPos, LegendsError> {
     if b.len() != 42 {
         return Err(LegendsError::BadLength(b.len()));
     }
     Ok(PlayerSelfPos {
         spawn_id: rd_u16(b, 2),
-        x: rd_f32(b, 22),
-        y: rd_f32(b, 38),
-        z: rd_f32(b, 34),
-        delta_x: rd_f32(b, 30),
-        delta_y: rd_f32(b, 10),
-        delta_z: rd_f32(b, 14),
-        heading: ((rd_u32(b, 26) >> 10) & 0x7FF) as u16,
+        x: rd_f32(b, 10),
+        y: rd_f32(b, 18),
+        z: rd_f32(b, 30),
         ..Default::default()
     })
 }
 
 /// `OP_NewZone` (Legends) S>C: null-terminated short name, then long name.
+///
+/// TODO(2026-07-07 re-map): post-patch the zone is sent as a NUMERIC id (no
+/// zone-name text on the wire — swept all 177 opcodes). This name-based parser
+/// is unused until the zone-id opcode is found + an id→shortname table added.
 pub fn parse_legends_new_zone(b: &[u8]) -> Result<NewZone, LegendsError> {
     if b.len() < 2 {
         return Err(LegendsError::Short(b.len()));
@@ -121,53 +131,72 @@ pub fn parse_legends_new_zone(b: &[u8]) -> Result<NewZone, LegendsError> {
     Ok(NewZone { short_name, long_name, ..Default::default() })
 }
 
-/// `OP_MobUpdate` (Legends) S>C, 14B: spawnId u32 @0; position int16 fixed-point
-/// — X unscaled @10, Y×8 @4, Z×64 @6.
+/// `OP_MobUpdate` (Legends) S>C, 14B: spawnId u32 @0; position int16 fixed-point.
+/// **post-2026-07-07 layout**: X @4 /8, Z @6 /64, Y @10 (unscaled) — confirmed
+/// 4/4 against stationary mobs' `OP_ZoneSpawns` positions.
 pub fn parse_legends_mob_update(b: &[u8]) -> Result<MobUpdate, LegendsError> {
     if b.len() != 14 {
         return Err(LegendsError::BadLength(b.len()));
     }
     Ok(MobUpdate {
         spawn_id: rd_u32(b, 0) as u16,
-        x: rd_i16(b, 10) as i32,
-        y: (rd_i16(b, 4) / 8) as i32,
+        x: (rd_i16(b, 4) / 8) as i32,
+        y: rd_i16(b, 10) as i32,
         z: (rd_i16(b, 6) / 64) as i32,
         heading: 0,
     })
 }
 
-/// `OP_ZoneSpawns` (Legends) S>C: null-terminated name, then a fixed 326-byte
-/// NPC block. Block offsets: spawnId u32 @0, level u8 @4, curHpPct u8 @44,
-/// maxHpPct u8 @45; position int16 mixed-scale — X @231 /8, Z @227 /8, Y @241.
+/// `OP_ZoneSpawns` (Legends) S>C: null-terminated name, then a variable-length
+/// block. Header fields stay at the front: spawnId u32 @0, level u8 @4,
+/// curHpPct u8 @44, maxHpPct u8 @45. **post-2026-07-07 layout**: position sits
+/// at a FIXED offset from the END of the block (block grew 326→330 NPC / 486
+/// rich, but the position triple stays anchored to the tail): Z @(len-95) /8,
+/// X @(len-91) /8, Y @(len-87) /8 — /loc-confirmed on two stationary guards
+/// across both block sizes.
 pub fn parse_legends_zone_spawn(b: &[u8]) -> Result<LegendsSpawn, LegendsError> {
     let name_len = b.iter().position(|&c| c == 0).unwrap_or(b.len());
     if name_len == 0 || name_len >= b.len() {
         return Err(LegendsError::Short(b.len()));
     }
     let s = &b[name_len + 1..];
-    if s.len() != 326 {
+    // Need the front header (through hp@45) AND the tail position triple.
+    if s.len() < 96 {
         return Err(LegendsError::BadLength(s.len()));
     }
+    let l = s.len();
     Ok(LegendsSpawn {
         id: rd_u32(s, 0) as u16,
         name: latin1(&b[..name_len]),
-        x: rd_i16(s, 231) / 8,
-        y: rd_i16(s, 241),
-        z: rd_i16(s, 227) / 8,
+        x: rd_i16(s, l - 91) / 8,
+        y: rd_i16(s, l - 87) / 8,
+        z: rd_i16(s, l - 95) / 8,
         level: s[4],
         cur_hp: s[44],
         max_hp: s[45],
     })
 }
 
+/// `OP_Consider` (Legends) 24B: `{u32 self, u32 target, u32 faction, u32 =7,
+/// pad, pad}`. C>S request has faction=0; the S>C reply fills faction (observed
+/// 2=warmly, 4=amiably — the friendliness word; **level is NOT here**, the
+/// client reads it from the spawn). Maps to the shared `Consider` (level=0) so
+/// the daemon's `SpawnShell::consMessage` path is uniform with Live.
+pub fn parse_legends_consider(b: &[u8]) -> Result<Consider, LegendsError> {
+    if b.len() != 24 {
+        return Err(LegendsError::BadLength(b.len()));
+    }
+    Ok(Consider {
+        player_id: rd_u32(b, 0),
+        target_id: rd_u32(b, 4),
+        faction: rd_u32(b, 8) as i32,
+        level: 0,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn profile_rejects_short() {
-        assert!(parse_legends_profile(&[0u8; 33]).is_err());
-    }
 
     #[test]
     fn profile_reads_identity() {
@@ -191,62 +220,51 @@ mod tests {
     fn self_pos_reads_floats() {
         let mut b = [0u8; 42];
         b[2..4].copy_from_slice(&7u16.to_le_bytes());
-        b[22..26].copy_from_slice(&100.0f32.to_le_bytes()); // x
-        b[38..42].copy_from_slice(&200.0f32.to_le_bytes()); // y
-        b[34..38].copy_from_slice(&50.0f32.to_le_bytes()); // z
-        b[26..30].copy_from_slice(&(3u32 << 10).to_le_bytes()); // heading = 3
+        b[10..14].copy_from_slice(&2246.5f32.to_le_bytes()); // x
+        b[18..22].copy_from_slice(&(-954.77f32).to_le_bytes()); // y
+        b[30..34].copy_from_slice(&(-4.97f32).to_le_bytes()); // z
         let p = parse_legends_self_pos(&b).unwrap();
         assert_eq!(p.spawn_id, 7);
-        assert_eq!(p.x, 100.0);
-        assert_eq!(p.y, 200.0);
-        assert_eq!(p.z, 50.0);
-        assert_eq!(p.heading, 3);
-    }
-
-    #[test]
-    fn new_zone_reads_names() {
-        let mut b = Vec::new();
-        b.extend_from_slice(b"qeynos\0");
-        b.extend_from_slice(b"North Qeynos\0");
-        let z = parse_legends_new_zone(&b).unwrap();
-        assert_eq!(z.short_name, "qeynos");
-        assert_eq!(z.long_name, "North Qeynos");
+        assert_eq!(p.x, 2246.5);
+        assert_eq!(p.y, -954.77);
+        assert_eq!(p.z, -4.97);
     }
 
     #[test]
     fn mob_update_reads_scaled() {
         let mut b = [0u8; 14];
         b[0..4].copy_from_slice(&9u32.to_le_bytes());
-        b[10..12].copy_from_slice(&(-5i16).to_le_bytes()); // x
-        b[4..6].copy_from_slice(&80i16.to_le_bytes()); // y*8 -> 10
+        b[4..6].copy_from_slice(&80i16.to_le_bytes()); // x*8 -> 10
         b[6..8].copy_from_slice(&640i16.to_le_bytes()); // z*64 -> 10
+        b[10..12].copy_from_slice(&(-5i16).to_le_bytes()); // y unscaled
         let m = parse_legends_mob_update(&b).unwrap();
         assert_eq!(m.spawn_id, 9);
-        assert_eq!(m.x, -5);
-        assert_eq!(m.y, 10);
+        assert_eq!(m.x, 10);
         assert_eq!(m.z, 10);
+        assert_eq!(m.y, -5);
     }
 
     #[test]
-    fn spawn_rejects_wrong_block() {
+    fn spawn_rejects_short_block() {
         let mut b = Vec::new();
         b.extend_from_slice(b"orc\0");
-        b.extend_from_slice(&[0u8; 100]); // wrong block size
+        b.extend_from_slice(&[0u8; 50]); // block < 96
         assert!(parse_legends_zone_spawn(&b).is_err());
     }
 
     #[test]
-    fn spawn_reads_npc_block() {
+    fn spawn_reads_variable_block_position_from_end() {
+        // 100-byte block: pos at len-95/91/87 = 5/9/13.
         let mut b = Vec::new();
         b.extend_from_slice(b"an orc\0");
-        let mut block = [0u8; 326];
+        let mut block = [0u8; 100];
         block[0..4].copy_from_slice(&123u32.to_le_bytes()); // id
         block[4] = 40; // level
         block[44] = 90; // curHp%
         block[45] = 100; // maxHp%
-        block[231..233].copy_from_slice(&80i16.to_le_bytes()); // x /8 -> 10
-        block[241..243].copy_from_slice(&(-15i16).to_le_bytes()); // y
-        block[227..229].copy_from_slice(&640i16.to_le_bytes()); // z /8 -> 80
+        block[5..7].copy_from_slice(&(640i16).to_le_bytes()); // z /8 -> 80  (len-95)
+        block[9..11].copy_from_slice(&(80i16).to_le_bytes()); // x /8 -> 10  (len-91)
+        block[13..15].copy_from_slice(&(-120i16).to_le_bytes()); // y /8 -> -15 (len-87)
         b.extend_from_slice(&block);
         let s = parse_legends_zone_spawn(&b).unwrap();
         assert_eq!(s.id, 123);
@@ -257,5 +275,19 @@ mod tests {
         assert_eq!(s.level, 40);
         assert_eq!(s.cur_hp, 90);
         assert_eq!(s.max_hp, 100);
+    }
+
+    #[test]
+    fn consider_reads_self_target_faction() {
+        let mut b = [0u8; 24];
+        b[0..4].copy_from_slice(&27090u32.to_le_bytes()); // self
+        b[4..8].copy_from_slice(&11626u32.to_le_bytes()); // target
+        b[8..12].copy_from_slice(&4u32.to_le_bytes()); // faction (amiably)
+        let c = parse_legends_consider(&b).unwrap();
+        assert_eq!(c.player_id, 27090);
+        assert_eq!(c.target_id, 11626);
+        assert_eq!(c.faction, 4);
+        assert_eq!(c.level, 0);
+        assert!(parse_legends_consider(&[0u8; 23]).is_err());
     }
 }

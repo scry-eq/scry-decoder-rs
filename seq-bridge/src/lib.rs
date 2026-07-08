@@ -560,7 +560,11 @@ fn decode_end_update(bytes: &[u8]) -> ffi::EndUpdate {
 }
 
 fn decode_consider(bytes: &[u8]) -> ffi::Consider {
-    match seq_decode::parse_consider(bytes) {
+    #[cfg(not(feature = "backend-eql"))]
+    let parsed = seq_decode::parse_consider(bytes);
+    #[cfg(feature = "backend-eql")]
+    let parsed = seq_backend_eql::parse_legends_consider(bytes);
+    match parsed {
         Ok(c) => ffi::Consider {
             player_id: c.player_id, target_id: c.target_id,
             faction: c.faction, level: c.level, ok: true,
