@@ -100,8 +100,9 @@ pub fn parse_legends_profile(b: &[u8]) -> Result<PlayerProfile, LegendsError> {
 
 /// `OP_ClientUpdate` (Legends) C>S, 42B: IEEE-float position + velocity + heading.
 /// **post-2026-07-07 layout** (fully cracked 2026-07-08): spawnId u16 @2;
-/// position x @10 / y @18 / z @30 (/loc-confirmed); velocity deltaX f32 @6 /
-/// deltaY f32 @26 (correlated with Δposition, ±2 = full run speed); **heading =
+/// position gameY@10 / gameX@18 / z@30 on the wire (EQ /loc prints Y,X,Z) —
+/// bound below as x=gameX=@18, y=gameY=@10, z@30; velocity gameY-vel f32@6 /
+/// gameX-vel f32@26 (±2 = full run speed) → deltaX=@26, deltaY=@6; **heading =
 /// u16 @14, 11-bit (0–2047 = full circle), North≈0** — confirmed against a Sense
 /// Heading capture (N=2043, E=1542, S=1036, W=492, i.e. value falls ~256 per 45°).
 /// deltaZ candidate @22 (0 on flat ground, unconfirmed).
@@ -109,13 +110,16 @@ pub fn parse_legends_self_pos(b: &[u8]) -> Result<PlayerSelfPos, LegendsError> {
     if b.len() != 42 {
         return Err(LegendsError::BadLength(b.len()));
     }
+    // NOTE: @10 is gameY and @18 is gameX (EQ /loc prints Y,X,Z, so the /loc
+    // ground truth was in that order). Bind x=gameX=@18, y=gameY=@10 to match
+    // the daemon's Spawn convention; likewise deltaX=@26, deltaY=@6.
     Ok(PlayerSelfPos {
         spawn_id: rd_u16(b, 2),
-        x: rd_f32(b, 10),
-        y: rd_f32(b, 18),
+        x: rd_f32(b, 18),
+        y: rd_f32(b, 10),
         z: rd_f32(b, 30),
-        delta_x: rd_f32(b, 6),
-        delta_y: rd_f32(b, 26),
+        delta_x: rd_f32(b, 26),
+        delta_y: rd_f32(b, 6),
         delta_z: rd_f32(b, 22), // candidate; 0 on flat ground, unconfirmed
         heading: rd_u16(b, 14) & 0x7FF,
         ..Default::default()
@@ -144,10 +148,11 @@ pub fn parse_legends_mob_update(b: &[u8]) -> Result<MobUpdate, LegendsError> {
     if b.len() != 14 {
         return Err(LegendsError::BadLength(b.len()));
     }
+    // @4 is gameY (÷8), @10 is gameX (unscaled) — bind x=gameX, y=gameY.
     Ok(MobUpdate {
         spawn_id: rd_u32(b, 0) as u16,
-        x: (rd_i16(b, 4) / 8) as i32,
-        y: rd_i16(b, 10) as i32,
+        x: rd_i16(b, 10) as i32,
+        y: (rd_i16(b, 4) / 8) as i32,
         z: (rd_i16(b, 6) / 64) as i32,
         heading: 0,
     })
@@ -174,8 +179,9 @@ pub fn parse_legends_zone_spawn(b: &[u8]) -> Result<LegendsSpawn, LegendsError> 
     Ok(LegendsSpawn {
         id: rd_u32(s, 0) as u16,
         name: latin1(&b[..name_len]),
-        x: rd_i16(s, l - 91) / 8,
-        y: rd_i16(s, l - 87) / 8,
+        // @(l-91) is gameY, @(l-87) is gameX (/loc is Y,X,Z); bind x=gameX, y=gameY.
+        x: rd_i16(s, l - 87) / 8,
+        y: rd_i16(s, l - 91) / 8,
         z: rd_i16(s, l - 95) / 8,
         level: s[4],
         cur_hp: s[44],
@@ -226,11 +232,11 @@ mod tests {
     fn self_pos_reads_floats() {
         let mut b = [0u8; 42];
         b[2..4].copy_from_slice(&7u16.to_le_bytes());
-        b[10..14].copy_from_slice(&2246.5f32.to_le_bytes()); // x
-        b[18..22].copy_from_slice(&(-954.77f32).to_le_bytes()); // y
+        b[18..22].copy_from_slice(&2246.5f32.to_le_bytes()); // @18 = x (gameX)
+        b[10..14].copy_from_slice(&(-954.77f32).to_le_bytes()); // @10 = y (gameY)
         b[30..34].copy_from_slice(&(-4.97f32).to_le_bytes()); // z
-        b[6..10].copy_from_slice(&1.5f32.to_le_bytes()); // deltaX
-        b[26..30].copy_from_slice(&(-2.0f32).to_le_bytes()); // deltaY
+        b[26..30].copy_from_slice(&1.5f32.to_le_bytes()); // @26 = deltaX
+        b[6..10].copy_from_slice(&(-2.0f32).to_le_bytes()); // @6 = deltaY
         b[14..16].copy_from_slice(&512u16.to_le_bytes()); // heading (11-bit)
         let p = parse_legends_self_pos(&b).unwrap();
         assert_eq!(p.spawn_id, 7);
@@ -246,9 +252,9 @@ mod tests {
     fn mob_update_reads_scaled() {
         let mut b = [0u8; 14];
         b[0..4].copy_from_slice(&9u32.to_le_bytes());
-        b[4..6].copy_from_slice(&80i16.to_le_bytes()); // x*8 -> 10
+        b[4..6].copy_from_slice(&(-40i16).to_le_bytes()); // y*8 -> -5
         b[6..8].copy_from_slice(&640i16.to_le_bytes()); // z*64 -> 10
-        b[10..12].copy_from_slice(&(-5i16).to_le_bytes()); // y unscaled
+        b[10..12].copy_from_slice(&10i16.to_le_bytes()); // x unscaled -> 10
         let m = parse_legends_mob_update(&b).unwrap();
         assert_eq!(m.spawn_id, 9);
         assert_eq!(m.x, 10);
@@ -275,8 +281,8 @@ mod tests {
         block[44] = 90; // curHp%
         block[45] = 100; // maxHp%
         block[5..7].copy_from_slice(&(640i16).to_le_bytes()); // z /8 -> 80  (len-95)
-        block[9..11].copy_from_slice(&(80i16).to_le_bytes()); // x /8 -> 10  (len-91)
-        block[13..15].copy_from_slice(&(-120i16).to_le_bytes()); // y /8 -> -15 (len-87)
+        block[9..11].copy_from_slice(&(-120i16).to_le_bytes()); // y /8 -> -15 (len-91)
+        block[13..15].copy_from_slice(&(80i16).to_le_bytes()); // x /8 -> 10  (len-87)
         b.extend_from_slice(&block);
         let s = parse_legends_zone_spawn(&b).unwrap();
         assert_eq!(s.id, 123);
