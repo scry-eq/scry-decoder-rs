@@ -429,11 +429,11 @@ mod ffi {
 }
 
 fn decode_mob_update(bytes: &[u8]) -> ffi::MobUpdate {
-    #[cfg(not(feature = "backend-eql"))]
-    let parsed = seq_decode::parse_mob_update(bytes);
-    #[cfg(feature = "backend-eql")]
-    let parsed = seq_backend_eql::parse_legends_mob_update(bytes);
-    match parsed {
+    // eql's OP_MobUpdate is byte-identical to Live's spawnPositionUpdate
+    // (14B, packed y:19/z:19/u3:7/x:19/heading:12 fixed-point ×8; verified
+    // 2026-07-08 over 1665 packets — 19-bit sign-fill consistent on every
+    // axis), so every backend shares the Live parser here.
+    match seq_decode::parse_mob_update(bytes) {
         Ok(m) => ffi::MobUpdate {
             spawn_id: m.spawn_id,
             x: m.x,
