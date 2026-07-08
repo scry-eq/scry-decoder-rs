@@ -185,13 +185,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d68f2ec51b097e4c1a75b681a8bec621909b5e91f15bb7b840c4f2f7b01148b2"
 
 [[package]]
+name = "seq-backend-eql"
+version = "0.1.0"
+dependencies = [
+ "seq-decode",
+ "thiserror",
+]
+
+[[package]]
 name = "seq-bridge"
 version = "0.1.0"
 dependencies = [
  "cxx",
  "cxx-build",
+ "seq-backend-eql",
  "seq-decode",
- "seq-eqstructs-eql",
 ]
 
 [[package]]
@@ -200,14 +208,6 @@ version = "0.1.0"
 dependencies = [
  "seq-eqstructs-live",
  "seq-eqstructs-test",
- "thiserror",
-]
-
-[[package]]
-name = "seq-eqstructs-eql"
-version = "0.1.0"
-dependencies = [
- "seq-decode",
  "thiserror",
 ]
 

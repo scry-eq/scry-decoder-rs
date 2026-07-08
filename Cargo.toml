@@ -1,12 +1,13 @@
 [workspace]
 resolver = "2"
-# Backend-keyed layout: each `seq-eqstructs-<backend>` crate mirrors the
-# corresponding backend/<t>/everquest.h. The active backend is selected via
-# the `backend-live` / `backend-test` / `backend-eql` Cargo features on
-# `seq-decode` (forwarded from `seq-bridge`): live+eql share the Live struct
-# set (`seq-eqstructs-live`); test has its own (`seq-eqstructs-test`); eql adds
-# offset-based Legends parsers on top of the shared Live decoders.
-members = ["seq-decode", "seq-bridge", "seq-eqstructs-live", "seq-eqstructs-test", "seq-eqstructs-eql"]
+# Backend-keyed layout. live+test each have a struct-mirror crate
+# (`seq-eqstructs-<t>`, a Rust mirror of backend/<t>/everquest.h) feeding the
+# shared `seq-decode` parsers. eql owns no C wire structs: `seq-backend-eql` is
+# a self-contained backend crate holding the offset+scale Legends parsers for
+# the 5 diverged opcodes. The active backend is selected via the
+# `backend-live` / `backend-test` / `backend-eql` Cargo features on `seq-decode`
+# (forwarded from `seq-bridge`); live+eql share the Live struct set + decoders.
+members = ["seq-decode", "seq-bridge", "seq-eqstructs-live", "seq-eqstructs-test", "seq-backend-eql"]
 
 [workspace.package]
 version = "0.1.0"
@@ -22,7 +23,7 @@ thiserror = "2"
 seq-decode = { path = "seq-decode", default-features = false }
 seq-eqstructs-live = { path = "seq-eqstructs-live" }
 seq-eqstructs-test = { path = "seq-eqstructs-test" }
-seq-eqstructs-eql = { path = "seq-eqstructs-eql" }
+seq-backend-eql = { path = "seq-backend-eql" }
 
 [profile.release]
 lto = "thin"

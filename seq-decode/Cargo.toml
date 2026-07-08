@@ -13,7 +13,7 @@ seq-eqstructs-live = { workspace = true, optional = true }
 seq-eqstructs-test = { workspace = true, optional = true }
 
 # Backend selection (forwarded from seq-bridge) — picks the struct-mirror crate.
-# eql has no feature here: it reuses backend-live and layers seq-eqstructs-eql
+# eql has no feature here: it reuses backend-live and layers seq-backend-eql
 # on top (in seq-bridge) for its 5 diverged opcodes.
 [features]
 default = ["backend-live"]

@@ -29,7 +29,7 @@
 // this aliases the generated crate for the active backend. seq-decode is the
 // shared Live decode layer: `backend-live` and `backend-test` pick the matching
 // struct-mirror crate. eql reuses `backend-live` (its wire matches Live for the
-// ~38 shared opcodes) and layers `seq-eqstructs-eql` on top for the 5 diverged
+// ~38 shared opcodes) and layers `seq-backend-eql` on top for the 5 diverged
 // ones — so seq-decode itself has no `backend-eql` feature.
 #[cfg(not(any(feature = "backend-live", feature = "backend-test")))]
 compile_error!("seq-decode: enable exactly one backend feature (default: backend-live)");

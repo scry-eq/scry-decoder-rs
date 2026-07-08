@@ -325,7 +325,7 @@ def emit_rust(structs: list[tuple[str, list[tuple[str, str, str]], int]]) -> str
 
 # Backends with their own bindings crate. live+test each mirror
 # showeq-daemon/src/backend/<target>/everquest.h; eql owns no wire structs
-# (its Legends parsers are hand-rolled in seq-decode/src/legends.rs).
+# (its Legends parsers are hand-rolled in the seq-backend-eql crate).
 TARGETS = ("live", "test")
 
 

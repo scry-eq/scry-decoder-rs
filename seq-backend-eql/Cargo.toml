@@ -1,5 +1,5 @@
 [package]
-name = "seq-eqstructs-eql"
+name = "seq-backend-eql"
 description = "EverQuest Legends wire decoders. eql owns no C wire structs, so unlike seq-eqstructs-{live,test} (struct mirrors) this crate holds the offset+scale parsers for the 5 opcodes whose Legends wire diverges from Live. It produces seq-decode's neutral output structs so the uniform bridge maps them exactly like the Live decoders."
 version.workspace = true
 edition.workspace = true
