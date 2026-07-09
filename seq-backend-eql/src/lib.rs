@@ -103,7 +103,7 @@ pub use formatted_message::{
 pub use ground_spawn::{parse_ground_spawn, GroundSpawn, GroundSpawnError};
 pub use group_disband::{parse_group_disband, GroupDisband, GroupDisbandError};
 pub use group_follow::{parse_group_follow, GroupFollow, GroupFollowError};
-pub use hp_update::{parse_hp_update, HpUpdate, HpUpdateError};
+pub use hp_update::{HpUpdate, HpUpdateError}; // eql owns canonical `parse_hp_update` (below)
 pub use illusion::{parse_illusion, Illusion, IllusionError};
 pub use level_update::{parse_level_update, LevelUpdate, LevelUpdateError};
 pub use mana_change::{parse_mana_change, ManaChange, ManaChangeError};
@@ -696,6 +696,23 @@ pub fn parse_consider(b: &[u8]) -> Result<Consider, DecodeError> {
     })
 }
 
+/// eql `OP_HPUpdate` (0x2735) — a multiplexed stat channel keyed by a subtype
+/// byte at offset 4. The 6-byte subtype-0x02 packet is the HP-bar feed:
+/// `u16 spawn_id, u16 0, u8 subtype=0x02, u8 hp_percent`. The daemon's spawns
+/// carry percentage HP (max=100), so this maps directly. Other sizes/subtypes
+/// (21/37/53-byte i64 cur/max stat pairs) are not the HP-bar feed and return an
+/// error so the bridge drops them (ok=false).
+pub fn parse_hp_update(b: &[u8]) -> Result<HpUpdate, DecodeError> {
+    if b.len() == 6 && b[4] == 0x02 {
+        return Ok(HpUpdate {
+            spawn_id: rd_u16(b, 0),
+            cur_hp: b[5] as i32,
+            max_hp: 100,
+        });
+    }
+    Err(DecodeError::BadLength(b.len()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -991,5 +1008,23 @@ mod tests {
         assert_eq!(c.faction, 4);
         assert_eq!(c.level, 0);
         assert!(parse_consider(&[0u8; 23]).is_err());
+    }
+
+    #[test]
+    fn hp_update_reads_percent_subtype() {
+        // 6-byte subtype-0x02 HP feed: id@0, subtype@4=0x02, hp%@5
+        let mut b = [0u8; 6];
+        b[0..2].copy_from_slice(&11744u16.to_le_bytes());
+        b[4] = 0x02;
+        b[5] = 73;
+        let h = parse_hp_update(&b).unwrap();
+        assert_eq!(h.spawn_id, 11744);
+        assert_eq!(h.cur_hp, 73);
+        assert_eq!(h.max_hp, 100);
+        // non-HP subtypes / other sizes are dropped
+        let mut other = [0u8; 6];
+        other[4] = 0x05;
+        assert!(parse_hp_update(&other).is_err());
+        assert!(parse_hp_update(&[0u8; 21]).is_err());
     }
 }
