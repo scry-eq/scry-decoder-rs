@@ -164,16 +164,6 @@ fn rd_f32(b: &[u8], o: usize) -> f32 {
     f32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
 }
 
-/// Signed 19-bit fixed-point coordinate in the low bits of a u32 word,
-/// ×8 sub-unit fraction (the same packing Live's `spawnPositionUpdate` /
-/// `spawnStruct` position words use): sign-extend 19 bits, then `>> 3`
-/// to integer game units.
-#[inline]
-fn rd_pos19(b: &[u8], o: usize) -> i16 {
-    let w = rd_u32(b, o) & 0x7FFFF;
-    let raw = if w & 0x4_0000 != 0 { (w as i32) - (1 << 19) } else { w as i32 };
-    (raw >> 3) as i16
-}
 
 /// Latin-1 → `String` (each byte is a codepoint), matching the daemon's
 /// `QString::fromLatin1`.
@@ -189,12 +179,26 @@ fn latin1(b: &[u8]) -> String {
 pub struct ZoneSpawn {
     pub id: u16,
     pub name: String,
+    pub last_name: String,
+    pub title: String,
+    pub suffix: String,
     pub x: i16,
     pub y: i16,
     pub z: i16,
     pub level: u8,
     pub cur_hp: u8,
     pub max_hp: u8,
+    pub race: u32,
+    pub class_: u32,
+    pub deity: u32,
+    pub guild_id: u32,
+    pub guild_server_id: u32,
+    pub pet_owner_id: u32,
+    pub npc: u8,
+    pub body_type: u32,
+    pub holding: u8,
+    pub state: u8,
+    pub light: u8,
 }
 
 // Bounds-checked LE/BE reads at an absolute offset for the variable-length
@@ -472,27 +476,198 @@ pub fn parse_new_zone(b: &[u8]) -> Result<NewZone, DecodeError> {
 /// /loc-confirmed on two stationary guards across both block sizes; the
 /// 19-bit width (not i16) confirmed by sign-fill analysis 2026-07-08 —
 /// an i16 read wraps coordinates past ±4095 by 8192 game units.
+/// Sequential reader mirroring the daemon's `NetStream` (LE `readUInt*NC`,
+/// NUL-terminated `readText`), bounds-checked: any overrun ends the walk with
+/// `BadLength` rather than panicking (a dropped spawn, not a crash).
+struct Walk<'a> {
+    b: &'a [u8],
+    p: usize,
+}
+impl<'a> Walk<'a> {
+    fn new(b: &'a [u8]) -> Self { Walk { b, p: 0 } }
+    fn pos(&self) -> usize { self.p }
+    fn need(&self, n: usize) -> Result<(), DecodeError> {
+        if self.p + n > self.b.len() {
+            Err(DecodeError::BadLength(self.b.len()))
+        } else {
+            Ok(())
+        }
+    }
+    fn skip(&mut self, n: usize) -> Result<(), DecodeError> {
+        self.need(n)?;
+        self.p += n;
+        Ok(())
+    }
+    fn u8(&mut self) -> Result<u8, DecodeError> {
+        self.need(1)?;
+        let v = self.b[self.p];
+        self.p += 1;
+        Ok(v)
+    }
+    fn u32(&mut self) -> Result<u32, DecodeError> {
+        self.need(4)?;
+        let v = rd_u32(self.b, self.p);
+        self.p += 4;
+        Ok(v)
+    }
+    /// NUL-terminated latin-1 string; advances past the NUL.
+    fn text(&mut self) -> Result<String, DecodeError> {
+        let start = self.p;
+        while self.p < self.b.len() && self.b[self.p] != 0 {
+            self.p += 1;
+        }
+        if self.p >= self.b.len() {
+            return Err(DecodeError::BadLength(self.b.len()));
+        }
+        let s = latin1(&self.b[start..self.p]);
+        self.p += 1; // consume NUL
+        Ok(s)
+    }
+}
+
+/// Decode a signed 19-bit ×8 fixed-point coordinate out of a full position word
+/// (low 19 bits; upper 13 carry unrelated subfields). Same packing as
+/// `rd_pos19`, but taking the whole word.
+#[inline]
+fn pos19_word(w: u32) -> i16 {
+    let v = w & 0x7FFFF;
+    let raw = if v & 0x4_0000 != 0 { (v as i32) - (1 << 19) } else { v as i32 };
+    (raw >> 3) as i16
+}
+
+/// `OP_ZoneSpawns` (Legends, id 0x4606) S>C, one per spawn. Full front walk,
+/// ported 1:1 from the community patch's `SpawnShell::fillSpawnStruct` (verified
+/// against a 1617-record eql corpus). Supersedes the old tail-anchored partial,
+/// which assumed a fixed 95-byte tail and so mis-read position and dropped
+/// titles on any spawn carrying a title/suffix string block.
 pub fn parse_zone_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
-    let name_len = b.iter().position(|&c| c == 0).unwrap_or(b.len());
-    if name_len == 0 || name_len >= b.len() {
+    let mut w = Walk::new(b);
+
+    let name = w.text()?;
+    if name.is_empty() {
         return Err(DecodeError::Short(b.len()));
     }
-    let s = &b[name_len + 1..];
-    // Need the front header (through hp@45) AND the tail position triple.
-    if s.len() < 96 {
-        return Err(DecodeError::BadLength(s.len()));
+    let id = w.u32()? as u16;
+    let level = w.u8()?;
+    w.skip(16)?;
+    let npc = w.u8()?;
+    let _misc_data = w.u32()?;
+    let _other_data = w.u8()?;
+    w.skip(8)?; // unknown3, unknown4
+    // (EQ Legends aura-flagged spawns carry no aura block on the wire.)
+
+    // bodytype: `charProperties` count-prefixed u32s; the first is the bodytype.
+    let char_properties = w.u8()?;
+    let mut body_type = 0u32;
+    if char_properties != 0 {
+        for i in 0..char_properties {
+            let n = w.u32()?;
+            if i == 0 {
+                body_type = n;
+            }
+        }
     }
-    let l = s.len();
+
+    // EQ Legends: the HP percent sits 8 bytes past Live's slot (Live's slot
+    // reads 0 for every eql spawn).
+    w.skip(3)?;
+    let appearance_count = w.u8()? as usize;
+    w.skip(4)?;
+    let cur_hp = w.u8()?;
+    w.skip(33 + 4 * appearance_count)?;
+
+    let race = w.u32()?;
+    let holding = w.u8()?;
+    let deity = w.u32()?;
+    let guild_id = w.u32()?;
+    let guild_server_id = w.u32()?;
+    let class_ = w.u32()?;
+    let _class_mask = w.u32()?; // EQ Legends multiclass bitmask
+    w.skip(1)?;
+    let state = w.u8()?;
+    let light = w.u8()?;
+    w.skip(1)?;
+
+    let last_name = w.text()?;
+    w.skip(2)?;
+    let pet_owner_id = w.u32()?;
+
+    // 12 extra bytes on NPCs (added 2013-06-19).
+    w.skip(if npc == 1 { 49 } else { 37 })?;
+
+    // Equipment block (skipped — not surfaced). The client's own read gate:
+    // full 9-slot layout for PCs + a few humanoid NPC races, 2-slot otherwise.
+    if npc == 0 || race <= 12 || race == 128 || race == 130 || race == 330 || race == 522 {
+        w.skip(36 + 9 * 5 * 4)?;
+    } else {
+        w.skip(20 + 2 * 5 * 4)?;
+    }
+
+    // 2026-07-07 EQL insert (8 bytes) between equipment and the position words.
+    w.skip(8)?;
+
+    // posData: 4 words — z, y, x coords (19-bit ×8 in the low bits) + a heading
+    // word (encoding TBD; heading is re-established by OP_MobUpdate /
+    // OP_NpcMoveUpdate on first movement, so it is not surfaced here).
+    let z = pos19_word(w.u32()?);
+    let y = pos19_word(w.u32()?);
+    let x = pos19_word(w.u32()?);
+    let _heading_word = w.u32()?;
+
+    // Title/suffix string block: 4 strings on ordinary spawns, 6 (title, suffix,
+    // then the 4) on titled ones — no reliable presence flag. Anchor on the
+    // tail: the record ends with 4 fixed bytes, u8 isMercenary, an ASCII digit
+    // string ('0' run), then 53 fixed bytes. Read strings up to that anchor;
+    // the first two non-empty are title then suffix.
+    let mut title = String::new();
+    let mut suffix = String::new();
+    if b.len() >= 55 {
+        let d_end = b.len() - 54; // digit-string NUL sits 54 bytes from the end
+        let mut d_start = d_end;
+        while d_start > 0 && b[d_start - 1] == b'0' {
+            d_start -= 1;
+        }
+        if d_start >= 5 {
+            let text_end = d_start - 1 /*isMercenary*/ - 4 /*fixed*/;
+            let mut str_index = 0;
+            while w.pos() < text_end {
+                let s = w.text()?;
+                match str_index {
+                    0 => title = s,
+                    1 => suffix = s,
+                    _ => {}
+                }
+                str_index += 1;
+                if str_index > 6 {
+                    break; // safety: never more than 6 strings
+                }
+            }
+        }
+    }
+
     Ok(ZoneSpawn {
-        id: rd_u32(s, 0) as u16,
-        name: latin1(&b[..name_len]),
-        // @(l-91) is gameY, @(l-87) is gameX (/loc is Y,X,Z); bind x=gameX, y=gameY.
-        x: rd_pos19(s, l - 87),
-        y: rd_pos19(s, l - 91),
-        z: rd_pos19(s, l - 95),
-        level: s[4],
-        cur_hp: s[44],
-        max_hp: s[45],
+        id,
+        name,
+        last_name,
+        title,
+        suffix,
+        x,
+        y,
+        z,
+        level,
+        cur_hp,
+        max_hp: 100, // curHp is a percentage; base is 100
+        race,
+        class_,
+        deity,
+        guild_id,
+        guild_server_id,
+        pet_owner_id,
+        npc,
+        body_type,
+        holding,
+        state,
+        light,
     })
 }
 
@@ -679,60 +854,115 @@ mod tests {
         assert_eq!(p.heading, 512);
     }
 
-    /// Encode a game-unit coordinate as the wire's u32 position word:
-    /// signed 19-bit fixed-point ×8 in the low bits, `extra` in the upper 13.
-    fn pos19(game_units: i32, extra: u32) -> [u8; 4] {
-        let raw = (game_units * 8) as u32 & 0x7FFFF;
-        (raw | (extra << 19)).to_le_bytes()
+    /// Encode a game-unit coordinate as a wire position word: signed 19-bit
+    /// ×8 fixed-point in the low bits.
+    fn pos_word(game_units: i32) -> [u8; 4] {
+        (((game_units * 8) as u32) & 0x7FFFF).to_le_bytes()
+    }
+
+    /// Assemble a full eql zone-spawn payload matching the `fillSpawnStruct`
+    /// walk. Uses the NPC / non-humanoid path (npc=1, race>12 → the 2-slot
+    /// equipment branch); the 9-slot humanoid branch is exercised by the goldens.
+    #[allow(clippy::too_many_arguments)]
+    fn build_spawn(
+        name: &str, id: u32, level: u8, cur_hp: u8, race: u32, deity: u32,
+        class_: u32, z: i32, y: i32, x: i32, last: &str, title: &str, suffix: &str,
+    ) -> Vec<u8> {
+        let mut b = Vec::new();
+        let text = |b: &mut Vec<u8>, s: &str| {
+            b.extend_from_slice(s.as_bytes());
+            b.push(0);
+        };
+        let u32le = |b: &mut Vec<u8>, v: u32| b.extend_from_slice(&v.to_le_bytes());
+        text(&mut b, name);
+        u32le(&mut b, id);
+        b.push(level);
+        b.extend_from_slice(&[0u8; 16]);
+        b.push(1); // npc
+        u32le(&mut b, 0); // miscData
+        b.push(0); // otherData
+        b.extend_from_slice(&[0u8; 8]);
+        b.push(0); // charProperties = 0 (no bodytype loop)
+        b.extend_from_slice(&[0u8; 3]);
+        b.push(0); // appearanceCount = 0
+        b.extend_from_slice(&[0u8; 4]);
+        b.push(cur_hp);
+        b.extend_from_slice(&[0u8; 33]);
+        u32le(&mut b, race);
+        b.push(0); // holding
+        u32le(&mut b, deity);
+        u32le(&mut b, 0); // guildID
+        u32le(&mut b, 0); // guildServerID
+        u32le(&mut b, class_);
+        u32le(&mut b, 0); // classMask
+        b.push(0); // skip1
+        b.push(0); // state
+        b.push(0); // light
+        b.push(0); // skip1
+        text(&mut b, last); // lastName
+        b.extend_from_slice(&[0u8; 2]);
+        u32le(&mut b, 0); // petOwnerId
+        b.extend_from_slice(&[0u8; 49]); // npc==1 extra
+        b.extend_from_slice(&[0u8; 60]); // equipment (else branch: 20 + 2*5*4)
+        b.extend_from_slice(&[0u8; 8]); // eql insert
+        b.extend_from_slice(&pos_word(z));
+        b.extend_from_slice(&pos_word(y));
+        b.extend_from_slice(&pos_word(x));
+        u32le(&mut b, 0x6000); // heading word
+        text(&mut b, title);
+        text(&mut b, suffix);
+        text(&mut b, ""); // string 3
+        text(&mut b, ""); // string 4
+        b.extend_from_slice(&[0u8; 4]); // 4 fixed
+        b.push(0); // isMercenary
+        text(&mut b, "0"); // ASCII digit string
+        b.extend_from_slice(&[0u8; 53]); // 53 fixed tail
+        b
     }
 
     #[test]
-    fn spawn_rejects_short_block() {
-        let mut b = Vec::new();
-        b.extend_from_slice(b"orc\0");
-        b.extend_from_slice(&[0u8; 50]); // block < 96
-        assert!(parse_zone_spawn(&b).is_err());
-    }
-
-    #[test]
-    fn spawn_reads_variable_block_position_from_end() {
-        // 100-byte block: pos words at len-95/91/87 = 5/9/13. Upper 13 bits of
-        // each word carry unrelated subfields — must not bleed into the coord.
-        let mut b = Vec::new();
-        b.extend_from_slice(b"an orc\0");
-        let mut block = [0u8; 100];
-        block[0..4].copy_from_slice(&123u32.to_le_bytes()); // id
-        block[4] = 40; // level
-        block[44] = 90; // curHp%
-        block[45] = 100; // maxHp%
-        block[5..9].copy_from_slice(&pos19(80, 0x1FFF)); // z (len-95)
-        block[9..13].copy_from_slice(&pos19(-15, 715)); // y (len-91)
-        block[13..17].copy_from_slice(&pos19(10, 4096)); // x (len-87)
-        b.extend_from_slice(&block);
+    fn spawn_full_walk_reads_all_fields() {
+        let b = build_spawn(
+            "a guard", 4242, 55, 90, 14, 396, 3, 80, -15, 10, "", "Protector", "of Qeynos",
+        );
         let s = parse_zone_spawn(&b).unwrap();
-        assert_eq!(s.id, 123);
-        assert_eq!(s.name, "an orc");
+        assert_eq!(s.id, 4242);
+        assert_eq!(s.name, "a guard");
+        assert_eq!(s.level, 55);
+        assert_eq!(s.cur_hp, 90);
+        assert_eq!(s.max_hp, 100);
+        assert_eq!(s.race, 14);
+        assert_eq!(s.deity, 396);
+        assert_eq!(s.class_, 3);
+        assert_eq!(s.npc, 1);
         assert_eq!(s.x, 10);
         assert_eq!(s.y, -15);
         assert_eq!(s.z, 80);
-        assert_eq!(s.level, 40);
-        assert_eq!(s.cur_hp, 90);
-        assert_eq!(s.max_hp, 100);
+        // titled spawn: title then suffix out of the tail-anchored string block
+        assert_eq!(s.title, "Protector");
+        assert_eq!(s.suffix, "of Qeynos");
     }
 
     #[test]
-    fn spawn_position_survives_past_i16_window() {
-        // A far-south spawn (|y·8| > i16::MAX): an i16 read would wrap it by
-        // 8192 game units; the 19-bit decode must not.
-        let mut b = Vec::new();
-        b.extend_from_slice(b"a_gorge_hopper\0");
-        let mut block = [0u8; 100];
-        block[9..13].copy_from_slice(&pos19(-4700, 0)); // y (len-91)
-        block[13..17].copy_from_slice(&pos19(5200, 0)); // x (len-87)
-        b.extend_from_slice(&block);
+    fn spawn_last_name_and_position_past_i16_window() {
+        // far spawn (|y·8| > i16::MAX) must not wrap; surname decodes; no title.
+        let b = build_spawn(
+            "Grarf", 7, 60, 100, 14, 0, 5, 12, -4700, 5200, "Ironforge", "", "",
+        );
         let s = parse_zone_spawn(&b).unwrap();
         assert_eq!(s.y, -4700);
         assert_eq!(s.x, 5200);
+        assert_eq!(s.last_name, "Ironforge");
+        assert_eq!(s.title, "");
+        assert_eq!(s.suffix, "");
+    }
+
+    #[test]
+    fn spawn_rejects_truncated() {
+        let mut b = Vec::new();
+        b.extend_from_slice(b"orc\0");
+        b.extend_from_slice(&[0u8; 40]); // walk overruns the header
+        assert!(parse_zone_spawn(&b).is_err());
     }
 
     #[test]
