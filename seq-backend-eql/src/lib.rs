@@ -1,25 +1,142 @@
-//! EverQuest Legends wire decoders.
+//! Self-contained EverQuest Legends decode surface.
 //!
-//! eql owns no wire-struct types: the Legends wire is read here by byte offset
-//! plus per-axis scale (ported 1:1 from the C++ `EqlDispatch`). Live and eql
-//! share the daemon's neutral output structs — these parsers fill the
-//! eql-relevant fields (the rest stay `Default`) so the uniform
-//! `seq::rust::decode_*` bridge surface maps them exactly like the Live
-//! decoders. Field offsets/scales are /loc-confirmed — see showeq-daemon
-//! `OPCODES_LEGENDS.md`. Layout shuffles per patch; re-derive from captures,
-//! don't memorize. **Offsets below are the 2026-07-07 post-patch layout.**
+//! **eql depends on nothing from the Live decode stack.** EQ Legends is a
+//! separate server that merely shares wire ancestry with Live *today*; to keep
+//! a Live-only wire patch from silently corrupting eql, this crate vendors its
+//! own copy of every parser + output struct (the modules below, forked from
+//! `seq-decode`) and reads them through its own PINNED `seq-eqstructs-eql`
+//! layouts. `seq-bridge`'s `backend-eql` feature routes every `decode_*` here —
+//! there is no eql → seq-decode edge.
 //!
-//! This is the eql analogue of `seq-eqstructs-{live,test}`: it encapsulates
-//! everything backend-specific about reading eql's wire. `seq-decode` stays the
-//! backend-neutral shared decode layer (eql reuses it for the ~38 opcodes whose
-//! wire matches Live).
+//! Two kinds of module live here:
+//!   * eql's OWN byte-offset parsers for the opcodes whose Legends wire diverges
+//!     from Live — the `parse_legends_*` fns below (spawn, profile, self-pos,
+//!     new-zone, consider). /loc-confirmed; see showeq-daemon `OPCODES_LEGENDS.md`.
+//!   * pinned copies of the shared parsers (identical to Live *today*) that we
+//!     now OWN — when eql and Live diverge, edit only the copy here.
+//!
+//! Field offsets/scales shuffle per patch; re-derive from captures, don't
+//! memorize. **eql offsets below are the 2026-07-07 post-patch layout.**
 
 use thiserror::Error;
 
-use seq_decode::consider::Consider;
-use seq_decode::new_zone::NewZone;
-use seq_decode::player_profile::PlayerProfile;
-use seq_decode::player_self_pos::PlayerSelfPos;
+/// eql's OWN pinned struct layouts (module `eqstructs`, a frozen fork of the
+/// live bindings — see `eqstructs.rs`/`bindings.rs`). The vendored parser
+/// modules reference `crate::eqstructs::<name>`; nothing here tracks Live's
+/// generated bindings.
+pub(crate) mod eqstructs;
+
+// Vendored parser + output-struct modules (forked from seq-decode; eql-owned).
+pub mod action;
+pub mod action2;
+pub mod action_alt;
+pub mod buff;
+pub mod channel_message;
+pub mod click_object;
+pub mod client_target;
+pub mod consider;
+pub mod corpse_loc;
+pub mod cursor;
+pub mod death;
+pub mod delete_spawn;
+pub mod dz_info;
+pub mod dz_switch_info;
+pub mod end_update;
+pub mod exp_update;
+pub mod formatted_message;
+pub mod ground_spawn;
+pub mod group_disband;
+pub mod group_follow;
+pub mod group_member_list;
+pub mod hp_update;
+pub mod illusion;
+pub mod level_update;
+pub mod mana_change;
+pub mod mob_health;
+pub mod mob_update;
+pub mod new_zone;
+pub mod npc_move_update;
+pub mod player_profile;
+pub mod player_self_pos;
+pub mod player_spawn_pos;
+pub mod remove_spawn;
+pub mod simple_message;
+pub mod skill_update;
+pub mod spawn;
+pub mod spawn_appearance;
+pub mod spawn_door;
+pub mod spawn_rename;
+pub mod special_message;
+pub mod stamina;
+pub mod start_cast;
+pub mod wear_change;
+pub mod zone_change;
+pub mod zone_point;
+
+// Full public-API mirror of seq-decode, so seq-bridge can alias this crate in
+// place of seq-decode for the shared decoders (identical fn + struct names).
+pub use action::{parse_action, Action, ActionError};
+pub use action2::{parse_action2, Action2, Action2Error};
+pub use action_alt::{parse_action_alt, ActionAlt, ActionAltError};
+pub use buff::{parse_buff, Buff, BuffError};
+pub use channel_message::{parse_channel_message, ChannelMessage, ChannelMessageError};
+pub use click_object::{parse_click_object, ClickObject, ClickObjectError};
+pub use client_target::{parse_client_target, ClientTarget, ClientTargetError};
+pub use consider::{parse_consider, Consider, ConsiderError};
+pub use corpse_loc::{parse_corpse_loc, CorpseLoc, CorpseLocError};
+pub use death::{parse_death, Death, DeathError};
+pub use delete_spawn::{
+    parse_delete_spawn, DeleteSpawn, DeleteSpawnError, PAYLOAD_LEN as DELETE_SPAWN_LEN,
+};
+pub use dz_info::{parse_dz_info, DzInfo, DzInfoError};
+pub use dz_switch_info::{parse_dz_switch_info, DzSwitch, DzSwitchError};
+pub use end_update::{parse_end_update, EndUpdate, EndUpdateError};
+pub use exp_update::{parse_exp_update, ExpUpdate, ExpUpdateError};
+pub use formatted_message::{
+    parse_formatted_message, FormattedMessage, FormattedMessageError,
+};
+pub use ground_spawn::{parse_ground_spawn, GroundSpawn, GroundSpawnError};
+pub use group_disband::{parse_group_disband, GroupDisband, GroupDisbandError};
+pub use group_follow::{parse_group_follow, GroupFollow, GroupFollowError};
+pub use hp_update::{parse_hp_update, HpUpdate, HpUpdateError};
+pub use illusion::{parse_illusion, Illusion, IllusionError};
+pub use level_update::{parse_level_update, LevelUpdate, LevelUpdateError};
+pub use mana_change::{parse_mana_change, ManaChange, ManaChangeError};
+pub use mob_health::{parse_mob_health, MobHealth, MobHealthError};
+pub use mob_update::{
+    parse_mob_update, MobUpdate, ParseError, PAYLOAD_LEN as MOB_UPDATE_LEN,
+};
+pub use new_zone::{parse_new_zone, NewZone, NewZoneError};
+pub use npc_move_update::{parse_npc_move_update, NpcMoveUpdate, NpcMoveUpdateError};
+pub use player_profile::{parse_player_profile, PlayerProfile, PlayerProfileError};
+pub use player_self_pos::{parse_player_self_pos, PlayerSelfPos, PlayerSelfPosError};
+pub use player_spawn_pos::{parse_player_spawn_pos, PlayerSpawnPos, PlayerSpawnPosError};
+pub use remove_spawn::{parse_remove_spawn, RemoveSpawn, RemoveSpawnError};
+pub use simple_message::{parse_simple_message, SimpleMessage, SimpleMessageError};
+pub use skill_update::{parse_skill_update, SkillUpdate, SkillUpdateError};
+pub use spawn::{parse_spawn, Spawn, SpawnError};
+pub use spawn_appearance::{
+    parse_spawn_appearance, SpawnAppearance, SpawnAppearanceError,
+};
+pub use spawn_door::{parse_door, Door, DoorError};
+pub use spawn_rename::{parse_spawn_rename, SpawnRename, SpawnRenameError};
+pub use special_message::{parse_special_message, SpecialMessage, SpecialMessageError};
+pub use stamina::{parse_stamina, Stamina, StaminaError};
+pub use start_cast::{parse_start_cast, StartCast, StartCastError};
+pub use wear_change::{parse_wear_change, WearChange, WearChangeError};
+pub use zone_change::{parse_zone_change, ZoneChange, ZoneChangeError};
+pub use zone_point::{parse_zone_point, ZonePoint, ZonePointError};
+
+/// Decode a NUL-padded byte buffer into an owned `String`. The vendored parser
+/// modules call this as `crate::cstr_field` (copied from seq-decode's helper).
+pub(crate) fn cstr_field(bytes: &[u8]) -> String {
+    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    String::from_utf8_lossy(&bytes[..end]).into_owned()
+}
+
+// eql's own diverged parsers below return the vendored output structs, brought
+// into scope by the `pub use` re-exports above: Consider, NewZone,
+// PlayerProfile, PlayerSelfPos.
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum LegendsError {
@@ -98,8 +215,10 @@ fn opt_f32_le(b: &[u8], o: usize) -> Option<f32> {
     Some(f32::from_le_bytes(b.get(o..o + 4)?.try_into().unwrap()))
 }
 
-/// NUL-terminated latin-1 out of a fixed-width name buffer.
-fn cstr_field(buf: &[u8]) -> String {
+/// NUL-terminated latin-1 out of a fixed-width name buffer (eql profile names
+/// use latin-1, matching the daemon's `QString::fromLatin1`; distinct from the
+/// crate-root utf8-lossy `cstr_field` the vendored modules use).
+fn cstr_latin1(buf: &[u8]) -> String {
     let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
     latin1(&buf[..end])
 }
@@ -158,12 +277,12 @@ fn read_profile_name_and_tail(b: &[u8], p0: usize, prof: &mut PlayerProfile) -> 
 
     let name_len = opt_u32_le(b, p)? as usize; // == 64
     p += 4;
-    prof.name = cstr_field(b.get(p..p + 64)?);
+    prof.name = cstr_latin1(b.get(p..p + 64)?);
     p += name_len;
 
     let last_len = opt_u32_le(b, p)? as usize; // == 32
     p += 4;
-    prof.last_name = cstr_field(b.get(p..p + 32)?);
+    prof.last_name = cstr_latin1(b.get(p..p + 32)?);
     p += last_len;
 
     prof.birthday_time = opt_u32_le(b, p)?;

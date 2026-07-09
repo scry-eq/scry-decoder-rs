@@ -323,10 +323,18 @@ def emit_rust(structs: list[tuple[str, list[tuple[str, str, str]], int]]) -> str
     return "\n".join(out)
 
 
-# Backends with their own bindings crate. live+test each mirror
-# showeq-daemon/src/backend/<target>/everquest.h; eql owns no wire structs
-# (its Legends parsers are hand-rolled in the seq-backend-eql crate).
-TARGETS = ("live", "test")
+# Backends with a generated bindings file. live + test mirror
+# showeq-daemon/src/backend/<t>/everquest.h and regenerate together (`all`).
+# eql's bindings are a PINNED fork that lives INSIDE the self-contained
+# seq-backend-eql crate (src/bindings.rs) and must NOT track Live — so eql is
+# never part of `all`; regenerate it explicitly, from an explicit fork header,
+# only when eql's own wire diverges.
+AUTO_TARGETS = ("live", "test")
+OUT_PATH = {
+    "live": Path("seq-eqstructs-live") / "src" / "bindings.rs",
+    "test": Path("seq-eqstructs-test") / "src" / "bindings.rs",
+    "eql": Path("seq-backend-eql") / "src" / "bindings.rs",
+}
 
 
 def gen_one(here: Path, target: str, header_path: Path) -> int:
@@ -348,10 +356,14 @@ def gen_one(here: Path, target: str, header_path: Path) -> int:
             return 1
         structs.append((name, fields, size))
 
-    out_path = here / f"seq-eqstructs-{target}" / "src" / "bindings.rs"
+    out_path = here / OUT_PATH[target]
     out_path.write_text(emit_rust(structs))
-    print(f"wrote {out_path} ({len(structs)} structs)")
+    print(f"wrote {out_path} ({len(structs)} structs from {header_path})")
     return 0
+
+
+def default_header(daemon: Path, target: str) -> Path:
+    return daemon / "src" / "backend" / target / "everquest.h"
 
 
 def main(argv: list[str]) -> int:
@@ -360,24 +372,33 @@ def main(argv: list[str]) -> int:
     daemon = here.parent / "showeq-daemon"
 
     # Usage:
-    #   gen_eqstructs.py                 -> live (default)
-    #   gen_eqstructs.py live|test       -> that backend from backend/<t>/everquest.h
-    #   gen_eqstructs.py all             -> every backend in TARGETS
-    #   gen_eqstructs.py <path/to/h>     -> live output from an explicit header
-    arg = argv[1] if len(argv) > 1 else "live"
+    #   gen_eqstructs.py                       -> live (default)
+    #   gen_eqstructs.py live|test|eql         -> that backend from its
+    #                                             backend/<t>/everquest.h
+    #   gen_eqstructs.py live|test|eql <hdr>   -> that backend from an EXPLICIT
+    #                                             header (e.g. a fork checkout) —
+    #                                             this is how eql pulls upstream
+    #                                             struct changes on its own terms
+    #   gen_eqstructs.py all                   -> live + test (NEVER eql: its
+    #                                             bindings are a pinned fork)
+    #   gen_eqstructs.py <path/to/h>           -> live output from an explicit
+    #                                             header (back-compat)
+    args = argv[1:]
+    target = args[0] if args else "live"
+    explicit = Path(args[1]) if len(args) > 1 else None
 
-    if arg == "all":
-        for t in TARGETS:
-            rc = gen_one(here, t, daemon / "src" / "backend" / t / "everquest.h")
+    if target == "all":
+        for t in AUTO_TARGETS:
+            rc = gen_one(here, t, default_header(daemon, t))
             if rc:
                 return rc
         return 0
 
-    if arg in TARGETS:
-        return gen_one(here, arg, daemon / "src" / "backend" / arg / "everquest.h")
+    if target in OUT_PATH:
+        return gen_one(here, target, explicit or default_header(daemon, target))
 
-    # Explicit header path — writes the live bindings crate (back-compat).
-    return gen_one(here, "live", Path(arg))
+    # First arg is an explicit header path — writes the live crate (back-compat).
+    return gen_one(here, "live", Path(target))
 
 
 if __name__ == "__main__":

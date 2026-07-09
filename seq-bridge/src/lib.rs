@@ -7,15 +7,26 @@
 //! Corrosion links into `seq-daemon-core`.
 //!
 //! Backend selection via Cargo features: `backend-live` / `backend-test` pick
-//! the bindings crate in `seq-decode`; `backend-eql` reuses the Live decoders
-//! and pulls in `seq-backend-eql` for the 5 diverged opcodes. The uniform
-//! `decode_*` FFI surface is identical for every backend; the linked feature
-//! decides each function's implementation.
+//! the bindings crate in `seq-decode` (Test rides the shared Live decoders).
+//! `backend-eql` instead links `seq-backend-eql` — a fully self-contained eql
+//! decode stack that shares NOTHING with Live, so a Live wire patch can't reach
+//! eql. The uniform `decode_*` FFI surface is identical for every backend; the
+//! `backend` alias below routes each call to the active backend's decoders, and
+//! the few opcodes whose eql wire diverges call eql's parser explicitly.
 
 #[cfg(not(any(feature = "backend-live", feature = "backend-test", feature = "backend-eql")))]
 compile_error!(
     "seq-bridge: enable exactly one backend feature (default: backend-live)."
 );
+
+// The active backend's decoder crate. live/test share `seq-decode`; eql is its
+// own self-contained stack (`seq-backend-eql`). Shared decoders call
+// `backend::parse_*`; the eql-diverged opcodes cfg-select
+// `seq_backend_eql::parse_legends_*` directly below.
+#[cfg(not(feature = "backend-eql"))]
+use seq_decode as backend;
+#[cfg(feature = "backend-eql")]
+use seq_backend_eql as backend;
 
 #[cxx::bridge(namespace = "seq::rust")]
 mod ffi {
@@ -433,7 +444,7 @@ fn decode_mob_update(bytes: &[u8]) -> ffi::MobUpdate {
     // (14B, packed y:19/z:19/u3:7/x:19/heading:12 fixed-point ×8; verified
     // 2026-07-08 over 1665 packets — 19-bit sign-fill consistent on every
     // axis), so every backend shares the Live parser here.
-    match seq_decode::parse_mob_update(bytes) {
+    match backend::parse_mob_update(bytes) {
         Ok(m) => ffi::MobUpdate {
             spawn_id: m.spawn_id,
             x: m.x,
@@ -454,14 +465,14 @@ fn decode_mob_update(bytes: &[u8]) -> ffi::MobUpdate {
 }
 
 fn decode_delete_spawn(bytes: &[u8]) -> ffi::DeleteSpawn {
-    match seq_decode::parse_delete_spawn(bytes) {
+    match backend::parse_delete_spawn(bytes) {
         Ok(d) => ffi::DeleteSpawn { spawn_id: d.spawn_id, ok: true },
         Err(_) => ffi::DeleteSpawn { spawn_id: 0, ok: false },
     }
 }
 
 fn decode_remove_spawn(bytes: &[u8]) -> ffi::RemoveSpawn {
-    match seq_decode::parse_remove_spawn(bytes) {
+    match backend::parse_remove_spawn(bytes) {
         Ok(r) => ffi::RemoveSpawn {
             spawn_id: r.spawn_id, remove_spawn: r.remove_spawn, ok: true,
         },
@@ -470,7 +481,7 @@ fn decode_remove_spawn(bytes: &[u8]) -> ffi::RemoveSpawn {
 }
 
 fn decode_hp_update(bytes: &[u8]) -> ffi::HpUpdate {
-    match seq_decode::parse_hp_update(bytes) {
+    match backend::parse_hp_update(bytes) {
         Ok(h) => ffi::HpUpdate {
             spawn_id: h.spawn_id, cur_hp: h.cur_hp, max_hp: h.max_hp, ok: true,
         },
@@ -481,7 +492,7 @@ fn decode_hp_update(bytes: &[u8]) -> ffi::HpUpdate {
 }
 
 fn decode_mob_health(bytes: &[u8]) -> ffi::MobHealth {
-    match seq_decode::parse_mob_health(bytes) {
+    match backend::parse_mob_health(bytes) {
         Ok(m) => ffi::MobHealth {
             spawn_id: m.spawn_id, hp_percent: m.hp_percent, ok: true,
         },
@@ -490,7 +501,7 @@ fn decode_mob_health(bytes: &[u8]) -> ffi::MobHealth {
 }
 
 fn decode_spawn_appearance(bytes: &[u8]) -> ffi::SpawnAppearance {
-    match seq_decode::parse_spawn_appearance(bytes) {
+    match backend::parse_spawn_appearance(bytes) {
         Ok(a) => ffi::SpawnAppearance {
             spawn_id: a.spawn_id, kind: a.kind, parameter: a.parameter, ok: true,
         },
@@ -501,7 +512,7 @@ fn decode_spawn_appearance(bytes: &[u8]) -> ffi::SpawnAppearance {
 }
 
 fn decode_exp_update(bytes: &[u8]) -> ffi::ExpUpdate {
-    match seq_decode::parse_exp_update(bytes) {
+    match backend::parse_exp_update(bytes) {
         Ok(e) => ffi::ExpUpdate {
             exp: e.exp, unknown0: e.unknown0, kind: e.kind, unknown1: e.unknown1,
             ok: true,
@@ -513,7 +524,7 @@ fn decode_exp_update(bytes: &[u8]) -> ffi::ExpUpdate {
 }
 
 fn decode_level_update(bytes: &[u8]) -> ffi::LevelUpdate {
-    match seq_decode::parse_level_update(bytes) {
+    match backend::parse_level_update(bytes) {
         Ok(l) => ffi::LevelUpdate {
             level: l.level, level_old: l.level_old, exp: l.exp,
             unknown0: l.unknown0, ok: true,
@@ -525,7 +536,7 @@ fn decode_level_update(bytes: &[u8]) -> ffi::LevelUpdate {
 }
 
 fn decode_skill_update(bytes: &[u8]) -> ffi::SkillUpdate {
-    match seq_decode::parse_skill_update(bytes) {
+    match backend::parse_skill_update(bytes) {
         Ok(s) => ffi::SkillUpdate {
             skill_id: s.skill_id, value: s.value, ok: true,
         },
@@ -534,7 +545,7 @@ fn decode_skill_update(bytes: &[u8]) -> ffi::SkillUpdate {
 }
 
 fn decode_mana_change(bytes: &[u8]) -> ffi::ManaChange {
-    match seq_decode::parse_mana_change(bytes) {
+    match backend::parse_mana_change(bytes) {
         Ok(m) => ffi::ManaChange {
             new_mana: m.new_mana, max_mana: m.max_mana, spell_id: m.spell_id, ok: true,
         },
@@ -545,14 +556,14 @@ fn decode_mana_change(bytes: &[u8]) -> ffi::ManaChange {
 }
 
 fn decode_stamina(bytes: &[u8]) -> ffi::Stamina {
-    match seq_decode::parse_stamina(bytes) {
+    match backend::parse_stamina(bytes) {
         Ok(s) => ffi::Stamina { food: s.food, water: s.water, ok: true },
         Err(_) => ffi::Stamina { food: 0, water: 0, ok: false },
     }
 }
 
 fn decode_end_update(bytes: &[u8]) -> ffi::EndUpdate {
-    match seq_decode::parse_end_update(bytes) {
+    match backend::parse_end_update(bytes) {
         Ok(e) => ffi::EndUpdate {
             spawn_id: e.spawn_id, cur: e.cur, max: e.max, ok: true,
         },
@@ -562,7 +573,7 @@ fn decode_end_update(bytes: &[u8]) -> ffi::EndUpdate {
 
 fn decode_consider(bytes: &[u8]) -> ffi::Consider {
     #[cfg(not(feature = "backend-eql"))]
-    let parsed = seq_decode::parse_consider(bytes);
+    let parsed = backend::parse_consider(bytes);
     #[cfg(feature = "backend-eql")]
     let parsed = seq_backend_eql::parse_legends_consider(bytes);
     match parsed {
@@ -577,7 +588,7 @@ fn decode_consider(bytes: &[u8]) -> ffi::Consider {
 }
 
 fn decode_spawn_rename(bytes: &[u8]) -> ffi::SpawnRename {
-    match seq_decode::parse_spawn_rename(bytes) {
+    match backend::parse_spawn_rename(bytes) {
         Ok(r) => ffi::SpawnRename {
             old_name: r.old_name,
             old_name_again: r.old_name_again,
@@ -594,14 +605,14 @@ fn decode_spawn_rename(bytes: &[u8]) -> ffi::SpawnRename {
 }
 
 fn decode_client_target(bytes: &[u8]) -> ffi::ClientTarget {
-    match seq_decode::parse_client_target(bytes) {
+    match backend::parse_client_target(bytes) {
         Ok(t) => ffi::ClientTarget { new_target: t.new_target, ok: true },
         Err(_) => ffi::ClientTarget { new_target: 0, ok: false },
     }
 }
 
 fn decode_death(bytes: &[u8]) -> ffi::Death {
-    match seq_decode::parse_death(bytes) {
+    match backend::parse_death(bytes) {
         Ok(d) => ffi::Death {
             spawn_id: d.spawn_id, killer_id: d.killer_id, corpse_id: d.corpse_id,
             kind: d.kind, spell_id: d.spell_id, zone_id: d.zone_id,
@@ -615,7 +626,7 @@ fn decode_death(bytes: &[u8]) -> ffi::Death {
 }
 
 fn decode_click_object(bytes: &[u8]) -> ffi::ClickObject {
-    match seq_decode::parse_click_object(bytes) {
+    match backend::parse_click_object(bytes) {
         Ok(c) => ffi::ClickObject {
             drop_id: c.drop_id, spawn_id: c.spawn_id, ok: true,
         },
@@ -624,7 +635,7 @@ fn decode_click_object(bytes: &[u8]) -> ffi::ClickObject {
 }
 
 fn decode_illusion(bytes: &[u8]) -> ffi::Illusion {
-    match seq_decode::parse_illusion(bytes) {
+    match backend::parse_illusion(bytes) {
         Ok(i) => ffi::Illusion {
             spawn_id: i.spawn_id, name: i.name, race: i.race,
             gender: i.gender, texture: i.texture, helm: i.helm, face: i.face,
@@ -638,7 +649,7 @@ fn decode_illusion(bytes: &[u8]) -> ffi::Illusion {
 }
 
 fn decode_buff(bytes: &[u8]) -> ffi::Buff {
-    match seq_decode::parse_buff(bytes) {
+    match backend::parse_buff(bytes) {
         Ok(b) => ffi::Buff {
             spawn_id: b.spawn_id, spell_id: b.spell_id,
             form: b.form, slot: b.slot, dur_ticks: b.dur_ticks,
@@ -651,7 +662,7 @@ fn decode_buff(bytes: &[u8]) -> ffi::Buff {
 }
 
 fn decode_action2(bytes: &[u8]) -> ffi::Action2 {
-    match seq_decode::parse_action2(bytes) {
+    match backend::parse_action2(bytes) {
         Ok(a) => ffi::Action2 {
             target: a.target, source: a.source, damage: a.damage,
             spell: a.spell, kind: a.kind, ok: true,
@@ -686,7 +697,7 @@ fn spawn_err() -> ffi::Spawn {
 
 #[cfg(not(feature = "backend-eql"))]
 fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
-    match seq_decode::parse_spawn(bytes) {
+    match backend::parse_spawn(bytes) {
         Ok(s) => ffi::Spawn {
             ok: true,
             bytes_consumed: s.bytes_consumed,
@@ -743,7 +754,7 @@ fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
 // Stage A+6 — second small-fixed POD batch.
 
 fn decode_wear_change(bytes: &[u8]) -> ffi::WearChange {
-    match seq_decode::parse_wear_change(bytes) {
+    match backend::parse_wear_change(bytes) {
         Ok(w) => ffi::WearChange {
             spawn_id: w.spawn_id, subcommand: w.subcommand,
             arg1: w.arg1, arg2: w.arg2, arg3: w.arg3, ok: true,
@@ -755,7 +766,7 @@ fn decode_wear_change(bytes: &[u8]) -> ffi::WearChange {
 }
 
 fn decode_zone_change(bytes: &[u8]) -> ffi::ZoneChange {
-    match seq_decode::parse_zone_change(bytes) {
+    match backend::parse_zone_change(bytes) {
         Ok(z) => ffi::ZoneChange {
             name: z.name, zone_id: z.zone_id,
             zone_instance: z.zone_instance, ok: true,
@@ -767,7 +778,7 @@ fn decode_zone_change(bytes: &[u8]) -> ffi::ZoneChange {
 }
 
 fn decode_dz_info(bytes: &[u8]) -> ffi::DzInfo {
-    match seq_decode::parse_dz_info(bytes) {
+    match backend::parse_dz_info(bytes) {
         Ok(d) => ffi::DzInfo {
             new_dz: d.new_dz, max_players: d.max_players,
             dz_name: d.dz_name, name: d.name, ok: true,
@@ -780,7 +791,7 @@ fn decode_dz_info(bytes: &[u8]) -> ffi::DzInfo {
 }
 
 fn decode_dz_switch_info(bytes: &[u8]) -> ffi::DzSwitch {
-    match seq_decode::parse_dz_switch_info(bytes) {
+    match backend::parse_dz_switch_info(bytes) {
         Ok(s) => ffi::DzSwitch {
             zone_id: s.zone_id, instance_id: s.instance_id, kind: s.kind,
             x: s.x, y: s.y, z: s.z, ok: true,
@@ -793,7 +804,7 @@ fn decode_dz_switch_info(bytes: &[u8]) -> ffi::DzSwitch {
 }
 
 fn decode_start_cast(bytes: &[u8]) -> ffi::StartCast {
-    match seq_decode::parse_start_cast(bytes) {
+    match backend::parse_start_cast(bytes) {
         Ok(s) => ffi::StartCast {
             slot: s.slot, spell_id: s.spell_id, target_id: s.target_id, ok: true,
         },
@@ -804,7 +815,7 @@ fn decode_start_cast(bytes: &[u8]) -> ffi::StartCast {
 }
 
 fn decode_action(bytes: &[u8]) -> ffi::Action {
-    match seq_decode::parse_action(bytes) {
+    match backend::parse_action(bytes) {
         Ok(a) => ffi::Action {
             target: a.target, source: a.source, spell: a.spell,
             level: a.level, kind: a.kind, ok: true,
@@ -816,7 +827,7 @@ fn decode_action(bytes: &[u8]) -> ffi::Action {
 }
 
 fn decode_action_alt(bytes: &[u8]) -> ffi::Action {
-    match seq_decode::parse_action_alt(bytes) {
+    match backend::parse_action_alt(bytes) {
         Ok(a) => ffi::Action {
             target: a.target, source: a.source, spell: a.spell,
             level: a.level, kind: a.kind, ok: true,
@@ -828,7 +839,7 @@ fn decode_action_alt(bytes: &[u8]) -> ffi::Action {
 }
 
 fn decode_group_disband(bytes: &[u8]) -> ffi::GroupDisband {
-    match seq_decode::parse_group_disband(bytes) {
+    match backend::parse_group_disband(bytes) {
         Ok(g) => ffi::GroupDisband {
             yourname: g.yourname, membername: g.membername, ok: true,
         },
@@ -839,14 +850,14 @@ fn decode_group_disband(bytes: &[u8]) -> ffi::GroupDisband {
 }
 
 fn decode_group_follow(bytes: &[u8]) -> ffi::GroupFollow {
-    match seq_decode::parse_group_follow(bytes) {
+    match backend::parse_group_follow(bytes) {
         Ok(g) => ffi::GroupFollow { name: g.name, ok: true },
         Err(_) => ffi::GroupFollow { name: String::new(), ok: false },
     }
 }
 
 fn decode_group_member_list(bytes: &[u8]) -> ffi::GroupMemberList {
-    match seq_decode::group_member_list::parse_group_member_list(bytes) {
+    match backend::group_member_list::parse_group_member_list(bytes) {
         Ok(g) => ffi::GroupMemberList {
             group_id: g.group_id,
             member_count: g.member_count,
@@ -863,7 +874,7 @@ fn decode_group_member_list(bytes: &[u8]) -> ffi::GroupMemberList {
 }
 
 fn decode_corpse_loc(bytes: &[u8]) -> ffi::CorpseLoc {
-    match seq_decode::parse_corpse_loc(bytes) {
+    match backend::parse_corpse_loc(bytes) {
         Ok(c) => ffi::CorpseLoc {
             spawn_id: c.spawn_id, x: c.x, y: c.y, z: c.z, ok: true,
         },
@@ -876,7 +887,7 @@ fn decode_corpse_loc(bytes: &[u8]) -> ffi::CorpseLoc {
 // Stage A+7
 
 fn decode_door(bytes: &[u8]) -> ffi::Door {
-    match seq_decode::parse_door(bytes) {
+    match backend::parse_door(bytes) {
         Ok(d) => ffi::Door {
             name: d.name,
             y: d.y, x: d.x, z: d.z, heading: d.heading,
@@ -898,7 +909,7 @@ fn decode_door(bytes: &[u8]) -> ffi::Door {
 }
 
 fn decode_ground_spawn(bytes: &[u8]) -> ffi::GroundSpawn {
-    match seq_decode::parse_ground_spawn(bytes) {
+    match backend::parse_ground_spawn(bytes) {
         Ok(g) => ffi::GroundSpawn {
             drop_id: g.drop_id,
             id_file: g.id_file,
@@ -917,7 +928,7 @@ fn decode_ground_spawn(bytes: &[u8]) -> ffi::GroundSpawn {
 }
 
 fn decode_zone_point(bytes: &[u8]) -> ffi::ZonePoint {
-    match seq_decode::parse_zone_point(bytes) {
+    match backend::parse_zone_point(bytes) {
         Ok(p) => ffi::ZonePoint {
             zone_trigger: p.zone_trigger,
             y: p.y, x: p.x, z: p.z, heading: p.heading,
@@ -934,7 +945,7 @@ fn decode_zone_point(bytes: &[u8]) -> ffi::ZonePoint {
 }
 
 fn decode_simple_message(bytes: &[u8]) -> ffi::SimpleMessage {
-    match seq_decode::parse_simple_message(bytes) {
+    match backend::parse_simple_message(bytes) {
         Ok(m) => ffi::SimpleMessage {
             message_format: m.message_format,
             message_color:  m.message_color,
@@ -947,7 +958,7 @@ fn decode_simple_message(bytes: &[u8]) -> ffi::SimpleMessage {
 }
 
 fn decode_formatted_message(bytes: &[u8]) -> ffi::FormattedMessage {
-    match seq_decode::parse_formatted_message(bytes) {
+    match backend::parse_formatted_message(bytes) {
         Ok(m) => ffi::FormattedMessage {
             message_format: m.message_format,
             message_color:  m.message_color,
@@ -960,7 +971,7 @@ fn decode_formatted_message(bytes: &[u8]) -> ffi::FormattedMessage {
 }
 
 fn decode_special_message(bytes: &[u8]) -> ffi::SpecialMessage {
-    match seq_decode::parse_special_message(bytes) {
+    match backend::parse_special_message(bytes) {
         Ok(m) => ffi::SpecialMessage {
             message_color: m.message_color,
             target: m.target,
@@ -979,7 +990,7 @@ fn decode_special_message(bytes: &[u8]) -> ffi::SpecialMessage {
 }
 
 fn decode_channel_message(bytes: &[u8]) -> ffi::ChannelMessage {
-    match seq_decode::parse_channel_message(bytes) {
+    match backend::parse_channel_message(bytes) {
         Ok(m) => ffi::ChannelMessage {
             sender: m.sender,
             target: m.target,
@@ -1003,7 +1014,7 @@ fn decode_channel_message(bytes: &[u8]) -> ffi::ChannelMessage {
 
 fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
     #[cfg(not(feature = "backend-eql"))]
-    let parsed = seq_decode::parse_player_profile(bytes);
+    let parsed = backend::parse_player_profile(bytes);
     #[cfg(feature = "backend-eql")]
     let parsed = seq_backend_eql::parse_legends_profile(bytes);
     match parsed {
@@ -1129,7 +1140,7 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
 
 fn decode_new_zone(bytes: &[u8]) -> ffi::NewZone {
     #[cfg(not(feature = "backend-eql"))]
-    let parsed = seq_decode::parse_new_zone(bytes);
+    let parsed = backend::parse_new_zone(bytes);
     #[cfg(feature = "backend-eql")]
     let parsed = seq_backend_eql::parse_legends_new_zone(bytes);
     match parsed {
@@ -1158,7 +1169,7 @@ fn decode_new_zone(bytes: &[u8]) -> ffi::NewZone {
 
 fn decode_player_self_pos(bytes: &[u8]) -> ffi::PlayerSelfPos {
     #[cfg(not(feature = "backend-eql"))]
-    let parsed = seq_decode::parse_player_self_pos(bytes);
+    let parsed = backend::parse_player_self_pos(bytes);
     #[cfg(feature = "backend-eql")]
     let parsed = seq_backend_eql::parse_legends_self_pos(bytes);
     match parsed {
@@ -1181,7 +1192,7 @@ fn decode_player_self_pos(bytes: &[u8]) -> ffi::PlayerSelfPos {
 }
 
 fn decode_player_spawn_pos(bytes: &[u8]) -> ffi::PlayerSpawnPos {
-    match seq_decode::parse_player_spawn_pos(bytes) {
+    match backend::parse_player_spawn_pos(bytes) {
         Ok(p) => ffi::PlayerSpawnPos {
             spawn_id: p.spawn_id, spawn_id2: p.spawn_id2,
             x: p.x, y: p.y, z: p.z,
@@ -1201,7 +1212,7 @@ fn decode_player_spawn_pos(bytes: &[u8]) -> ffi::PlayerSpawnPos {
 }
 
 fn decode_npc_move_update(bytes: &[u8]) -> ffi::NpcMove {
-    match seq_decode::parse_npc_move_update(bytes) {
+    match backend::parse_npc_move_update(bytes) {
         Ok(n) => ffi::NpcMove {
             spawn_id: n.spawn_id,
             x: n.x, y: n.y, z: n.z, heading: n.heading,

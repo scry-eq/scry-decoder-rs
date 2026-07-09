@@ -10,19 +10,20 @@ rust-version.workspace = true
 [lib]
 crate-type = ["staticlib", "rlib"]
 
-# Backend selection. live/test forward to seq-decode's bindings selection; eql
-# reuses the Live decoders (backend-live) and pulls in seq-backend-eql for the
-# 5 opcodes whose Legends wire diverges. The decode_* FFI surface is identical
-# for every backend — only the 5 diverged impls cfg-select the Legends parser.
+# Backend selection. live/test link the shared seq-decode stack (its bindings
+# crate cfg-selected). eql links ONLY seq-backend-eql — a self-contained stack
+# with no seq-decode edge, so a Live wire change can't reach eql. The decode_*
+# FFI surface is identical for every backend; the `backend` alias in lib.rs
+# points at whichever crate the active feature linked.
 [features]
 default = ["backend-live"]
-backend-live = ["seq-decode/backend-live"]
-backend-test = ["seq-decode/backend-test"]
-backend-eql  = ["seq-decode/backend-live", "dep:seq-backend-eql"]
+backend-live = ["dep:seq-decode", "seq-decode/backend-live"]
+backend-test = ["dep:seq-decode", "seq-decode/backend-test"]
+backend-eql  = ["dep:seq-backend-eql"]
 
 [dependencies]
 cxx.workspace = true
-seq-decode = { workspace = true, default-features = false }
+seq-decode = { workspace = true, default-features = false, optional = true }
 seq-backend-eql = { workspace = true, optional = true }
 
 [build-dependencies]

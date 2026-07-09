@@ -1,6 +1,6 @@
 [package]
 name = "seq-backend-eql"
-description = "EverQuest Legends wire decoders. eql owns no C wire structs, so unlike seq-eqstructs-{live,test} (struct mirrors) this crate holds the offset+scale parsers for the 5 opcodes whose Legends wire diverges from Live. It produces seq-decode's neutral output structs so the uniform bridge maps them exactly like the Live decoders."
+description = "Self-contained EverQuest Legends decode surface. Vendors its own copies of every parser + output struct + a pinned in-crate eqstructs module (src/bindings.rs, a frozen fork of the live struct layouts), so the eql backend depends on NOTHING from the Live decode stack (seq-decode) — a Live wire patch cannot reach eql. eql's own byte-offset parsers override the vendored copies for the opcodes whose Legends wire diverges; the rest are pinned copies that we now own and diverge only when eql's wire does."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,10 +9,10 @@ rust-version.workspace = true
 
 [dependencies]
 thiserror.workspace = true
-# For the shared neutral output structs (PlayerProfile, MobUpdate, ...). eql
-# reuses the Live decoders for the other ~38 opcodes, so it builds on the Live
-# decode stack (backend-live pulls seq-eqstructs-live).
-seq-decode = { workspace = true, features = ["backend-live"] }
+# No seq-decode / seq-eqstructs dependency: this crate IS the whole eql decode
+# stack. The pinned struct layouts live in-crate as the `eqstructs` module
+# (src/eqstructs.rs + src/bindings.rs), a frozen fork of the live bindings, so a
+# Live everquest.h regen never reaches eql.
 
 [lints]
 workspace = true
