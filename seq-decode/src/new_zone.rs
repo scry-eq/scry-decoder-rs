@@ -27,8 +27,9 @@ pub struct NewZone {
     pub safe_y: f32,
     pub safe_x: f32,
     pub safe_z: f32,
-    /// Classic zone id. Live's name-based OP_NewZone leaves this 0; the eql
-    /// backend's numeric OP_NewZone sets it and the daemon resolves id->name.
+    /// Classic zone id. Unused by the current parsers — both Live and the eql
+    /// backend name the zone via short_name/long_name (eql's 0x1dbf carries the
+    /// name as text, not an id). Retained for wire/FFI compatibility.
     pub zone_id: u32,
 }
 

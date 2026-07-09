@@ -90,18 +90,14 @@ pub fn parse_legends_profile(b: &[u8]) -> Result<PlayerProfile, LegendsError> {
     if b.len() < 34 {
         return Err(LegendsError::Short(b.len()));
     }
-    // Current zone (classic id) lives deep at u16@36211 — the {zoneId, x, y, z}
-    // current-location record. CONFIRMED by cross-diffing two zones (the only
-    // field that flips: nektulos=25 -> guktop=65). This is the CURRENT zone; the
-    // BIND zone (@39, and 0x4bc8@6) is a different field — don't confuse them.
-    // NOTE: deep offset in a ~40KB variable-length payload — may shift with big
-    // inventory changes; re-derive if the resolved zone comes out wrong.
-    let zone_id = if b.len() >= 36213 { rd_u16(b, 36211) } else { 0 };
+    // Identity header only. The CURRENT zone is NOT read here anymore — it comes
+    // from OP_NewZone (0x1dbf, `parse_legends_new_zone`), which carries the zone
+    // short/long name as text. The old u16@36211 profile read was a fragile deep
+    // offset into a ~40KB variable-length payload; OP_NewZone is authoritative.
     Ok(PlayerProfile {
         race: rd_u32(b, 21),
         class_: rd_u32(b, 25),
         level: b[33],
-        zone_id,
         ..Default::default()
     })
 }
@@ -134,17 +130,30 @@ pub fn parse_legends_self_pos(b: &[u8]) -> Result<PlayerSelfPos, LegendsError> {
     })
 }
 
-/// `OP_NewZone` (Legends, id 0x4bc8) S>C, 14B, once at zone-in. **UNWIRED**:
-/// its `u32@6` is the **BIND** zone (identical across zones — confirmed
-/// nektulos-vs-upperguk both read 25), NOT the current zone. The current zone is
-/// read from `OP_PlayerProfile` (`parse_legends_profile`, u16@36211) instead.
-/// Kept for the uniform `decode_new_zone` surface; the returned `zone_id` is bind.
+/// `OP_NewZone` (Legends, id 0x1dbf) S>C, ~340B, once per zone-in. Carries the
+/// CURRENT zone as packed NUL-terminated text — `short_name` then `long_name`
+/// (then a zonefile repeat + binary tail we ignore). The daemon drives
+/// `ZoneMgr::setZoneByName(short, long)` directly, so no classic-id table is
+/// needed. Confirmed 3-way (2026-07-08): guktop / "The City of Guk",
+/// nektulos / "Nektulos Forest", unrest / "The Estate of Unrest" — each the
+/// correct current zone, each a different length (packed C-strings, not
+/// fixed-width arrays, so the fields sit at zone-dependent offsets).
+///
+/// The pre-2026-07-08 mapping pointed OP_NewZone at 0x4bc8, whose `u32@6` is the
+/// BIND zone (identical across zones); that opcode is not OP_NewZone and is no
+/// longer decoded here.
 pub fn parse_legends_new_zone(b: &[u8]) -> Result<NewZone, LegendsError> {
-    if b.len() < 10 {
+    // short_name @0, long_name after its NUL. Two packed C-strings name the zone
+    // + drive the map; the binary tail (safe point, exp mult, …) is unused.
+    let n0 = b.iter().position(|&c| c == 0).ok_or(LegendsError::Short(b.len()))?;
+    if n0 == 0 {
         return Err(LegendsError::Short(b.len()));
     }
+    let rest = &b[n0 + 1..];
+    let n1 = rest.iter().position(|&c| c == 0).ok_or(LegendsError::Short(b.len()))?;
     Ok(NewZone {
-        zone_id: rd_u32(b, 6),
+        short_name: latin1(&b[..n0]),
+        long_name: latin1(&rest[..n1]),
         ..Default::default()
     })
 }
@@ -223,6 +232,24 @@ mod tests {
         assert_eq!(p.race, 6);
         assert_eq!(p.class_, 5);
         assert_eq!(p.level, 42);
+    }
+
+    #[test]
+    fn new_zone_reads_packed_names() {
+        // 0x1dbf layout: short\0 long\0 <binary tail we ignore>.
+        let mut b = Vec::new();
+        b.extend_from_slice(b"guktop\0");
+        b.extend_from_slice(b"The City of Guk\0");
+        b.extend_from_slice(&[0u8; 40]);
+        let z = parse_legends_new_zone(&b).unwrap();
+        assert_eq!(z.short_name, "guktop");
+        assert_eq!(z.long_name, "The City of Guk");
+    }
+
+    #[test]
+    fn new_zone_rejects_unterminated() {
+        assert!(parse_legends_new_zone(b"noterminator").is_err());
+        assert!(parse_legends_new_zone(b"short\0").is_err()); // no long name
     }
 
     #[test]
@@ -319,15 +346,5 @@ mod tests {
         assert_eq!(c.faction, 4);
         assert_eq!(c.level, 0);
         assert!(parse_legends_consider(&[0u8; 23]).is_err());
-    }
-
-    #[test]
-    fn new_zone_reads_numeric_id() {
-        let mut b = [0u8; 14];
-        b[6..10].copy_from_slice(&25u32.to_le_bytes()); // zoneId @6 (nektulos)
-        let z = parse_legends_new_zone(&b).unwrap();
-        assert_eq!(z.zone_id, 25);
-        assert!(z.short_name.is_empty());
-        assert!(parse_legends_new_zone(&[0u8; 9]).is_err());
     }
 }
