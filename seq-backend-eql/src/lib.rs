@@ -75,63 +75,202 @@ pub struct LegendsSpawn {
     pub max_hp: u8,
 }
 
-/// The character name lives at a fixed deep offset in the (variable-length,
-/// ~41KB) profile: `name\0` then the skills u32 array, ~164B before the zone
-/// field. The offset held across two captures (L26 / 41611B and L30 / 41891B —
-/// the size delta is entirely in the tail *after* the name), but it sits past
-/// the inventory block, so a big inventory change or a patch can shift it.
-/// So VALIDATE: an EQ first name is a short NUL-terminated run of ASCII letters.
-/// A read that isn't one (offset drifted → binary) yields "" and the daemon
-/// falls back to own-spawn adoption (its prior name source — `EqlDispatch` +
-/// `SpawnShell::playerChangedID`) instead of surfacing garbage.
-const PROFILE_NAME_OFFSET: usize = 36047;
-
-fn read_profile_name(b: &[u8]) -> String {
-    if b.len() <= PROFILE_NAME_OFFSET {
-        return String::new();
-    }
-    // Bounded scan: a valid name + NUL fits well inside 32 bytes, and a drifted
-    // offset into binary won't produce an early NUL-terminated all-alpha run.
-    let tail = &b[PROFILE_NAME_OFFSET..];
-    let end = match tail.iter().take(32).position(|&c| c == 0) {
-        Some(n) if (1..=20).contains(&n) => n,
-        _ => return String::new(),
-    };
-    let name = &tail[..end];
-    if !name.iter().all(|&c| c.is_ascii_alphabetic()) {
-        return String::new();
-    }
-    latin1(name)
+// Bounds-checked LE/BE reads at an absolute offset for the variable-length
+// tail walk. Unlike the fixed `rd_*` readers above (callers length-guard those
+// up front), these return `None` past the end so a truncated tail degrades to
+// "identity + name only" instead of panicking.
+#[inline]
+fn opt_u8(b: &[u8], o: usize) -> Option<u8> { b.get(o).copied() }
+#[inline]
+fn opt_u16_le(b: &[u8], o: usize) -> Option<u16> {
+    Some(u16::from_le_bytes(b.get(o..o + 2)?.try_into().unwrap()))
+}
+#[inline]
+fn opt_u16_be(b: &[u8], o: usize) -> Option<u16> {
+    Some(u16::from_be_bytes(b.get(o..o + 2)?.try_into().unwrap()))
+}
+#[inline]
+fn opt_u32_le(b: &[u8], o: usize) -> Option<u32> {
+    Some(u32::from_le_bytes(b.get(o..o + 4)?.try_into().unwrap()))
+}
+#[inline]
+fn opt_f32_le(b: &[u8], o: usize) -> Option<f32> {
+    Some(f32::from_le_bytes(b.get(o..o + 4)?.try_into().unwrap()))
 }
 
-/// `OP_PlayerProfile` (Legends, id 0x62f0 post-patch) S>C: identity header —
-/// race u32 @21, class u32 @25, level u8 @33. Truncation to the daemon's u16
-/// race / u8 class happens on the C++ side (`setIdentity`), same as the Live
-/// path. The character NAME is also decoded here (see `read_profile_name`) so
-/// the eql box is named from its own profile — authoritatively, like Live —
-/// rather than from the own-spawn adoption fallback.
+/// NUL-terminated latin-1 out of a fixed-width name buffer.
+fn cstr_field(buf: &[u8]) -> String {
+    let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    latin1(&buf[..end])
+}
+
+/// The name/lastname block is a reliable ABSOLUTE anchor inside the
+/// (variable-length, ~40KB) profile: `u32 == 64` + 64-byte NUL-terminated name
+/// buffer + `u32 == 32` + 32-byte NUL-terminated lastname buffer. Scanning for
+/// that signature — instead of a fixed offset like the old 36047 — survives the
+/// inventory/spellbook size drift that shifts the block per character and per
+/// patch, and everything from the block onward matches the Live tail layout.
+/// Returns the offset of the leading `u32 == 64`, or `None` if not found.
 ///
-/// The header offsets survived the 2026-07-07 patch — VERIFIED against a known
-/// char (L12, race DarkElf=6@21, level 12@33). `class` @25 is the **primary of
-/// three** (Legends chars have 3 simultaneous classes, e.g. SHD/DRU/MNK = 5/6/7);
-/// the 2nd/3rd class ids live in a separate block (~@12094), not surfaced — the
-/// daemon's neutral `setIdentity` carries a single class. Add a 3-class field to
-/// the profile output + proto if/when the client should show all three.
+/// VALIDATE the candidate: a real first name is a capitalized, printable,
+/// NUL-terminated run — binary that happens to carry the two length words
+/// won't also spell a name, so this won't false-match.
+fn find_profile_name_block(b: &[u8]) -> Option<usize> {
+    if b.len() < 104 {
+        return None;
+    }
+    for p in 0..=(b.len() - 104) {
+        if b[p] != 0x40 || b[p + 1] != 0 || b[p + 2] != 0 || b[p + 3] != 0 {
+            continue;
+        }
+        if b[p + 68] != 0x20 || b[p + 69] != 0 || b[p + 70] != 0 || b[p + 71] != 0 {
+            continue;
+        }
+        let nb = &b[p + 4..p + 68];
+        if !nb[0].is_ascii_uppercase() {
+            continue;
+        }
+        let mut ok = false;
+        for &c in nb {
+            match c {
+                0 => {
+                    ok = true; // reached the terminator after >=1 printable byte
+                    break;
+                }
+                0x20..=0x7e => {}
+                _ => break,
+            }
+        }
+        if ok {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// Parse name + lastname + the positionally-mapped tail (birthday, expansions,
+/// languages, current zone/instance, position, guild, carried+bank money)
+/// starting at the name block found by `find_profile_name_block`. Byte orders
+/// match the Live tail (`fillProfileStruct`): zoneId/instance LE, standState/
+/// anon BE, everything else LE. Degrades gracefully on a truncated tail.
+fn read_profile_name_and_tail(b: &[u8], p0: usize, prof: &mut PlayerProfile) -> Option<()> {
+    let mut p = p0;
+
+    let name_len = opt_u32_le(b, p)? as usize; // == 64
+    p += 4;
+    prof.name = cstr_field(b.get(p..p + 64)?);
+    p += name_len;
+
+    let last_len = opt_u32_le(b, p)? as usize; // == 32
+    p += 4;
+    prof.last_name = cstr_field(b.get(p..p + 32)?);
+    p += last_len;
+
+    prof.birthday_time = opt_u32_le(b, p)?;
+    p += 4;
+    prof.account_create_date = opt_u32_le(b, p)?;
+    p += 4;
+    prof.last_save_time = opt_u32_le(b, p)?;
+    p += 4;
+    prof.time_played_min = opt_u32_le(b, p)?;
+    p += 4;
+    p += 4; // unknown
+    prof.expansions = opt_u32_le(b, p)?;
+    p += 4;
+    p += 4; // unknown
+
+    let lang_count = opt_u32_le(b, p)? as usize;
+    p += 4;
+    for _ in 0..lang_count {
+        prof.languages.push(opt_u8(b, p)?);
+        p += 1;
+    }
+
+    prof.zone_id = opt_u16_le(b, p)?;
+    p += 2;
+    prof.zone_instance = opt_u16_le(b, p)?;
+    p += 2;
+
+    // Position wire order is y, x, z, heading (f32 LE), same as Live.
+    prof.y = opt_f32_le(b, p)?;
+    p += 4;
+    prof.x = opt_f32_le(b, p)?;
+    p += 4;
+    prof.z = opt_f32_le(b, p)?;
+    p += 4;
+    prof.heading = opt_f32_le(b, p)?;
+    p += 4;
+
+    // standState / anon are read BE (`readUInt16`), like Live.
+    prof.stand_state = opt_u16_be(b, p)?;
+    p += 2;
+    prof.anon = opt_u16_be(b, p)?;
+    p += 2;
+
+    prof.guild_id = opt_u32_le(b, p)?;
+    p += 4;
+    prof.guild_server_id = opt_u32_le(b, p)?;
+    p += 4;
+
+    // Tail money: 2 unknown bytes, then carried P/G/S/C, then bank P/G/S/C.
+    // Cursor coin rides a second money block in the unmapped middle region
+    // (recoverable by scanning for the duplicate carried quadruple) — left a
+    // follow-up; cursor fields stay 0 here.
+    p += 2;
+    prof.platinum = opt_u32_le(b, p)?;
+    p += 4;
+    prof.gold = opt_u32_le(b, p)?;
+    p += 4;
+    prof.silver = opt_u32_le(b, p)?;
+    p += 4;
+    prof.copper = opt_u32_le(b, p)?;
+    p += 4;
+    prof.platinum_bank = opt_u32_le(b, p)?;
+    p += 4;
+    prof.gold_bank = opt_u32_le(b, p)?;
+    p += 4;
+    prof.silver_bank = opt_u32_le(b, p)?;
+    p += 4;
+    prof.copper_bank = opt_u32_le(b, p)?;
+
+    Some(())
+}
+
+/// `OP_PlayerProfile` (Legends, id 0x62f0 post-patch) S>C. Two parts:
+///
+/// 1. Identity header, fixed offsets (patch-VERIFIED against a known char —
+///    race DarkElf=6 @21, level 12 @33): gender u8 @20, race u32 @21, class u32
+///    @25, level u8 @33. Truncation to the daemon's u16 race / u8 class happens
+///    on the C++ side (`setIdentity`), same as the Live path.
+///
+/// 2. Name/lastname + tail, via `find_profile_name_block`'s absolute anchor-scan
+///    (replaces the old fragile fixed offset 36047). This yields the surname
+///    and the current zone/instance, position, guild, and carried+bank money —
+///    the eql box is named and placed from its own profile, authoritatively,
+///    like Live, rather than from the own-spawn adoption fallback.
+///
+/// The EQ Legends multiclass bitmask sits at @29 (u32, inserted between class
+/// and level — that's why `level` is @33 not @29). `class` @25 is the primary
+/// of three simultaneous classes; surfacing all three needs a proto field and
+/// is deferred (the neutral `setIdentity` carries a single class).
 pub fn parse_legends_profile(b: &[u8]) -> Result<PlayerProfile, LegendsError> {
     if b.len() < 34 {
         return Err(LegendsError::Short(b.len()));
     }
-    // Identity header only. The CURRENT zone is NOT read here anymore — it comes
-    // from OP_NewZone (0x1dbf, `parse_legends_new_zone`), which carries the zone
-    // short/long name as text. The old u16@36211 profile read was a fragile deep
-    // offset into a ~40KB variable-length payload; OP_NewZone is authoritative.
-    Ok(PlayerProfile {
+    let mut prof = PlayerProfile {
+        gender: b[20],
         race: rd_u32(b, 21),
         class_: rd_u32(b, 25),
         level: b[33],
-        name: read_profile_name(b),
         ..Default::default()
-    })
+    };
+    // Name + tail via absolute anchor-scan. If the block isn't found (heavy
+    // drift / truncation) the identity fields above still stand and the C++
+    // side falls back to own-spawn name adoption.
+    if let Some(p) = find_profile_name_block(b) {
+        read_profile_name_and_tail(b, p, &mut prof);
+    }
+    Ok(prof)
 }
 
 /// `OP_ClientUpdate` (Legends) C>S, 42B: IEEE-float position + velocity + heading.
@@ -268,33 +407,108 @@ mod tests {
         assert_eq!(p.name, "");
     }
 
+    /// Synthetic profile: 34-byte identity header, then unmapped-middle junk
+    /// (zeros — no 0x40, so no false name-block match), then the name block
+    /// (`u32 64` + 64B name + `u32 32` + 32B lastname) and the positional tail.
+    fn profile_with_name_block(name: &str, last: &str) -> Vec<u8> {
+        let mut b = vec![0u8; 34];
+        b[20] = 1; // gender
+        b[21..25].copy_from_slice(&6u32.to_le_bytes()); // race
+        b[25..29].copy_from_slice(&5u32.to_le_bytes()); // class (primary)
+        b[29..33].copy_from_slice(&0b111u32.to_le_bytes()); // classMask (not surfaced)
+        b[33] = 12; // level
+        b.extend_from_slice(&[0u8; 200]); // unmapped middle
+
+        // name block
+        b.extend_from_slice(&64u32.to_le_bytes());
+        let mut nbuf = [0u8; 64];
+        nbuf[..name.len()].copy_from_slice(name.as_bytes());
+        b.extend_from_slice(&nbuf);
+        b.extend_from_slice(&32u32.to_le_bytes());
+        let mut lbuf = [0u8; 32];
+        lbuf[..last.len()].copy_from_slice(last.as_bytes());
+        b.extend_from_slice(&lbuf);
+
+        // tail
+        for v in [111u32, 222, 333, 444] {
+            b.extend_from_slice(&v.to_le_bytes()); // birthday/create/save/played
+        }
+        b.extend_from_slice(&[0u8; 4]); // unknown
+        b.extend_from_slice(&0xFFu32.to_le_bytes()); // expansions
+        b.extend_from_slice(&[0u8; 4]); // unknown
+        b.extend_from_slice(&1u32.to_le_bytes()); // langCount
+        b.push(100); // one language
+        b.extend_from_slice(&55u16.to_le_bytes()); // zoneId (LE)
+        b.extend_from_slice(&0u16.to_le_bytes()); // zoneInstance (LE)
+        b.extend_from_slice(&(-12.5f32).to_le_bytes()); // y
+        b.extend_from_slice(&34.5f32.to_le_bytes()); // x
+        b.extend_from_slice(&7.0f32.to_le_bytes()); // z
+        b.extend_from_slice(&90.0f32.to_le_bytes()); // heading
+        b.extend_from_slice(&100u16.to_be_bytes()); // standState (BE)
+        b.extend_from_slice(&0u16.to_be_bytes()); // anon (BE)
+        b.extend_from_slice(&999u32.to_le_bytes()); // guildID
+        b.extend_from_slice(&1u32.to_le_bytes()); // guildServerID
+        b.extend_from_slice(&[0u8; 2]); // 2 unknown
+        for v in [10u32, 20, 30, 40] {
+            b.extend_from_slice(&v.to_le_bytes()); // carried P/G/S/C
+        }
+        for v in [50u32, 60, 70, 80] {
+            b.extend_from_slice(&v.to_le_bytes()); // bank P/G/S/C
+        }
+        b
+    }
+
     #[test]
-    fn profile_reads_name_at_deep_offset() {
-        let mut b = vec![0u8; PROFILE_NAME_OFFSET + 40];
+    fn profile_anchor_scans_name_surname_and_tail() {
+        let b = profile_with_name_block("Testchar", "Surname");
+        let p = parse_legends_profile(&b).unwrap();
+        // identity header (fixed offsets)
+        assert_eq!(p.gender, 1);
+        assert_eq!(p.race, 6);
+        assert_eq!(p.class_, 5);
+        assert_eq!(p.level, 12);
+        // name block reached by the absolute anchor-scan, not a fixed offset
+        assert_eq!(p.name, "Testchar");
+        assert_eq!(p.last_name, "Surname");
+        // positional tail
+        assert_eq!(p.expansions, 0xFF);
+        assert_eq!(p.languages, vec![100]);
+        assert_eq!(p.zone_id, 55);
+        assert_eq!(p.x, 34.5);
+        assert_eq!(p.y, -12.5);
+        assert_eq!(p.z, 7.0);
+        assert_eq!(p.heading, 90.0);
+        assert_eq!(p.stand_state, 100);
+        assert_eq!(p.guild_id, 999);
+        assert_eq!(p.guild_server_id, 1);
+        assert_eq!(p.platinum, 10);
+        assert_eq!(p.copper, 40);
+        assert_eq!(p.platinum_bank, 50);
+        assert_eq!(p.copper_bank, 80);
+    }
+
+    #[test]
+    fn profile_without_name_block_keeps_identity_only() {
+        // No name-block signature anywhere → name stays empty, identity stands,
+        // and the daemon falls back to own-spawn name adoption.
+        let mut b = vec![0u8; 500];
         b[21..25].copy_from_slice(&6u32.to_le_bytes());
         b[33] = 12;
-        b[PROFILE_NAME_OFFSET..PROFILE_NAME_OFFSET + 8].copy_from_slice(b"Testname");
-        // byte at +8 stays 0 → NUL terminator; skills u32s would follow in the wild.
         let p = parse_legends_profile(&b).unwrap();
-        assert_eq!(p.name, "Testname");
+        assert_eq!(p.name, "");
+        assert_eq!(p.last_name, "");
+        assert_eq!(p.race, 6);
         assert_eq!(p.level, 12);
     }
 
     #[test]
-    fn profile_name_rejects_drifted_offset() {
-        // Long enough, but the name slot is binary (offset drifted after a patch
-        // / big inventory change): a leading non-alpha byte → "" → the daemon
-        // keeps its own-spawn-adoption name instead of surfacing garbage.
-        let mut g = vec![0u8; PROFILE_NAME_OFFSET + 40];
-        g[PROFILE_NAME_OFFSET..PROFILE_NAME_OFFSET + 6]
-            .copy_from_slice(&[0x9c, 0x12, 0x40, 0x00, 0x03, 0x00]);
-        assert_eq!(parse_legends_profile(&g).unwrap().name, "");
-
-        // No NUL within the bounded window → "" (not a scan over the whole tail).
-        let mut n = vec![b'A'; PROFILE_NAME_OFFSET + 40];
-        n[0..34].iter_mut().for_each(|x| *x = 0);
-        n[21..25].copy_from_slice(&6u32.to_le_bytes());
-        assert_eq!(parse_legends_profile(&n).unwrap().name, "");
+    fn profile_truncated_tail_still_yields_name() {
+        // Name block intact but the tail is cut off: name/lastname still land,
+        // the truncated tail fields degrade to Default without panicking.
+        let mut b = profile_with_name_block("Halfway", "");
+        b.truncate(b.len() - 30);
+        let p = parse_legends_profile(&b).unwrap();
+        assert_eq!(p.name, "Halfway");
     }
 
     #[test]
