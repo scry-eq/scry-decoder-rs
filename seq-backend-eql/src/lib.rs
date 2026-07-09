@@ -75,10 +75,41 @@ pub struct LegendsSpawn {
     pub max_hp: u8,
 }
 
+/// The character name lives at a fixed deep offset in the (variable-length,
+/// ~41KB) profile: `name\0` then the skills u32 array, ~164B before the zone
+/// field. The offset held across two captures (L26 / 41611B and L30 / 41891B —
+/// the size delta is entirely in the tail *after* the name), but it sits past
+/// the inventory block, so a big inventory change or a patch can shift it.
+/// So VALIDATE: an EQ first name is a short NUL-terminated run of ASCII letters.
+/// A read that isn't one (offset drifted → binary) yields "" and the daemon
+/// falls back to own-spawn adoption (its prior name source — `EqlDispatch` +
+/// `SpawnShell::playerChangedID`) instead of surfacing garbage.
+const PROFILE_NAME_OFFSET: usize = 36047;
+
+fn read_profile_name(b: &[u8]) -> String {
+    if b.len() <= PROFILE_NAME_OFFSET {
+        return String::new();
+    }
+    // Bounded scan: a valid name + NUL fits well inside 32 bytes, and a drifted
+    // offset into binary won't produce an early NUL-terminated all-alpha run.
+    let tail = &b[PROFILE_NAME_OFFSET..];
+    let end = match tail.iter().take(32).position(|&c| c == 0) {
+        Some(n) if (1..=20).contains(&n) => n,
+        _ => return String::new(),
+    };
+    let name = &tail[..end];
+    if !name.iter().all(|&c| c.is_ascii_alphabetic()) {
+        return String::new();
+    }
+    latin1(name)
+}
+
 /// `OP_PlayerProfile` (Legends, id 0x62f0 post-patch) S>C: identity header —
 /// race u32 @21, class u32 @25, level u8 @33. Truncation to the daemon's u16
 /// race / u8 class happens on the C++ side (`setIdentity`), same as the Live
-/// path.
+/// path. The character NAME is also decoded here (see `read_profile_name`) so
+/// the eql box is named from its own profile — authoritatively, like Live —
+/// rather than from the own-spawn adoption fallback.
 ///
 /// The header offsets survived the 2026-07-07 patch — VERIFIED against a known
 /// char (L12, race DarkElf=6@21, level 12@33). `class` @25 is the **primary of
@@ -98,6 +129,7 @@ pub fn parse_legends_profile(b: &[u8]) -> Result<PlayerProfile, LegendsError> {
         race: rd_u32(b, 21),
         class_: rd_u32(b, 25),
         level: b[33],
+        name: read_profile_name(b),
         ..Default::default()
     })
 }
@@ -232,6 +264,37 @@ mod tests {
         assert_eq!(p.race, 6);
         assert_eq!(p.class_, 5);
         assert_eq!(p.level, 42);
+        // 34-byte identity-only buffer has no name slot → empty, no panic.
+        assert_eq!(p.name, "");
+    }
+
+    #[test]
+    fn profile_reads_name_at_deep_offset() {
+        let mut b = vec![0u8; PROFILE_NAME_OFFSET + 40];
+        b[21..25].copy_from_slice(&6u32.to_le_bytes());
+        b[33] = 12;
+        b[PROFILE_NAME_OFFSET..PROFILE_NAME_OFFSET + 8].copy_from_slice(b"Testname");
+        // byte at +8 stays 0 → NUL terminator; skills u32s would follow in the wild.
+        let p = parse_legends_profile(&b).unwrap();
+        assert_eq!(p.name, "Testname");
+        assert_eq!(p.level, 12);
+    }
+
+    #[test]
+    fn profile_name_rejects_drifted_offset() {
+        // Long enough, but the name slot is binary (offset drifted after a patch
+        // / big inventory change): a leading non-alpha byte → "" → the daemon
+        // keeps its own-spawn-adoption name instead of surfacing garbage.
+        let mut g = vec![0u8; PROFILE_NAME_OFFSET + 40];
+        g[PROFILE_NAME_OFFSET..PROFILE_NAME_OFFSET + 6]
+            .copy_from_slice(&[0x9c, 0x12, 0x40, 0x00, 0x03, 0x00]);
+        assert_eq!(parse_legends_profile(&g).unwrap().name, "");
+
+        // No NUL within the bounded window → "" (not a scan over the whole tail).
+        let mut n = vec![b'A'; PROFILE_NAME_OFFSET + 40];
+        n[0..34].iter_mut().for_each(|x| *x = 0);
+        n[21..25].copy_from_slice(&6u32.to_le_bytes());
+        assert_eq!(parse_legends_profile(&n).unwrap().name, "");
     }
 
     #[test]
