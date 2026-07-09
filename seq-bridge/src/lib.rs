@@ -99,6 +99,9 @@ mod ffi {
         y: i16,
         z: i16,
         max_hp: u8,
+        // Decoded h2048 heading (0..2047). eql only; Live leaves 0 and takes
+        // heading from pos_data / OP_MobUpdate.
+        heading: u16,
     }
 
     // Stage A+3 — small fixed-size opcodes. Each struct ends with an
@@ -688,7 +691,7 @@ fn spawn_err() -> ffi::Spawn {
         pos_data: [0; 5],
         level: 0, npc: 0, other_data: 0, char_properties: 0,
         cur_hp: 0, holding: 0, state: 0, light: 0, is_mercenary: 0,
-        x: 0, y: 0, z: 0, max_hp: 0,
+        x: 0, y: 0, z: 0, max_hp: 0, heading: 0,
     }
 }
 
@@ -722,7 +725,7 @@ fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
             state: s.state,
             light: s.light,
             is_mercenary: s.is_mercenary,
-            x: 0, y: 0, z: 0, max_hp: 0,
+            x: 0, y: 0, z: 0, max_hp: 0, heading: 0,
         },
         Err(_) => spawn_err(),
     }
@@ -758,6 +761,7 @@ fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
             x: s.x,
             y: s.y,
             z: s.z,
+            heading: s.heading,
             ..spawn_err()
         },
         Err(_) => spawn_err(),

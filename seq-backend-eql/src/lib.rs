@@ -185,6 +185,8 @@ pub struct ZoneSpawn {
     pub x: i16,
     pub y: i16,
     pub z: i16,
+    /// h2048 heading (0..2047) — high 13 bits of the middle coord word.
+    pub heading: u16,
     pub level: u8,
     pub cur_hp: u8,
     pub max_hp: u8,
@@ -606,13 +608,18 @@ pub fn parse_zone_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     // 2026-07-07 EQL insert (8 bytes) between equipment and the position words.
     w.skip(8)?;
 
-    // posData: 4 words — z, y, x coords (19-bit ×8 in the low bits) + a heading
-    // word (encoding TBD; heading is re-established by OP_MobUpdate /
-    // OP_NpcMoveUpdate on first movement, so it is not surfaced here).
+    // posData: 4 words. Each coord is the low 19 bits (×8 fixed-point) of a
+    // word; the MIDDLE word additionally carries the heading as h2048 (0..2047)
+    // in its high 13 bits — per the validated `playerPosUpdateEQLStruct`
+    // writeup in everquest.h ("h2048 heading in x-word high bits"; the spawn
+    // union's separate word-3 heading is the unmapped 0x6000 candidate). Word 4
+    // holds unmapped delta/animation fields.
     let z = pos19_word(w.u32()?);
-    let y = pos19_word(w.u32()?);
+    let mid = w.u32()?;
+    let y = pos19_word(mid);
     let x = pos19_word(w.u32()?);
-    let _heading_word = w.u32()?;
+    let _delta_word = w.u32()?;
+    let heading = ((mid >> 19) & 0x1FFF) as u16;
 
     // Title/suffix string block: 4 strings on ordinary spawns, 6 (title, suffix,
     // then the 4) on titled ones — no reliable presence flag. Anchor on the
@@ -654,6 +661,7 @@ pub fn parse_zone_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
         x,
         y,
         z,
+        heading,
         level,
         cur_hp,
         max_hp: 100, // curHp is a percentage; base is 100
@@ -866,7 +874,8 @@ mod tests {
     #[allow(clippy::too_many_arguments)]
     fn build_spawn(
         name: &str, id: u32, level: u8, cur_hp: u8, race: u32, deity: u32,
-        class_: u32, z: i32, y: i32, x: i32, last: &str, title: &str, suffix: &str,
+        class_: u32, z: i32, y: i32, x: i32, heading: u16, last: &str,
+        title: &str, suffix: &str,
     ) -> Vec<u8> {
         let mut b = Vec::new();
         let text = |b: &mut Vec<u8>, s: &str| {
@@ -906,9 +915,11 @@ mod tests {
         b.extend_from_slice(&[0u8; 60]); // equipment (else branch: 20 + 2*5*4)
         b.extend_from_slice(&[0u8; 8]); // eql insert
         b.extend_from_slice(&pos_word(z));
-        b.extend_from_slice(&pos_word(y));
+        // middle word: y in low 19 bits, h2048 heading in high 13 bits
+        let mid = ((((y * 8) as u32) & 0x7FFFF) | ((heading as u32) << 19)).to_le_bytes();
+        b.extend_from_slice(&mid);
         b.extend_from_slice(&pos_word(x));
-        u32le(&mut b, 0x6000); // heading word
+        u32le(&mut b, 0x6000); // delta/animation word (unmapped)
         text(&mut b, title);
         text(&mut b, suffix);
         text(&mut b, ""); // string 3
@@ -923,7 +934,8 @@ mod tests {
     #[test]
     fn spawn_full_walk_reads_all_fields() {
         let b = build_spawn(
-            "a guard", 4242, 55, 90, 14, 396, 3, 80, -15, 10, "", "Protector", "of Qeynos",
+            "a guard", 4242, 55, 90, 14, 396, 3, 80, -15, 10, 1234, "", "Protector",
+            "of Qeynos",
         );
         let s = parse_zone_spawn(&b).unwrap();
         assert_eq!(s.id, 4242);
@@ -938,6 +950,8 @@ mod tests {
         assert_eq!(s.x, 10);
         assert_eq!(s.y, -15);
         assert_eq!(s.z, 80);
+        // h2048 heading out of the middle coord word's high 13 bits
+        assert_eq!(s.heading, 1234);
         // titled spawn: title then suffix out of the tail-anchored string block
         assert_eq!(s.title, "Protector");
         assert_eq!(s.suffix, "of Qeynos");
@@ -947,7 +961,7 @@ mod tests {
     fn spawn_last_name_and_position_past_i16_window() {
         // far spawn (|y·8| > i16::MAX) must not wrap; surname decodes; no title.
         let b = build_spawn(
-            "Grarf", 7, 60, 100, 14, 0, 5, 12, -4700, 5200, "Ironforge", "", "",
+            "Grarf", 7, 60, 100, 14, 0, 5, 12, -4700, 5200, 0, "Ironforge", "", "",
         );
         let s = parse_zone_spawn(&b).unwrap();
         assert_eq!(s.y, -4700);
