@@ -572,10 +572,7 @@ fn decode_end_update(bytes: &[u8]) -> ffi::EndUpdate {
 }
 
 fn decode_consider(bytes: &[u8]) -> ffi::Consider {
-    #[cfg(not(feature = "backend-eql"))]
     let parsed = backend::parse_consider(bytes);
-    #[cfg(feature = "backend-eql")]
-    let parsed = seq_backend_eql::parse_legends_consider(bytes);
     match parsed {
         Ok(c) => ffi::Consider {
             player_id: c.player_id, target_id: c.target_id,
@@ -731,10 +728,12 @@ fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
     }
 }
 
-// eql: Legends spawn decodes id/name/decoded-pos/level/hp; the rest stays zero.
+// eql: zone-spawn decodes id/name/decoded-pos/level/hp; the rest stays zero.
+// This one keeps a cfg-split (eql's ZoneSpawn is a different shape than Live's
+// Spawn — decoded x/y/z vs raw pos arrays).
 #[cfg(feature = "backend-eql")]
 fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
-    match seq_backend_eql::parse_legends_zone_spawn(bytes) {
+    match seq_backend_eql::parse_zone_spawn(bytes) {
         Ok(s) => ffi::Spawn {
             ok: true,
             name: s.name,
@@ -1013,10 +1012,7 @@ fn decode_channel_message(bytes: &[u8]) -> ffi::ChannelMessage {
 }
 
 fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
-    #[cfg(not(feature = "backend-eql"))]
     let parsed = backend::parse_player_profile(bytes);
-    #[cfg(feature = "backend-eql")]
-    let parsed = seq_backend_eql::parse_legends_profile(bytes);
     match parsed {
         Ok(p) => ffi::PlayerProfile {
             ok: true,
@@ -1139,10 +1135,7 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
 }
 
 fn decode_new_zone(bytes: &[u8]) -> ffi::NewZone {
-    #[cfg(not(feature = "backend-eql"))]
     let parsed = backend::parse_new_zone(bytes);
-    #[cfg(feature = "backend-eql")]
-    let parsed = seq_backend_eql::parse_legends_new_zone(bytes);
     match parsed {
         Ok(z) => ffi::NewZone {
             short_name: z.short_name,
@@ -1168,10 +1161,7 @@ fn decode_new_zone(bytes: &[u8]) -> ffi::NewZone {
 // Stage A+8
 
 fn decode_player_self_pos(bytes: &[u8]) -> ffi::PlayerSelfPos {
-    #[cfg(not(feature = "backend-eql"))]
     let parsed = backend::parse_player_self_pos(bytes);
-    #[cfg(feature = "backend-eql")]
-    let parsed = seq_backend_eql::parse_legends_self_pos(bytes);
     match parsed {
         Ok(p) => ffi::PlayerSelfPos {
             spawn_id: p.spawn_id,

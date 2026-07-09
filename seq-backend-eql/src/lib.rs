@@ -10,8 +10,11 @@
 //!
 //! Two kinds of module live here:
 //!   * eql's OWN byte-offset parsers for the opcodes whose Legends wire diverges
-//!     from Live — the `parse_legends_*` fns below (spawn, profile, self-pos,
-//!     new-zone, consider). /loc-confirmed; see showeq-daemon `OPCODES_LEGENDS.md`.
+//!     from Live — `parse_zone_spawn` / `parse_player_profile` /
+//!     `parse_player_self_pos` / `parse_new_zone` / `parse_consider` below. They
+//!     take the same canonical names as the vendored Live copies (which stay
+//!     reachable via their module path), so the bridge's `backend` alias routes
+//!     to them with no per-opcode cfg. /loc-confirmed; see `OPCODES_LEGENDS.md`.
 //!   * pinned copies of the shared parsers (identical to Live *today*) that we
 //!     now OWN — when eql and Live diverge, edit only the copy here.
 //!
@@ -82,7 +85,9 @@ pub use buff::{parse_buff, Buff, BuffError};
 pub use channel_message::{parse_channel_message, ChannelMessage, ChannelMessageError};
 pub use click_object::{parse_click_object, ClickObject, ClickObjectError};
 pub use client_target::{parse_client_target, ClientTarget, ClientTargetError};
-pub use consider::{parse_consider, Consider, ConsiderError};
+// consider: eql provides the canonical `parse_consider` itself (below); the
+// vendored Live parser stays available as `consider::parse_consider`.
+pub use consider::{Consider, ConsiderError};
 pub use corpse_loc::{parse_corpse_loc, CorpseLoc, CorpseLocError};
 pub use death::{parse_death, Death, DeathError};
 pub use delete_spawn::{
@@ -106,10 +111,10 @@ pub use mob_health::{parse_mob_health, MobHealth, MobHealthError};
 pub use mob_update::{
     parse_mob_update, MobUpdate, ParseError, PAYLOAD_LEN as MOB_UPDATE_LEN,
 };
-pub use new_zone::{parse_new_zone, NewZone, NewZoneError};
+pub use new_zone::{NewZone, NewZoneError}; // eql owns canonical `parse_new_zone` (below)
 pub use npc_move_update::{parse_npc_move_update, NpcMoveUpdate, NpcMoveUpdateError};
-pub use player_profile::{parse_player_profile, PlayerProfile, PlayerProfileError};
-pub use player_self_pos::{parse_player_self_pos, PlayerSelfPos, PlayerSelfPosError};
+pub use player_profile::{PlayerProfile, PlayerProfileError}; // eql owns canonical `parse_player_profile` (below)
+pub use player_self_pos::{PlayerSelfPos, PlayerSelfPosError}; // eql owns canonical `parse_player_self_pos` (below)
 pub use player_spawn_pos::{parse_player_spawn_pos, PlayerSpawnPos, PlayerSpawnPosError};
 pub use remove_spawn::{parse_remove_spawn, RemoveSpawn, RemoveSpawnError};
 pub use simple_message::{parse_simple_message, SimpleMessage, SimpleMessageError};
@@ -139,7 +144,7 @@ pub(crate) fn cstr_field(bytes: &[u8]) -> String {
 // PlayerProfile, PlayerSelfPos.
 
 #[derive(Debug, Error, PartialEq, Eq)]
-pub enum LegendsError {
+pub enum DecodeError {
     #[error("payload too short: {0} bytes")]
     Short(usize),
     #[error("unexpected payload length: {0} bytes")]
@@ -181,7 +186,7 @@ fn latin1(b: &[u8]) -> String {
 /// struct and the uniform `decode_spawn` bridge maps it into `ffi::Spawn`
 /// (decoded x/y/z + hp; Live's raw equipment/position arrays stay zero).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct LegendsSpawn {
+pub struct ZoneSpawn {
     pub id: u16,
     pub name: String,
     pub x: i16,
@@ -372,9 +377,9 @@ fn read_profile_name_and_tail(b: &[u8], p0: usize, prof: &mut PlayerProfile) -> 
 /// and level — that's why `level` is @33 not @29). `class` @25 is the primary
 /// of three simultaneous classes; surfacing all three needs a proto field and
 /// is deferred (the neutral `setIdentity` carries a single class).
-pub fn parse_legends_profile(b: &[u8]) -> Result<PlayerProfile, LegendsError> {
+pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
     if b.len() < 34 {
-        return Err(LegendsError::Short(b.len()));
+        return Err(DecodeError::Short(b.len()));
     }
     let mut prof = PlayerProfile {
         gender: b[20],
@@ -400,9 +405,9 @@ pub fn parse_legends_profile(b: &[u8]) -> Result<PlayerProfile, LegendsError> {
 /// u16 @14, 11-bit (0–2047 = full circle), North≈0** — confirmed against a Sense
 /// Heading capture (N=2043, E=1542, S=1036, W=492, i.e. value falls ~256 per 45°).
 /// deltaZ candidate @22 (0 on flat ground, unconfirmed).
-pub fn parse_legends_self_pos(b: &[u8]) -> Result<PlayerSelfPos, LegendsError> {
+pub fn parse_player_self_pos(b: &[u8]) -> Result<PlayerSelfPos, DecodeError> {
     if b.len() != 42 {
-        return Err(LegendsError::BadLength(b.len()));
+        return Err(DecodeError::BadLength(b.len()));
     }
     // NOTE: @10 is gameY and @18 is gameX (EQ /loc prints Y,X,Z, so the /loc
     // ground truth was in that order). Bind x=gameX=@18, y=gameY=@10 to match
@@ -432,15 +437,15 @@ pub fn parse_legends_self_pos(b: &[u8]) -> Result<PlayerSelfPos, LegendsError> {
 /// The pre-2026-07-08 mapping pointed OP_NewZone at 0x4bc8, whose `u32@6` is the
 /// BIND zone (identical across zones); that opcode is not OP_NewZone and is no
 /// longer decoded here.
-pub fn parse_legends_new_zone(b: &[u8]) -> Result<NewZone, LegendsError> {
+pub fn parse_new_zone(b: &[u8]) -> Result<NewZone, DecodeError> {
     // short_name @0, long_name after its NUL. Two packed C-strings name the zone
     // + drive the map; the binary tail (safe point, exp mult, …) is unused.
-    let n0 = b.iter().position(|&c| c == 0).ok_or(LegendsError::Short(b.len()))?;
+    let n0 = b.iter().position(|&c| c == 0).ok_or(DecodeError::Short(b.len()))?;
     if n0 == 0 {
-        return Err(LegendsError::Short(b.len()));
+        return Err(DecodeError::Short(b.len()));
     }
     let rest = &b[n0 + 1..];
-    let n1 = rest.iter().position(|&c| c == 0).ok_or(LegendsError::Short(b.len()))?;
+    let n1 = rest.iter().position(|&c| c == 0).ok_or(DecodeError::Short(b.len()))?;
     Ok(NewZone {
         short_name: latin1(&b[..n0]),
         long_name: latin1(&rest[..n1]),
@@ -467,18 +472,18 @@ pub fn parse_legends_new_zone(b: &[u8]) -> Result<NewZone, LegendsError> {
 /// /loc-confirmed on two stationary guards across both block sizes; the
 /// 19-bit width (not i16) confirmed by sign-fill analysis 2026-07-08 —
 /// an i16 read wraps coordinates past ±4095 by 8192 game units.
-pub fn parse_legends_zone_spawn(b: &[u8]) -> Result<LegendsSpawn, LegendsError> {
+pub fn parse_zone_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     let name_len = b.iter().position(|&c| c == 0).unwrap_or(b.len());
     if name_len == 0 || name_len >= b.len() {
-        return Err(LegendsError::Short(b.len()));
+        return Err(DecodeError::Short(b.len()));
     }
     let s = &b[name_len + 1..];
     // Need the front header (through hp@45) AND the tail position triple.
     if s.len() < 96 {
-        return Err(LegendsError::BadLength(s.len()));
+        return Err(DecodeError::BadLength(s.len()));
     }
     let l = s.len();
-    Ok(LegendsSpawn {
+    Ok(ZoneSpawn {
         id: rd_u32(s, 0) as u16,
         name: latin1(&b[..name_len]),
         // @(l-91) is gameY, @(l-87) is gameX (/loc is Y,X,Z); bind x=gameX, y=gameY.
@@ -496,9 +501,9 @@ pub fn parse_legends_zone_spawn(b: &[u8]) -> Result<LegendsSpawn, LegendsError> 
 /// 2=warmly, 4=amiably — the friendliness word; **level is NOT here**, the
 /// client reads it from the spawn). Maps to the shared `Consider` (level=0) so
 /// the daemon's `SpawnShell::consMessage` path is uniform with Live.
-pub fn parse_legends_consider(b: &[u8]) -> Result<Consider, LegendsError> {
+pub fn parse_consider(b: &[u8]) -> Result<Consider, DecodeError> {
     if b.len() != 24 {
-        return Err(LegendsError::BadLength(b.len()));
+        return Err(DecodeError::BadLength(b.len()));
     }
     Ok(Consider {
         player_id: rd_u32(b, 0),
@@ -518,7 +523,7 @@ mod tests {
         b[21..25].copy_from_slice(&6u32.to_le_bytes()); // race
         b[25..29].copy_from_slice(&5u32.to_le_bytes()); // class
         b[33] = 42; // level
-        let p = parse_legends_profile(&b).unwrap();
+        let p = parse_player_profile(&b).unwrap();
         assert_eq!(p.race, 6);
         assert_eq!(p.class_, 5);
         assert_eq!(p.level, 42);
@@ -580,7 +585,7 @@ mod tests {
     #[test]
     fn profile_anchor_scans_name_surname_and_tail() {
         let b = profile_with_name_block("Testchar", "Surname");
-        let p = parse_legends_profile(&b).unwrap();
+        let p = parse_player_profile(&b).unwrap();
         // identity header (fixed offsets)
         assert_eq!(p.gender, 1);
         assert_eq!(p.race, 6);
@@ -613,7 +618,7 @@ mod tests {
         let mut b = vec![0u8; 500];
         b[21..25].copy_from_slice(&6u32.to_le_bytes());
         b[33] = 12;
-        let p = parse_legends_profile(&b).unwrap();
+        let p = parse_player_profile(&b).unwrap();
         assert_eq!(p.name, "");
         assert_eq!(p.last_name, "");
         assert_eq!(p.race, 6);
@@ -626,7 +631,7 @@ mod tests {
         // the truncated tail fields degrade to Default without panicking.
         let mut b = profile_with_name_block("Halfway", "");
         b.truncate(b.len() - 30);
-        let p = parse_legends_profile(&b).unwrap();
+        let p = parse_player_profile(&b).unwrap();
         assert_eq!(p.name, "Halfway");
     }
 
@@ -637,21 +642,21 @@ mod tests {
         b.extend_from_slice(b"guktop\0");
         b.extend_from_slice(b"The City of Guk\0");
         b.extend_from_slice(&[0u8; 40]);
-        let z = parse_legends_new_zone(&b).unwrap();
+        let z = parse_new_zone(&b).unwrap();
         assert_eq!(z.short_name, "guktop");
         assert_eq!(z.long_name, "The City of Guk");
     }
 
     #[test]
     fn new_zone_rejects_unterminated() {
-        assert!(parse_legends_new_zone(b"noterminator").is_err());
-        assert!(parse_legends_new_zone(b"short\0").is_err()); // no long name
+        assert!(parse_new_zone(b"noterminator").is_err());
+        assert!(parse_new_zone(b"short\0").is_err()); // no long name
     }
 
     #[test]
     fn self_pos_rejects_wrong_len() {
-        assert!(parse_legends_self_pos(&[0u8; 41]).is_err());
-        assert!(parse_legends_self_pos(&[0u8; 43]).is_err());
+        assert!(parse_player_self_pos(&[0u8; 41]).is_err());
+        assert!(parse_player_self_pos(&[0u8; 43]).is_err());
     }
 
     #[test]
@@ -664,7 +669,7 @@ mod tests {
         b[26..30].copy_from_slice(&1.5f32.to_le_bytes()); // @26 = deltaX
         b[6..10].copy_from_slice(&(-2.0f32).to_le_bytes()); // @6 = deltaY
         b[14..16].copy_from_slice(&512u16.to_le_bytes()); // heading (11-bit)
-        let p = parse_legends_self_pos(&b).unwrap();
+        let p = parse_player_self_pos(&b).unwrap();
         assert_eq!(p.spawn_id, 7);
         assert_eq!(p.x, 2246.5);
         assert_eq!(p.y, -954.77);
@@ -686,7 +691,7 @@ mod tests {
         let mut b = Vec::new();
         b.extend_from_slice(b"orc\0");
         b.extend_from_slice(&[0u8; 50]); // block < 96
-        assert!(parse_legends_zone_spawn(&b).is_err());
+        assert!(parse_zone_spawn(&b).is_err());
     }
 
     #[test]
@@ -704,7 +709,7 @@ mod tests {
         block[9..13].copy_from_slice(&pos19(-15, 715)); // y (len-91)
         block[13..17].copy_from_slice(&pos19(10, 4096)); // x (len-87)
         b.extend_from_slice(&block);
-        let s = parse_legends_zone_spawn(&b).unwrap();
+        let s = parse_zone_spawn(&b).unwrap();
         assert_eq!(s.id, 123);
         assert_eq!(s.name, "an orc");
         assert_eq!(s.x, 10);
@@ -725,7 +730,7 @@ mod tests {
         block[9..13].copy_from_slice(&pos19(-4700, 0)); // y (len-91)
         block[13..17].copy_from_slice(&pos19(5200, 0)); // x (len-87)
         b.extend_from_slice(&block);
-        let s = parse_legends_zone_spawn(&b).unwrap();
+        let s = parse_zone_spawn(&b).unwrap();
         assert_eq!(s.y, -4700);
         assert_eq!(s.x, 5200);
     }
@@ -736,11 +741,11 @@ mod tests {
         b[0..4].copy_from_slice(&27090u32.to_le_bytes()); // self
         b[4..8].copy_from_slice(&11626u32.to_le_bytes()); // target
         b[8..12].copy_from_slice(&4u32.to_le_bytes()); // faction (amiably)
-        let c = parse_legends_consider(&b).unwrap();
+        let c = parse_consider(&b).unwrap();
         assert_eq!(c.player_id, 27090);
         assert_eq!(c.target_id, 11626);
         assert_eq!(c.faction, 4);
         assert_eq!(c.level, 0);
-        assert!(parse_legends_consider(&[0u8; 23]).is_err());
+        assert!(parse_consider(&[0u8; 23]).is_err());
     }
 }
