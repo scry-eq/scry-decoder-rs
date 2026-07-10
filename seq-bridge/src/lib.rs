@@ -118,6 +118,20 @@ mod ffi {
         max_hp: i32,
         ok: bool,
     }
+    // eql OP_HPUpdate (0x2735) is a multiplexed stat-sync channel, not Live's
+    // fixed HP struct — decoded via decode_stat_sync. `wide` gates the real
+    // cur/max (vs percent) forms; `has_*` mark which stats the packet carried.
+    struct StatSync {
+        spawn_id: u32,
+        wide: bool,
+        has_hp: bool,
+        hp_cur: i64,
+        hp_max: i64,
+        has_mana: bool,
+        mana_cur: i64,
+        mana_max: i64,
+        ok: bool,
+    }
     struct MobHealth {
         spawn_id: u16,
         hp_percent: i32,
@@ -404,6 +418,7 @@ mod ffi {
         fn decode_spawn(bytes: &[u8]) -> Spawn;
         fn decode_remove_spawn(bytes: &[u8]) -> RemoveSpawn;
         fn decode_hp_update(bytes: &[u8]) -> HpUpdate;
+        fn decode_stat_sync(bytes: &[u8]) -> StatSync;
         fn decode_mob_health(bytes: &[u8]) -> MobHealth;
         fn decode_spawn_appearance(bytes: &[u8]) -> SpawnAppearance;
         fn decode_exp_update(bytes: &[u8]) -> ExpUpdate;
@@ -510,6 +525,7 @@ fn decode_remove_spawn(bytes: &[u8]) -> ffi::RemoveSpawn {
     }
 }
 
+#[cfg(not(feature = "backend-eql"))]
 fn decode_hp_update(bytes: &[u8]) -> ffi::HpUpdate {
     match backend::parse_hp_update(bytes) {
         Ok(h) => ffi::HpUpdate {
@@ -519,6 +535,43 @@ fn decode_hp_update(bytes: &[u8]) -> ffi::HpUpdate {
             spawn_id: 0, cur_hp: 0, max_hp: 0, ok: false,
         },
     }
+}
+
+// eql: OP_HPUpdate (0x2735) is the multiplexed stat-sync channel, decoded via
+// decode_stat_sync — Live's fixed HP struct never appears, so this shared FFI
+// is inert.
+#[cfg(feature = "backend-eql")]
+fn decode_hp_update(_bytes: &[u8]) -> ffi::HpUpdate {
+    ffi::HpUpdate { spawn_id: 0, cur_hp: 0, max_hp: 0, ok: false }
+}
+
+fn stat_sync_err() -> ffi::StatSync {
+    ffi::StatSync {
+        spawn_id: 0, wide: false,
+        has_hp: false, hp_cur: 0, hp_max: 0,
+        has_mana: false, mana_cur: 0, mana_max: 0,
+        ok: false,
+    }
+}
+
+// eql-only: the multiplexed stat-sync channel (real HP cur/max + player mana).
+// live/test have no such channel, so their build gets an inert stub.
+#[cfg(feature = "backend-eql")]
+fn decode_stat_sync(bytes: &[u8]) -> ffi::StatSync {
+    match seq_backend_eql::parse_stat_sync(bytes) {
+        Ok(s) => ffi::StatSync {
+            spawn_id: s.spawn_id, wide: s.wide,
+            has_hp: s.has_hp, hp_cur: s.hp_cur, hp_max: s.hp_max,
+            has_mana: s.has_mana, mana_cur: s.mana_cur, mana_max: s.mana_max,
+            ok: true,
+        },
+        Err(_) => stat_sync_err(),
+    }
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn decode_stat_sync(_bytes: &[u8]) -> ffi::StatSync {
+    stat_sync_err()
 }
 
 fn decode_mob_health(bytes: &[u8]) -> ffi::MobHealth {

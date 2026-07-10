@@ -103,7 +103,11 @@ pub use formatted_message::{
 pub use ground_spawn::{parse_ground_spawn, GroundSpawn, GroundSpawnError};
 pub use group_disband::{parse_group_disband, GroupDisband, GroupDisbandError};
 pub use group_follow::{parse_group_follow, GroupFollow, GroupFollowError};
-pub use hp_update::{HpUpdate, HpUpdateError}; // eql owns canonical `parse_hp_update` (below)
+// Vendored 18B `hpNpcUpdateStruct` parser: eql never sees Live's fixed HP
+// struct (0x2735 is the multiplexed stat channel decoded by `parse_stat_sync`
+// below), so the shared `decode_hp_update` FFI is stubbed inert for eql in the
+// bridge. Retained only so the module stays byte-identical to the Live fork.
+pub use hp_update::{parse_hp_update, HpUpdate, HpUpdateError};
 pub use illusion::{parse_illusion, Illusion, IllusionError};
 pub use level_update::{parse_level_update, LevelUpdate, LevelUpdateError};
 pub use mana_change::{parse_mana_change, ManaChange, ManaChangeError};
@@ -162,6 +166,12 @@ fn rd_u32(b: &[u8], o: usize) -> u32 {
 #[inline]
 fn rd_f32(b: &[u8], o: usize) -> f32 {
     f32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
+}
+#[inline]
+fn rd_i64(b: &[u8], o: usize) -> i64 {
+    i64::from_le_bytes([
+        b[o], b[o + 1], b[o + 2], b[o + 3], b[o + 4], b[o + 5], b[o + 6], b[o + 7],
+    ])
 }
 
 
@@ -711,21 +721,87 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
     ]
 }
 
-/// eql `OP_HPUpdate` (0x2735) — a multiplexed stat channel keyed by a subtype
-/// byte at offset 4. The 6-byte subtype-0x02 packet is the HP-bar feed:
-/// `u16 spawn_id, u16 0, u8 subtype=0x02, u8 hp_percent`. The daemon's spawns
-/// carry percentage HP (max=100), so this maps directly. Other sizes/subtypes
-/// (21/37/53-byte i64 cur/max stat pairs) are not the HP-bar feed and return an
-/// error so the bridge drops them (ok=false).
-pub fn parse_hp_update(b: &[u8]) -> Result<HpUpdate, DecodeError> {
-    if b.len() == 6 && b[4] == 0x02 {
-        return Ok(HpUpdate {
-            spawn_id: rd_u16(b, 0),
-            cur_hp: b[5] as i32,
-            max_hp: 100,
-        });
+/// eql `OP_HPUpdate` (0x2735) — the multiplexed stat-sync channel, fully
+/// decoded from the community f-patch's `SpawnShell::spawnStatEQL` (6378 wide
+/// packets across the pcap library, zero layout exceptions).
+///
+/// Layout: `u32 spawnId | u8 flags | per-stat payload | [optional u32 tail]`.
+/// `flags`: bit0 = wide form; bit1 = HP; bit2 = mana; bit3 = stamina/endurance;
+/// bits4-5 = reason (event/refresh/tick, ignored). The per-stat payload appears
+/// in bit order (HP, then mana, then endurance): the wide form carries
+/// `{i64 cur, i64 max}` per set stat bit; the narrow form carries one `u8
+/// percent` per stat (`max` = 100). Some packets append a trailing `u32`
+/// (purpose unknown). `flags 0x31` with no stat bits is the 6s keepalive.
+///
+/// Consumers (see `EqlDispatch::statSync`): HP → spawn cur/max (the wide form
+/// supersedes the old percent-only feed); the player's mana → `setManaEQL`
+/// (real cur/max, only from the wide form); endurance has no stock display and
+/// is consumed. Food/water never ride this channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct StatSync {
+    pub spawn_id: u32,
+    pub wide: bool,
+    pub has_hp: bool,
+    pub hp_cur: i64,
+    pub hp_max: i64,
+    pub has_mana: bool,
+    pub mana_cur: i64,
+    pub mana_max: i64,
+    pub has_end: bool,
+    pub end_cur: i64,
+    pub end_max: i64,
+}
+
+pub fn parse_stat_sync(b: &[u8]) -> Result<StatSync, DecodeError> {
+    if b.len() < 5 {
+        return Err(DecodeError::Short(b.len()));
     }
-    Err(DecodeError::BadLength(b.len()))
+    let flags = b[4];
+    let wide = flags & 0x01 != 0;
+    let nstats = ((flags & 0x02) != 0) as usize
+        + ((flags & 0x04) != 0) as usize
+        + ((flags & 0x08) != 0) as usize;
+    let stat_sz = if wide { 16 } else { 1 };
+    let expect = 5 + stat_sz * nstats;
+    // Structural canary: exact size, optionally +4 (trailing u32). A mismatch
+    // means the wire layout shifted — reject rather than misread the stats.
+    if b.len() != expect && b.len() != expect + 4 {
+        return Err(DecodeError::BadLength(b.len()));
+    }
+
+    let mut out = StatSync {
+        spawn_id: rd_u32(b, 0),
+        wide,
+        ..StatSync::default()
+    };
+
+    let mut pos = 5;
+    // bit1 = HP, bit2 = mana, bit3 = endurance, read in that fixed order.
+    for bit in 1..=3u8 {
+        if flags & (1 << bit) == 0 {
+            continue;
+        }
+        let (cur, max) = if wide {
+            let pair = (rd_i64(b, pos), rd_i64(b, pos + 8));
+            pos += 16;
+            pair
+        } else {
+            let c = b[pos] as i64;
+            pos += 1;
+            // A narrow percent above 100 signals a layout change; drop that stat
+            // (matching the f-patch's warn+skip) but keep parsing the rest.
+            if c > 100 {
+                continue;
+            }
+            (c, 100)
+        };
+        match bit {
+            1 => { out.has_hp = true; out.hp_cur = cur; out.hp_max = max; }
+            2 => { out.has_mana = true; out.mana_cur = cur; out.mana_max = max; }
+            _ => { out.has_end = true; out.end_cur = cur; out.end_max = max; }
+        }
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -1026,20 +1102,75 @@ mod tests {
     }
 
     #[test]
-    fn hp_update_reads_percent_subtype() {
-        // 6-byte subtype-0x02 HP feed: id@0, subtype@4=0x02, hp%@5
+    fn stat_sync_narrow_hp_percent() {
+        // 6-byte narrow HP feed: u32 id@0, flags@4=0x02 (HP, narrow), percent@5.
         let mut b = [0u8; 6];
-        b[0..2].copy_from_slice(&11744u16.to_le_bytes());
+        b[0..4].copy_from_slice(&11744u32.to_le_bytes());
         b[4] = 0x02;
         b[5] = 73;
-        let h = parse_hp_update(&b).unwrap();
-        assert_eq!(h.spawn_id, 11744);
-        assert_eq!(h.cur_hp, 73);
-        assert_eq!(h.max_hp, 100);
-        // non-HP subtypes / other sizes are dropped
-        let mut other = [0u8; 6];
-        other[4] = 0x05;
-        assert!(parse_hp_update(&other).is_err());
-        assert!(parse_hp_update(&[0u8; 21]).is_err());
+        let s = parse_stat_sync(&b).unwrap();
+        assert_eq!(s.spawn_id, 11744);
+        assert!(!s.wide);
+        assert!(s.has_hp);
+        assert_eq!(s.hp_cur, 73);
+        assert_eq!(s.hp_max, 100);
+        assert!(!s.has_mana && !s.has_end);
+    }
+
+    #[test]
+    fn stat_sync_wide_hp_mana() {
+        // 37-byte wide HP+mana: flags 0x07 (wide|HP|mana), two {i64 cur,max} pairs.
+        let mut b = [0u8; 37];
+        b[0..4].copy_from_slice(&42u32.to_le_bytes());
+        b[4] = 0x07;
+        b[5..13].copy_from_slice(&1500i64.to_le_bytes()); // hp cur
+        b[13..21].copy_from_slice(&2000i64.to_le_bytes()); // hp max
+        b[21..29].copy_from_slice(&300i64.to_le_bytes()); // mana cur
+        b[29..37].copy_from_slice(&450i64.to_le_bytes()); // mana max
+        let s = parse_stat_sync(&b).unwrap();
+        assert!(s.wide);
+        assert_eq!(s.spawn_id, 42);
+        assert!(s.has_hp && s.hp_cur == 1500 && s.hp_max == 2000);
+        assert!(s.has_mana && s.mana_cur == 300 && s.mana_max == 450);
+        assert!(!s.has_end);
+    }
+
+    #[test]
+    fn stat_sync_wide_three_stats_with_tail() {
+        // 53+4-byte wide HP+mana+endurance with the optional trailing u32.
+        let mut b = [0u8; 57];
+        b[0..4].copy_from_slice(&7u32.to_le_bytes());
+        b[4] = 0x0f; // wide | HP | mana | endurance
+        b[5..13].copy_from_slice(&10i64.to_le_bytes()); // hp cur
+        b[13..21].copy_from_slice(&20i64.to_le_bytes()); // hp max
+        b[21..29].copy_from_slice(&30i64.to_le_bytes()); // mana cur
+        b[29..37].copy_from_slice(&40i64.to_le_bytes()); // mana max
+        b[37..45].copy_from_slice(&50i64.to_le_bytes()); // end cur
+        b[45..53].copy_from_slice(&60i64.to_le_bytes()); // end max
+        // bytes 53..57 = trailing u32, ignored.
+        let s = parse_stat_sync(&b).unwrap();
+        assert!(s.has_hp && s.hp_cur == 10 && s.hp_max == 20);
+        assert!(s.has_mana && s.mana_cur == 30 && s.mana_max == 40);
+        assert!(s.has_end && s.end_cur == 50 && s.end_max == 60);
+    }
+
+    #[test]
+    fn stat_sync_keepalive_narrow_over_100_and_canary() {
+        // flags 0x31 = wide|reason, no stat bits → 5-byte keepalive, decodes empty.
+        let mut ka = [0u8; 5];
+        ka[4] = 0x31;
+        let s = parse_stat_sync(&ka).unwrap();
+        assert!(!s.has_hp && !s.has_mana && !s.has_end);
+        // A narrow percent above 100 drops that stat.
+        let mut hot = [0u8; 6];
+        hot[4] = 0x02;
+        hot[5] = 200;
+        assert!(!parse_stat_sync(&hot).unwrap().has_hp);
+        // Wrong size for the declared flags is rejected (structural canary).
+        let mut bad = [0u8; 8];
+        bad[4] = 0x02; // narrow HP → expect 6 or 10 bytes, not 8
+        assert!(parse_stat_sync(&bad).is_err());
+        // Runt.
+        assert!(parse_stat_sync(&[0u8; 4]).is_err());
     }
 }
