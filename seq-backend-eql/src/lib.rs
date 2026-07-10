@@ -722,6 +722,48 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         // (packed) + 1 trailing byte; the shared decoder reads slot@0/spellId@4/
         // targetId@18, all within the first 39B, so only the size gate needs 40.
         ("startCastStruct", 40),
+        // eql OP_ClientUpdate S>C other-spawn position broadcast is 28B (19-bit ×8
+        // packed, coord in the low bits) — Live's playerSpawnPosStruct is 24B.
+        // Decoded by this crate's own parse_player_spawn_pos (28B); position
+        // cracked 2026-07-10, see OPCODES_LEGENDS.md.
+        ("playerSpawnPosStruct", player_spawn_pos::PAYLOAD_LEN as u32),
+
+        // --- De-piggyback (2026-07-10): eql OWNS every mapped SZC_Match gate size ---
+        // The daemon's compiled size table is Live's `everquest.h` sizeof. Before
+        // this block, any mapped eql SZC_Match opcode NOT listed above silently
+        // inherited that Live sizeof as its packet gate — fragile (a Live struct
+        // change moves the eql gate) and the source of the WearChange/SpawnUpdateStruct
+        // 32B collision (a wrong-handler binding that size-matched by coincidence).
+        // So EVERY mapped SZC_Match eql opcode declares its gate size HERE, making the
+        // size eql-owned and severing the Live dependency. `packetinfo.cpp` warns at
+        // load if a mapped SZC_Match eql opcode is missing from this list, so the next
+        // opcode-map can't reintroduce the footgun silently. Sizes equal Live's TODAY
+        // (eql goldens verify byte-for-byte); each is sourced from THIS crate's own
+        // pinned `eqstructs` where a binding exists, so if eql's copy later diverges the
+        // gate tracks it — never Live's. The handful with no pinned binding (eql reuses
+        // the shared decode) carry the capture-confirmed eql size as a literal.
+        ("spawnPositionUpdate", core::mem::size_of::<eqstructs::spawnPositionUpdate>() as u32),
+        ("clientTargetStruct", core::mem::size_of::<eqstructs::clientTargetStruct>() as u32),
+        ("manaDecrementStruct", core::mem::size_of::<eqstructs::manaDecrementStruct>() as u32),
+        ("expUpdateStruct", core::mem::size_of::<eqstructs::expUpdateStruct>() as u32),
+        ("skillIncStruct", core::mem::size_of::<eqstructs::skillIncStruct>() as u32),
+        ("deleteSpawnStruct", core::mem::size_of::<eqstructs::deleteSpawnStruct>() as u32),
+        ("newCorpseStruct", core::mem::size_of::<eqstructs::newCorpseStruct>() as u32),
+        ("remDropStruct", core::mem::size_of::<eqstructs::remDropStruct>() as u32),
+        ("action2Struct", core::mem::size_of::<eqstructs::action2Struct>() as u32),
+        ("actionStruct", core::mem::size_of::<eqstructs::actionStruct>() as u32),
+        ("actionAltStruct", core::mem::size_of::<eqstructs::actionAltStruct>() as u32),
+        // No pinned eql binding (eql reuses the shared decode) — capture-confirmed size:
+        ("playerSelfPosStruct", 42),   // OP_ClientUpdate C>S self-position (float)
+        ("timeOfDayStruct", 8),        // OP_TimeOfDay
+        ("zoneServerInfoStruct", 130), // OP_ZoneServerInfo (world)
+        ("spawnAppearance2Struct", 24),// OP_SpawnAppearance2
+        ("inspectDataStruct", 1956),   // OP_InspectAnswer
+        // Stock-struct reuse (eql size == Live's today, stock layout): declared
+        // so the gate is eql-owned, not silently inherited from everquest.h.
+        ("randomStruct", 76),               // OP_RandomReply (76B, l-patch addendum 3)
+        ("tradeSpellBookSlotsStruct", 8),   // OP_SwapSpell
+        ("buffWindowSlotStruct", 12),       // OP_BuffWindow
     ]
 }
 
