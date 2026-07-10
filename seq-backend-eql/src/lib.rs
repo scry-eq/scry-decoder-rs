@@ -718,6 +718,10 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
     vec![
         // eql /consider is 24B both ways; Live's considerStruct is 32B.
         ("considerStruct", core::mem::size_of::<eqstructs::considerStruct>() as u32),
+        // eql OP_CastSpell (0x10b5) is a fixed 40B — Live's startCastStruct is 39B
+        // (packed) + 1 trailing byte; the shared decoder reads slot@0/spellId@4/
+        // targetId@18, all within the first 39B, so only the size gate needs 40.
+        ("startCastStruct", 40),
     ]
 }
 
