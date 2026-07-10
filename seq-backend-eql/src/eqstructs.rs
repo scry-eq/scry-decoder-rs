@@ -73,7 +73,7 @@ mod tests {
         // endUpdateStruct: 2-byte spawn_id + two u32 — packed without
         // alignment padding (the daemon's struct lays out as 10).
         assert_eq!(std::mem::size_of::<endUpdateStruct>(),      10);
-        assert_eq!(std::mem::size_of::<considerStruct>(),       32);
+        assert_eq!(std::mem::size_of::<considerStruct>(),       24);
         assert_eq!(std::mem::size_of::<spawnRenameStruct>(),   195);
         assert_eq!(std::mem::size_of::<clientTargetStruct>(),    4);
         assert_eq!(std::mem::size_of::<newCorpseStruct>(),      40);

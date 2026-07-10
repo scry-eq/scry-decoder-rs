@@ -696,6 +696,21 @@ pub fn parse_consider(b: &[u8]) -> Result<Consider, DecodeError> {
     })
 }
 
+/// Payload size overrides for the daemon's `SZC_Match` size registry: toml
+/// `typename`s whose eql wire size diverges from the daemon's compiled (Live)
+/// `everquest.h` `sizeof`. The daemon applies these over its C++ size table so a
+/// diverged payload keeps its real struct NAME and size-gates on eql's real
+/// size — not a hardcoded Live `sizeof`, and not a `uint8_t`/`none` placeholder.
+/// Sourced from the pinned `eqstructs` sizes so a size and its decoder move
+/// together. (live/test diverge from nothing; the bridge ships them an empty
+/// list.)
+pub fn size_overrides() -> Vec<(&'static str, u32)> {
+    vec![
+        // eql /consider is 24B both ways; Live's considerStruct is 32B.
+        ("considerStruct", core::mem::size_of::<eqstructs::considerStruct>() as u32),
+    ]
+}
+
 /// eql `OP_HPUpdate` (0x2735) — a multiplexed stat channel keyed by a subtype
 /// byte at offset 4. The 6-byte subtype-0x02 packet is the HP-bar feed:
 /// `u16 spawn_id, u16 0, u8 subtype=0x02, u8 hp_percent`. The daemon's spawns

@@ -161,6 +161,14 @@ mod ffi {
     struct Consider {
         player_id: u32, target_id: u32, faction: i32, level: i32, ok: bool,
     }
+    /// A backend-declared payload size override: `name` (a toml `typename`) →
+    /// its authoritative size on the linked backend. The daemon applies these
+    /// over its C++ `sizeof` size table so `SZC_Match` validates against the
+    /// backend's size, not a hardcoded Live `sizeof`. Empty for live/test.
+    struct StructSize {
+        name: String,
+        size: u32,
+    }
     struct SpawnRename {
         old_name: String,
         old_name_again: String,
@@ -439,7 +447,26 @@ mod ffi {
         fn decode_player_self_pos(bytes: &[u8]) -> PlayerSelfPos;
         fn decode_player_spawn_pos(bytes: &[u8]) -> PlayerSpawnPos;
         fn decode_npc_move_update(bytes: &[u8]) -> NpcMove;
+
+        /// Backend-sourced payload size overrides (see `StructSize`). Empty on
+        /// live/test; eql returns the payloads whose wire size diverges from
+        /// Live's compiled `everquest.h` struct.
+        fn struct_size_overrides() -> Vec<StructSize>;
     }
+}
+
+fn struct_size_overrides() -> Vec<ffi::StructSize> {
+    // The daemon's SZC_Match size table is built from Live's C++ `sizeof`
+    // (s_everquest.h); these entries let the linked backend override any name
+    // whose wire size diverges. live/test diverge from nothing → empty; eql
+    // sources its list from the pinned seq-backend-eql struct/parser sizes.
+    #[cfg(feature = "backend-eql")]
+    let raw = seq_backend_eql::size_overrides();
+    #[cfg(not(feature = "backend-eql"))]
+    let raw: Vec<(&'static str, u32)> = Vec::new();
+    raw.into_iter()
+        .map(|(name, size)| ffi::StructSize { name: name.to_string(), size })
+        .collect()
 }
 
 fn decode_mob_update(bytes: &[u8]) -> ffi::MobUpdate {

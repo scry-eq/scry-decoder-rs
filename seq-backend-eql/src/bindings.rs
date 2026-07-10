@@ -226,6 +226,11 @@ impl Default for endUpdateStruct {
     }
 }
 
+// eql /consider is 24B in BOTH directions, NOT Live's 32B considerStruct. This
+// pinned fork is hand-edited to eql's real layout (clean-break rule: eql owns
+// its structs; edit by hand when the eql wire genuinely diverges). Decoded by
+// `parse_consider`; this struct's size is what the daemon `SZC_Match`-gates on,
+// surfaced via seq-bridge `struct_size_overrides`.
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 pub struct considerStruct {
@@ -233,18 +238,15 @@ pub struct considerStruct {
     pub playerid: u32,
     /// uint32_t targetid
     pub targetid: u32,
-    /// int32_t faction
+    /// int32_t faction — 0 on the C>S request; friendliness word on the S>C
+    /// reply (2=warmly, 4=amiably). level is NOT here (read from the spawn).
     pub faction: i32,
-    /// int32_t level
-    pub level: i32,
+    /// int32_t unknown0012 (observed = 7)
+    pub unknown0012: i32,
     /// int32_t unknown0016
     pub unknown0016: i32,
     /// int32_t unknown0020
     pub unknown0020: i32,
-    /// int32_t unknown0024
-    pub unknown0024: i32,
-    /// int32_t unknown0028
-    pub unknown0028: i32,
 }
 
 impl Default for considerStruct {
@@ -835,7 +837,7 @@ mod __layout_tests {
     #[test] fn manaDecrementStruct_size() { assert_eq!(core::mem::size_of::<manaDecrementStruct>(), 20); }
     #[test] fn staminaStruct_size() { assert_eq!(core::mem::size_of::<staminaStruct>(), 8); }
     #[test] fn endUpdateStruct_size() { assert_eq!(core::mem::size_of::<endUpdateStruct>(), 10); }
-    #[test] fn considerStruct_size() { assert_eq!(core::mem::size_of::<considerStruct>(), 32); }
+    #[test] fn considerStruct_size() { assert_eq!(core::mem::size_of::<considerStruct>(), 24); }
     #[test] fn spawnRenameStruct_size() { assert_eq!(core::mem::size_of::<spawnRenameStruct>(), 195); }
     #[test] fn clientTargetStruct_size() { assert_eq!(core::mem::size_of::<clientTargetStruct>(), 4); }
     #[test] fn newCorpseStruct_size() { assert_eq!(core::mem::size_of::<newCorpseStruct>(), 40); }
