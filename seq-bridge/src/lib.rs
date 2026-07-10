@@ -183,6 +183,15 @@ mod ffi {
         name: String,
         size: u32,
     }
+    // One record of eql OP_BuffList (0x77ae). Returned as a flat Vec (empty on
+    // decode failure); every entry repeats spawn_id so the C++ side can filter
+    // to the player without a wrapper struct. remaining_ticks <= 0 = permanent.
+    struct BuffListEntry {
+        spawn_id: u32,
+        spell_id: u32,
+        remaining_ticks: i32,
+        slot: u32,
+    }
     struct SpawnRename {
         old_name: String,
         old_name_again: String,
@@ -419,6 +428,7 @@ mod ffi {
         fn decode_remove_spawn(bytes: &[u8]) -> RemoveSpawn;
         fn decode_hp_update(bytes: &[u8]) -> HpUpdate;
         fn decode_stat_sync(bytes: &[u8]) -> StatSync;
+        fn decode_buff_list(bytes: &[u8]) -> Vec<BuffListEntry>;
         fn decode_mob_health(bytes: &[u8]) -> MobHealth;
         fn decode_spawn_appearance(bytes: &[u8]) -> SpawnAppearance;
         fn decode_exp_update(bytes: &[u8]) -> ExpUpdate;
@@ -572,6 +582,30 @@ fn decode_stat_sync(bytes: &[u8]) -> ffi::StatSync {
 #[cfg(not(feature = "backend-eql"))]
 fn decode_stat_sync(_bytes: &[u8]) -> ffi::StatSync {
     stat_sync_err()
+}
+
+// eql-only: OP_BuffList (0x77ae) — the authoritative per-spawn active-buff list.
+// Flattened to a Vec (empty = decode failed / not present). live/test stub empty.
+#[cfg(feature = "backend-eql")]
+fn decode_buff_list(bytes: &[u8]) -> Vec<ffi::BuffListEntry> {
+    match seq_backend_eql::parse_buff_list(bytes) {
+        Ok(list) => list
+            .entries
+            .into_iter()
+            .map(|e| ffi::BuffListEntry {
+                spawn_id: list.spawn_id,
+                spell_id: e.spell_id,
+                remaining_ticks: e.remaining_ticks,
+                slot: e.slot,
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn decode_buff_list(_bytes: &[u8]) -> Vec<ffi::BuffListEntry> {
+    Vec::new()
 }
 
 fn decode_mob_health(bytes: &[u8]) -> ffi::MobHealth {

@@ -808,6 +808,79 @@ pub fn parse_stat_sync(b: &[u8]) -> Result<StatSync, DecodeError> {
     Ok(out)
 }
 
+/// One decoded record from `OP_BuffList` (0x77ae). `remaining_ticks <= 0` means
+/// a permanent buff (no timer). `slot` is the buff-window slot index.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuffListEntry {
+    pub spell_id: u32,
+    pub remaining_ticks: i32,
+    pub slot: u32,
+}
+
+/// A decoded `OP_BuffList` (0x77ae): the authoritative active-buff list for one
+/// spawn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuffList {
+    pub spawn_id: u32,
+    pub entries: Vec<BuffListEntry>,
+}
+
+/// eql `OP_BuffList` (0x77ae) — a per-spawn active-buff list, sent at zone-in
+/// and on every buff change, with real server-side remaining durations (the
+/// patch calls it "the one that makes it work"). Layout (validated 26/26 across
+/// the upperguk capture, cursor lands exactly on the packet end):
+///   `u32 spawnId | u32 (seq/timestamp) | u8 flag=1 | u8 count | u8[5] pad`
+/// then `count` records, each:
+///   `{ u32 spellId, u32 =1, i32 remainingTicks, u32 =0 }`  (16 fixed bytes)
+///   + NUL-terminated caster name (latin1; empty for self-cast)
+///   + slot: `u32` BETWEEN records, `u16` on the FINAL record.
+/// `remainingTicks <= 0` is permanent. The cursor-lands-on-end check is the
+/// structural canary (a layout drift rejects the whole packet).
+pub fn parse_buff_list(b: &[u8]) -> Result<BuffList, DecodeError> {
+    if b.len() < 15 {
+        return Err(DecodeError::Short(b.len()));
+    }
+    let spawn_id = rd_u32(b, 0);
+    let count = b[9] as usize;
+    let mut pos = 15;
+    let mut entries = Vec::with_capacity(count);
+    for i in 0..count {
+        if pos + 16 > b.len() {
+            return Err(DecodeError::BadLength(b.len()));
+        }
+        let spell_id = rd_u32(b, pos);
+        let remaining_ticks = rd_u32(b, pos + 8) as i32;
+        pos += 16;
+        // NUL-terminated caster name (skip past it; the name isn't surfaced).
+        match b[pos..].iter().position(|&c| c == 0) {
+            Some(off) => pos += off + 1,
+            None => return Err(DecodeError::BadLength(b.len())),
+        }
+        // slot: u32 between records, u16 on the final record.
+        let slot = if i + 1 == count {
+            if pos + 2 > b.len() {
+                return Err(DecodeError::BadLength(b.len()));
+            }
+            let s = rd_u16(b, pos) as u32;
+            pos += 2;
+            s
+        } else {
+            if pos + 4 > b.len() {
+                return Err(DecodeError::BadLength(b.len()));
+            }
+            let s = rd_u32(b, pos);
+            pos += 4;
+            s
+        };
+        entries.push(BuffListEntry { spell_id, remaining_ticks, slot });
+    }
+    // Structural canary: the parse must consume the packet exactly.
+    if pos != b.len() {
+        return Err(DecodeError::BadLength(b.len()));
+    }
+    Ok(BuffList { spawn_id, entries })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1176,5 +1249,40 @@ mod tests {
         assert!(parse_stat_sync(&bad).is_err());
         // Runt.
         assert!(parse_stat_sync(&[0u8; 4]).is_err());
+    }
+
+    #[test]
+    fn buff_list_parses_records_and_permanents() {
+        let mut b = Vec::new();
+        b.extend_from_slice(&100u32.to_le_bytes()); // spawnId
+        b.extend_from_slice(&0u32.to_le_bytes()); // @4
+        b.push(1); // flag
+        b.push(2); // count
+        b.extend_from_slice(&[0u8; 5]); // pad
+        // record 1: spell 278, ticks 5, empty caster, slot 1 (u32 — not final)
+        b.extend_from_slice(&278u32.to_le_bytes());
+        b.extend_from_slice(&1u32.to_le_bytes());
+        b.extend_from_slice(&5i32.to_le_bytes());
+        b.extend_from_slice(&0u32.to_le_bytes());
+        b.push(0); // empty name
+        b.extend_from_slice(&1u32.to_le_bytes()); // slot
+        // record 2 (final): spell 515, ticks -1 (permanent), caster "X", slot 7 (u16)
+        b.extend_from_slice(&515u32.to_le_bytes());
+        b.extend_from_slice(&1u32.to_le_bytes());
+        b.extend_from_slice(&(-1i32).to_le_bytes());
+        b.extend_from_slice(&0u32.to_le_bytes());
+        b.extend_from_slice(b"X\0");
+        b.extend_from_slice(&7u16.to_le_bytes()); // final slot is u16
+
+        let list = parse_buff_list(&b).unwrap();
+        assert_eq!(list.spawn_id, 100);
+        assert_eq!(list.entries.len(), 2);
+        assert_eq!(list.entries[0], BuffListEntry { spell_id: 278, remaining_ticks: 5, slot: 1 });
+        assert_eq!(list.entries[1], BuffListEntry { spell_id: 515, remaining_ticks: -1, slot: 7 });
+        // Truncation / trailing-garbage both fail the cursor-lands-on-end canary.
+        assert!(parse_buff_list(&b[..b.len() - 1]).is_err());
+        let mut extra = b.clone();
+        extra.push(0xAA);
+        assert!(parse_buff_list(&extra).is_err());
     }
 }
