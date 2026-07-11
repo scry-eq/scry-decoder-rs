@@ -130,6 +130,9 @@ mod ffi {
         has_mana: bool,
         mana_cur: i64,
         mana_max: i64,
+        has_end: bool,
+        end_cur: i64,
+        end_max: i64,
         ok: bool,
     }
     struct MobHealth {
@@ -560,6 +563,7 @@ fn stat_sync_err() -> ffi::StatSync {
         spawn_id: 0, wide: false,
         has_hp: false, hp_cur: 0, hp_max: 0,
         has_mana: false, mana_cur: 0, mana_max: 0,
+        has_end: false, end_cur: 0, end_max: 0,
         ok: false,
     }
 }
@@ -573,6 +577,7 @@ fn decode_stat_sync(bytes: &[u8]) -> ffi::StatSync {
             spawn_id: s.spawn_id, wide: s.wide,
             has_hp: s.has_hp, hp_cur: s.hp_cur, hp_max: s.hp_max,
             has_mana: s.has_mana, mana_cur: s.mana_cur, mana_max: s.mana_max,
+            has_end: s.has_end, end_cur: s.end_cur, end_max: s.end_max,
             ok: true,
         },
         Err(_) => stat_sync_err(),

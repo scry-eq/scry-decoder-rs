@@ -780,9 +780,10 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
 /// (purpose unknown). `flags 0x31` with no stat bits is the 6s keepalive.
 ///
 /// Consumers (see `EqlDispatch::statSync`): HP → spawn cur/max (the wide form
-/// supersedes the old percent-only feed); the player's mana → `setManaEQL`
-/// (real cur/max, only from the wide form); endurance has no stock display and
-/// is consumed. Food/water never ride this channel.
+/// supersedes the old percent-only feed); the player's mana → `Player::setMana`
+/// and endurance → `Player::setEndurance` (real cur/max, player-only, wide form
+/// only — Legends has no standalone OP_EndUpdate, so this channel is the sole
+/// endurance feed). Food/water never ride this channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct StatSync {
     pub spawn_id: u32,
