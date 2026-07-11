@@ -66,7 +66,6 @@ pub mod player_spawn_pos;
 pub mod remove_spawn;
 pub mod simple_message;
 pub mod skill_update;
-pub mod spawn;
 pub mod spawn_appearance;
 pub mod spawn_door;
 pub mod spawn_rename;
@@ -125,7 +124,6 @@ pub use player_spawn_pos::{parse_player_spawn_pos, PlayerSpawnPos, PlayerSpawnPo
 pub use remove_spawn::{parse_remove_spawn, RemoveSpawn, RemoveSpawnError};
 pub use simple_message::{parse_simple_message, SimpleMessage, SimpleMessageError};
 pub use skill_update::{parse_skill_update, SkillUpdate, SkillUpdateError};
-pub use spawn::{parse_spawn, Spawn, SpawnError};
 pub use spawn_appearance::{
     parse_spawn_appearance, SpawnAppearance, SpawnAppearanceError,
 };
