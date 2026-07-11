@@ -54,6 +54,7 @@ pub mod group_member_list;
 pub mod hp_update;
 pub mod illusion;
 pub mod level_update;
+pub mod loadout_swap;
 pub mod mana_change;
 pub mod mob_health;
 pub mod mob_update;
@@ -110,6 +111,7 @@ pub use group_follow::{parse_group_follow, GroupFollow, GroupFollowError};
 pub use hp_update::{parse_hp_update, HpUpdate, HpUpdateError};
 pub use illusion::{parse_illusion, Illusion, IllusionError};
 pub use level_update::{parse_level_update, LevelUpdate, LevelUpdateError};
+pub use loadout_swap::{parse_loadout_swap, LoadoutSwap, LoadoutSwapError};
 pub use mana_change::{parse_mana_change, ManaChange, ManaChangeError};
 pub use mob_health::{parse_mob_health, MobHealth, MobHealthError};
 pub use mob_update::{

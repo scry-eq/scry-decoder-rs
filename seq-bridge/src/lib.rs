@@ -135,6 +135,16 @@ mod ffi {
         end_max: i64,
         ok: bool,
     }
+    // eql OP_LoadoutSwap (0x7477): a player's multiclass loadout change. Only
+    // the identity fields that change on a swap are surfaced; spawn_id is the
+    // header id of the player who swapped (self or a nearby tracked spawn).
+    struct LoadoutSwap {
+        spawn_id: u32,
+        level: u8,
+        class_: u32,
+        race: u32,
+        ok: bool,
+    }
     struct MobHealth {
         spawn_id: u16,
         hp_percent: i32,
@@ -431,6 +441,7 @@ mod ffi {
         fn decode_remove_spawn(bytes: &[u8]) -> RemoveSpawn;
         fn decode_hp_update(bytes: &[u8]) -> HpUpdate;
         fn decode_stat_sync(bytes: &[u8]) -> StatSync;
+        fn decode_loadout_swap(bytes: &[u8]) -> LoadoutSwap;
         fn decode_buff_list(bytes: &[u8]) -> Vec<BuffListEntry>;
         fn decode_mob_health(bytes: &[u8]) -> MobHealth;
         fn decode_spawn_appearance(bytes: &[u8]) -> SpawnAppearance;
@@ -582,6 +593,27 @@ fn decode_stat_sync(bytes: &[u8]) -> ffi::StatSync {
         },
         Err(_) => stat_sync_err(),
     }
+}
+
+fn loadout_swap_err() -> ffi::LoadoutSwap {
+    ffi::LoadoutSwap { spawn_id: 0, level: 0, class_: 0, race: 0, ok: false }
+}
+
+// eql-only: OP_LoadoutSwap (0x7477). live/test have no such opcode, so their
+// build gets an inert stub.
+#[cfg(feature = "backend-eql")]
+fn decode_loadout_swap(bytes: &[u8]) -> ffi::LoadoutSwap {
+    match seq_backend_eql::parse_loadout_swap(bytes) {
+        Ok(s) => ffi::LoadoutSwap {
+            spawn_id: s.spawn_id, level: s.level, class_: s.class_, race: s.race, ok: true,
+        },
+        Err(_) => loadout_swap_err(),
+    }
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn decode_loadout_swap(_bytes: &[u8]) -> ffi::LoadoutSwap {
+    loadout_swap_err()
 }
 
 #[cfg(not(feature = "backend-eql"))]
