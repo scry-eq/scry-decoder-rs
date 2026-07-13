@@ -70,6 +70,7 @@ pub mod spawn_appearance;
 pub mod spawn_door;
 pub mod spawn_rename;
 pub mod special_message;
+pub mod ucs_chat;
 pub mod stamina;
 pub mod start_cast;
 pub mod wear_change;
@@ -130,6 +131,7 @@ pub use spawn_appearance::{
 pub use spawn_door::{parse_door, Door, DoorError};
 pub use spawn_rename::{parse_spawn_rename, SpawnRename, SpawnRenameError};
 pub use special_message::{parse_special_message, SpecialMessage, SpecialMessageError};
+pub use ucs_chat::{parse_ucs_chat, UcsRecord};
 pub use stamina::{parse_stamina, Stamina, StaminaError};
 pub use start_cast::{parse_start_cast, StartCast, StartCastError};
 pub use wear_change::{parse_wear_change, WearChange, WearChangeError};

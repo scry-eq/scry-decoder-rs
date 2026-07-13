@@ -205,6 +205,17 @@ mod ffi {
         remaining_ticks: i32,
         slot: u32,
     }
+    // One EQL UCS (cross-zone chat) line. `channel_first` is the still-masked
+    // first byte of the channel name; `channel_rest` is the clean remainder.
+    // The caller recovers the per-session mask (from the General* crib) to
+    // repair `channel_first`. An empty Vec = no chat in the packet.
+    struct UcsChatRecord {
+        channel_first: u8,
+        channel_rest: String,
+        sender: String,
+        message: String,
+        spam: bool,
+    }
     struct SpawnRename {
         old_name: String,
         old_name_again: String,
@@ -443,6 +454,7 @@ mod ffi {
         fn decode_stat_sync(bytes: &[u8]) -> StatSync;
         fn decode_loadout_swap(bytes: &[u8]) -> LoadoutSwap;
         fn decode_buff_list(bytes: &[u8]) -> Vec<BuffListEntry>;
+        fn decode_ucs_chat(bytes: &[u8]) -> Vec<UcsChatRecord>;
         fn decode_mob_health(bytes: &[u8]) -> MobHealth;
         fn decode_spawn_appearance(bytes: &[u8]) -> SpawnAppearance;
         fn decode_exp_update(bytes: &[u8]) -> ExpUpdate;
@@ -642,6 +654,27 @@ fn decode_buff_list(bytes: &[u8]) -> Vec<ffi::BuffListEntry> {
 
 #[cfg(not(feature = "backend-eql"))]
 fn decode_buff_list(_bytes: &[u8]) -> Vec<ffi::BuffListEntry> {
+    Vec::new()
+}
+
+// EQL UCS cross-zone chat. Flattened to a Vec (empty = no chat / not present).
+// live/test stub empty.
+#[cfg(feature = "backend-eql")]
+fn decode_ucs_chat(bytes: &[u8]) -> Vec<ffi::UcsChatRecord> {
+    seq_backend_eql::parse_ucs_chat(bytes)
+        .into_iter()
+        .map(|r| ffi::UcsChatRecord {
+            channel_first: r.channel_first,
+            channel_rest: r.channel_rest,
+            sender: r.sender,
+            message: r.message,
+            spam: r.spam,
+        })
+        .collect()
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn decode_ucs_chat(_bytes: &[u8]) -> Vec<ffi::UcsChatRecord> {
     Vec::new()
 }
 
