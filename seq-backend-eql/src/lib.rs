@@ -753,6 +753,9 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         ("action2Struct", core::mem::size_of::<eqstructs::action2Struct>() as u32),
         ("actionStruct", core::mem::size_of::<eqstructs::actionStruct>() as u32),
         ("actionAltStruct", core::mem::size_of::<eqstructs::actionAltStruct>() as u32),
+        // OP_SimpleMessage (0x50a7, 07/12 rotation): stock 12B {u32 eqstrId, u32
+        // color, u32 0}; pinned binding so the gate tracks eql's own copy.
+        ("simpleMessageStruct", core::mem::size_of::<eqstructs::simpleMessageStruct>() as u32),
         // No pinned eql binding (eql reuses the shared decode) — capture-confirmed size:
         ("playerSelfPosStruct", 42),   // OP_ClientUpdate C>S self-position (float)
         ("timeOfDayStruct", 8),        // OP_TimeOfDay
