@@ -27,6 +27,12 @@
 pub struct UcsRecord {
     pub channel_first: u8,
     pub channel_rest: String,
+    /// The channel field's whole trailing printable run (e.g. "^eneral",
+    /// "General", "WewPlayers"). For the dominant framing this equals
+    /// `[channel_first][channel_rest]`; when it does NOT (a data-dependent NUL
+    /// in the masked header shifted the field boundary) the caller treats it as
+    /// a framing outlier and resolves it by suffix-matching learned channels.
+    pub channel_run: String,
     pub sender: String,
     pub message: String,
     pub spam: bool,
@@ -142,9 +148,17 @@ pub fn parse_ucs_chat(payload: &[u8]) -> Vec<UcsRecord> {
         let k = rest.iter().position(|&c| !printable(c)).unwrap_or(rest.len());
         let channel_rest = latin1(&rest[..k]);
 
+        // Whole trailing printable run of the field (name recovery for outliers).
+        let mut rs = field.len();
+        while rs > 0 && printable(field[rs - 1]) {
+            rs -= 1;
+        }
+        let channel_run = latin1(&field[rs..]);
+
         out.push(UcsRecord {
             channel_first,
             channel_rest,
+            channel_run,
             sender,
             message,
             spam,
@@ -189,6 +203,7 @@ mod tests {
         let r = &recs[0];
         assert_eq!(r.channel_first, b'G');    // byte 4 of the channel field
         assert_eq!(r.channel_rest, "eneral");
+        assert_eq!(r.channel_run, "General"); // trailing printable run of the field
         assert_eq!(r.sender, "Alice");        // after the last '.'
         assert_eq!(r.message, "hey anyone selling");
         assert!(!r.spam);

@@ -212,6 +212,7 @@ mod ffi {
     struct UcsChatRecord {
         channel_first: u8,
         channel_rest: String,
+        channel_run: String,
         sender: String,
         message: String,
         spam: bool,
@@ -666,6 +667,7 @@ fn decode_ucs_chat(bytes: &[u8]) -> Vec<ffi::UcsChatRecord> {
         .map(|r| ffi::UcsChatRecord {
             channel_first: r.channel_first,
             channel_rest: r.channel_rest,
+            channel_run: r.channel_run,
             sender: r.sender,
             message: r.message,
             spam: r.spam,
