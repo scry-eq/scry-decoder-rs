@@ -318,9 +318,23 @@ mod ffi {
         message_color: u32,
         ok: bool,
     }
+    // OP_FormattedMessage. `message_format`/`message_color` are the stock
+    // Live header (format id + chat colour). The remaining fields are the
+    // EQL 0x3c0a enrichment and stay zero/empty on live/test: that channel
+    // diverges (format id @9, not @5) and multiplexes a spell id, a
+    // message-class discriminator, the actor spawn id, and a pre-split
+    // NUL-delimited arg list the stock header can't represent. On eql,
+    // message_format/message_color mirror format_id/spell_id so the stock
+    // MessageShell::formattedMessage symbol still resolves; the eql handler
+    // reads the rich fields. See seq-backend-eql/src/formatted_message.rs.
     struct FormattedMessage {
         message_format: u32,
         message_color: u32,
+        spell_id: u32,
+        msg_type: u8,
+        spawn_id: u32,
+        format_id: u32,
+        args: Vec<String>,
         ok: bool,
     }
     struct SpecialMessage {
@@ -1183,16 +1197,46 @@ fn decode_simple_message(bytes: &[u8]) -> ffi::SimpleMessage {
     }
 }
 
+fn formatted_message_err() -> ffi::FormattedMessage {
+    ffi::FormattedMessage {
+        message_format: 0, message_color: 0,
+        spell_id: 0, msg_type: 0, spawn_id: 0, format_id: 0,
+        args: Vec::new(), ok: false,
+    }
+}
+
+// live/test: stock formattedMessageStruct (format id + chat colour); the EQL
+// enrichment fields stay empty.
+#[cfg(not(feature = "backend-eql"))]
 fn decode_formatted_message(bytes: &[u8]) -> ffi::FormattedMessage {
     match backend::parse_formatted_message(bytes) {
         Ok(m) => ffi::FormattedMessage {
             message_format: m.message_format,
             message_color:  m.message_color,
+            spell_id: 0, msg_type: 0, spawn_id: 0, format_id: 0,
+            args: Vec::new(), ok: true,
+        },
+        Err(_) => formatted_message_err(),
+    }
+}
+
+// eql: 0x3c0a carries the full header + pre-split arg list (see task-#1
+// parser). message_format/message_color mirror format_id/spell_id for stock
+// symbol compatibility; the eql handler consumes the rich fields.
+#[cfg(feature = "backend-eql")]
+fn decode_formatted_message(bytes: &[u8]) -> ffi::FormattedMessage {
+    match backend::parse_formatted_message(bytes) {
+        Ok(m) => ffi::FormattedMessage {
+            message_format: m.format_id,
+            message_color:  m.spell_id,
+            spell_id: m.spell_id,
+            msg_type: m.msg_type,
+            spawn_id: m.spawn_id,
+            format_id: m.format_id,
+            args: m.args,
             ok: true,
         },
-        Err(_) => ffi::FormattedMessage {
-            message_format: 0, message_color: 0, ok: false,
-        },
+        Err(_) => formatted_message_err(),
     }
 }
 
