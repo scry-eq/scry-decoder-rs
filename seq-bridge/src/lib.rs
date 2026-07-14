@@ -456,6 +456,7 @@ mod ffi {
         fn decode_loadout_swap(bytes: &[u8]) -> LoadoutSwap;
         fn decode_buff_list(bytes: &[u8]) -> Vec<BuffListEntry>;
         fn decode_ucs_chat(bytes: &[u8]) -> Vec<UcsChatRecord>;
+        fn decode_ucs_channels(bytes: &[u8]) -> Vec<String>;
         fn decode_mob_health(bytes: &[u8]) -> MobHealth;
         fn decode_spawn_appearance(bytes: &[u8]) -> SpawnAppearance;
         fn decode_exp_update(bytes: &[u8]) -> ExpUpdate;
@@ -677,6 +678,17 @@ fn decode_ucs_chat(bytes: &[u8]) -> Vec<ffi::UcsChatRecord> {
 
 #[cfg(not(feature = "backend-eql"))]
 fn decode_ucs_chat(_bytes: &[u8]) -> Vec<ffi::UcsChatRecord> {
+    Vec::new()
+}
+
+// EQL UCS channel-name learning (/list rosters + join notices). live/test stub.
+#[cfg(feature = "backend-eql")]
+fn decode_ucs_channels(bytes: &[u8]) -> Vec<String> {
+    seq_backend_eql::parse_ucs_channels(bytes)
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn decode_ucs_channels(_bytes: &[u8]) -> Vec<String> {
     Vec::new()
 }
 

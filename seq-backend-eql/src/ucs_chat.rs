@@ -43,6 +43,11 @@ fn printable(c: u8) -> bool {
     (0x20..0x7f).contains(&c)
 }
 
+#[inline]
+fn name_char(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || c == b'_'
+}
+
 fn latin1(b: &[u8]) -> String {
     b.iter().map(|&c| c as char).collect()
 }
@@ -167,6 +172,67 @@ pub fn parse_ucs_chat(payload: &[u8]) -> Vec<UcsRecord> {
     out
 }
 
+/// Learn full channel NAMES from one server->client UDP payload's un-masked
+/// text — `/list` rosters ("Channels: 1=General2(400), 2=myraid(1), ...") and
+/// channel join/invite notices ("channel <name>" / "joined <name>"). These
+/// carry the name in the clear (unlike chat, whose first char is seed-masked),
+/// so they let the caller resolve every channel — including the first chat line
+/// and framing outliers — without the General crib. Ported from the legacy
+/// client's `MessageShell::ucsLearnChannels`.
+pub fn parse_ucs_channels(payload: &[u8]) -> Vec<String> {
+    if payload.len() < 12 {
+        return Vec::new();
+    }
+    let mut buf = payload.to_vec();
+    for i in 4..payload.len() {
+        buf[i] = payload[i] ^ payload[i - 4];
+    }
+    let n = buf.len();
+    let mut out: Vec<String> = Vec::new();
+
+    let learn = |name: &[u8], out: &mut Vec<String>| {
+        if name.len() >= 2 {
+            let s = latin1(name);
+            if !out.contains(&s) {
+                out.push(s);
+            }
+        }
+    };
+
+    // "<n>=<name>(" roster entries from /list output.
+    let mut i = 0;
+    while i < n {
+        if buf[i] == b'=' {
+            let start = i + 1;
+            let mut j = start;
+            while j < n && name_char(buf[j]) {
+                j += 1;
+            }
+            if j < n && buf[j] == b'(' && j > start {
+                learn(&buf[start..j], &mut out);
+            }
+            i = if j > i { j } else { i + 1 };
+        } else {
+            i += 1;
+        }
+    }
+
+    // "channel <name>" / "joined <name>" join/invite notices.
+    for kw in [b"channel ".as_slice(), b"joined ".as_slice()] {
+        if let Some(p) = find(&buf, kw) {
+            let start = p + kw.len();
+            let mut j = start;
+            while j < n && name_char(buf[j]) {
+                j += 1;
+            }
+            if j > start {
+                learn(&buf[start..j], &mut out);
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,5 +294,18 @@ mod tests {
     fn rejects_short_and_noise() {
         assert!(parse_ucs_chat(b"\x00\x15\x00\x00").is_empty());       // too short
         assert!(parse_ucs_chat(&[0u8; 64]).is_empty());               // no SPAM anchor
+    }
+
+    #[test]
+    fn learns_channel_names() {
+        let mut plain = b"\x01\x02\x03\x04".to_vec();
+        plain.extend_from_slice(b"Channels: 1=General2(400), 2=myraid(1)\0");
+        plain.extend_from_slice(b"You have joined raidchat.\0");
+        let names = parse_ucs_channels(&encode(&plain));
+        assert!(names.contains(&"General2".to_string()));   // /list roster
+        assert!(names.contains(&"myraid".to_string()));
+        assert!(names.contains(&"raidchat".to_string()));   // "joined <name>"
+        // No SPAM anchor -> no chat records.
+        assert!(parse_ucs_chat(&encode(&plain)).is_empty());
     }
 }

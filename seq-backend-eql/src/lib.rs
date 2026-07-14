@@ -131,7 +131,7 @@ pub use spawn_appearance::{
 pub use spawn_door::{parse_door, Door, DoorError};
 pub use spawn_rename::{parse_spawn_rename, SpawnRename, SpawnRenameError};
 pub use special_message::{parse_special_message, SpecialMessage, SpecialMessageError};
-pub use ucs_chat::{parse_ucs_chat, UcsRecord};
+pub use ucs_chat::{parse_ucs_channels, parse_ucs_chat, UcsRecord};
 pub use stamina::{parse_stamina, Stamina, StaminaError};
 pub use start_cast::{parse_start_cast, StartCast, StartCastError};
 pub use wear_change::{parse_wear_change, WearChange, WearChangeError};
