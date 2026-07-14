@@ -760,6 +760,10 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         ("simpleMessageStruct", core::mem::size_of::<eqstructs::simpleMessageStruct>() as u32),
         // No pinned eql binding (eql reuses the shared decode) — capture-confirmed size:
         ("playerSelfPosStruct", 42),   // OP_ClientUpdate C>S self-position (float)
+        ("altExpUpdateStruct", 12),    // OP_AAExpUpdate (0x42d1): u32 altexp, u32 aaUnspent, u32 tail
+        // eql door rows are 132B (Live doorStruct is 136B); OP_SpawnDoor gates
+        // SZC_Modulus on this and newDoorSpawns strides via door_stride().
+        ("doorStruct", spawn_door::PAYLOAD_LEN as u32),
         ("timeOfDayStruct", 8),        // OP_TimeOfDay
         ("zoneServerInfoStruct", 130), // OP_ZoneServerInfo (world)
         ("spawnAppearance2Struct", 24),// OP_SpawnAppearance2

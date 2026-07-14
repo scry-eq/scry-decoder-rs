@@ -505,6 +505,13 @@ mod ffi {
         /// live/test; eql returns the payloads whose wire size diverges from
         /// Live's compiled `everquest.h` struct.
         fn struct_size_overrides() -> Vec<StructSize>;
+
+        /// Per-row byte stride of an `OP_SpawnDoor` array payload for the
+        /// linked backend (136 on live/test = `sizeof(doorStruct)`; 132 on
+        /// eql). The daemon's `SpawnShell::newDoorSpawns` iterates with this
+        /// instead of the compiled Live `sizeof`, which would mis-stride a
+        /// diverged backend's rows.
+        fn door_stride() -> usize;
     }
 }
 
@@ -520,6 +527,10 @@ fn struct_size_overrides() -> Vec<ffi::StructSize> {
     raw.into_iter()
         .map(|(name, size)| ffi::StructSize { name: name.to_string(), size })
         .collect()
+}
+
+fn door_stride() -> usize {
+    backend::spawn_door::PAYLOAD_LEN
 }
 
 fn decode_mob_update(bytes: &[u8]) -> ffi::MobUpdate {
