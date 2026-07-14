@@ -1,38 +1,75 @@
 # showeq-decoder-rs
 
-Parallel Rust implementation of ShowEQ's packet decoder. Lives alongside
-the C++ daemon (`showeq-daemon`); migrated into the daemon per-opcode via
-the `--rust-opcodes` flag once each parser is verified against the C++
-reference and the tier-2 byte-cmp regression harness.
+The ShowEQ daemon's packet decoder. Rust is the **only** decoder — the C++
+daemon (`showeq-daemon`, expected as a sibling checkout) links `seq-bridge`
+via Corrosion as a hard build dependency; there is no C++ fallback path and
+no toggle. Every wire handler in the daemon decodes through the
+`seq::rust::decode_*` FFI surface.
 
-See `MODERNIZATION_PLAN.md` (sibling repo `showeq-daemon`'s parent
-directory) for the staged migration path. Stage A scope: `OP_MobUpdate`.
+## Backends
+
+One decoder workspace serves three build-time backends, selected by Cargo
+features on `seq-bridge` (the daemon's `-DSEQ_TARGET=live|test|eql` maps 1:1):
+
+| Feature        | Decode stack                                             |
+|----------------|----------------------------------------------------------|
+| `backend-live` | `seq-decode` + `seq-eqstructs-live` (default)            |
+| `backend-test` | `seq-decode` + `seq-eqstructs-test`                      |
+| `backend-eql`  | `seq-backend-eql` only — no `seq-decode` edge            |
+
+The FFI surface is uniform: `decode_*` names are identical for every backend;
+the linked feature decides each function's implementation via a module alias
+(`use seq_decode as backend` vs `use seq_backend_eql as backend`). Exactly one
+backend feature must be enabled (`compile_error!` otherwise).
 
 ## Workspace
 
-| Crate           | Purpose                                              |
-|-----------------|------------------------------------------------------|
-| `seq-eqstructs` | `bindgen`-generated Rust mirrors of `everquest.h`. Allowlist grows per ported opcode. |
-| `seq-decode`    | Pure parsers — `&[u8]` payload → typed struct, built on `seq-eqstructs`. |
-| `seq-bridge`    | `cxx` FFI shim — exposes `seq-decode` to C++ via Corrosion. |
+| Crate               | Purpose                                                    |
+|---------------------|------------------------------------------------------------|
+| `seq-decode`        | Shared backend-neutral Live parsers — pure `&[u8]` → typed struct, no I/O or global state. Live and Test share these. |
+| `seq-eqstructs-live`| Generated Rust mirrors of `showeq-daemon/src/backend/live/everquest.h` (via `tools/gen_eqstructs.py`, committed). |
+| `seq-eqstructs-test`| Same for `backend/test/everquest.h`. Byte-identical to live today; forks when the Test server diverges. |
+| `seq-backend-eql`   | Fully self-contained EQ Legends decode stack: vendored copies of the shared parsers, its own diverged parsers, eql-only decoders (stat-sync, buff-list, loadout-swap, UCS chat), a pinned `eqstructs` fork, and `size_overrides()` for the daemon's payload size table. |
+| `seq-bridge`        | `cxx` FFI shim (staticlib) — the only crate the daemon links. |
 
-Future stages add `seq-opcodes` (XML opcode-table loader), `seq-replay`
-(`.vpk` reader), and `seq-cli` (standalone Rust binary that reads pcap or
-`.vpk` and emits `.pbstream`). Out of scope for Stage A.
+`seq-backend-eql` deliberately depends on nothing from `seq-decode`: eql is a
+separate server, and riding Live's decoders meant a Live-only wire patch could
+silently corrupt eql decode. The cost is vendored duplication — run
+`tools/vendored_drift.py` to see which vendored modules have diverged from
+their `seq-decode` twins and decide whether a shared fix should be ported.
 
-## Build
+## Build & test
 
 ```sh
-cargo build         # builds all crates
-cargo test          # runs unit + golden tests
+cargo build --workspace
+cargo test --workspace
 ```
 
-`seq-eqstructs/build.rs` runs `bindgen` against
-`../../showeq-daemon/src/backend/live/everquest.h` (sibling-relative). Override with
-`EVERQUEST_H=/path/to/everquest.h` for out-of-tree builds. Requires
-`libclang-dev` (Debian/Ubuntu) or equivalent on the build host.
+The integration check is daemon-side: rebuild the daemon (`cmake -B build`)
+and run its `tests/replay/check.sh` tier-2 golden suite for the configured
+`SEQ_TARGET`.
+
+## Struct codegen (no bindgen)
+
+`seq-eqstructs-{live,test}/src/bindings.rs` are generated and committed —
+regenerate after any `everquest.h` struct change:
+
+```sh
+python3 tools/gen_eqstructs.py all      # or `live` / `test`
+```
+
+No libclang/bindgen dependency. Layout tests in the generated file guard
+sizes. eql's bindings (`seq-backend-eql/src/bindings.rs`) are a **pinned
+fork** — `all` never touches them; regenerate on demand only via
+`python3 tools/gen_eqstructs.py eql <path/to/everquest.h>`.
+
+Bitfield-packed structs can't be code-generated: `spawnPositionUpdate` is a
+hand-maintained special case, and structs like `playerSelfPosStruct` /
+`playerSpawnPosStruct` are hand-rolled parsers directly on `&[u8]`.
+
+See `CLAUDE.md` for the working notes (parser-derivation method, eql
+gotchas, per-backend rules).
 
 ## License
 
-GPL-2.0 — see [`LICENSE`](LICENSE). Matches `showeq` and `showeq-daemon`,
-which permits direct consumption of `everquest.h` via `bindgen`.
+GPL-2.0 — see [`LICENSE`](LICENSE). Matches `showeq` and `showeq-daemon`.
