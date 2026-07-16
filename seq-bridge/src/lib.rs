@@ -145,6 +145,10 @@ mod ffi {
         race: u32,
         ok: bool,
     }
+    struct MoneyUpdate {
+        copper: u32,
+        ok: bool,
+    }
     struct MobHealth {
         spawn_id: u16,
         hp_percent: i32,
@@ -468,6 +472,7 @@ mod ffi {
         fn decode_hp_update(bytes: &[u8]) -> HpUpdate;
         fn decode_stat_sync(bytes: &[u8]) -> StatSync;
         fn decode_loadout_swap(bytes: &[u8]) -> LoadoutSwap;
+        fn decode_money_update(bytes: &[u8]) -> MoneyUpdate;
         fn decode_buff_list(bytes: &[u8]) -> Vec<BuffListEntry>;
         fn decode_ucs_chat(bytes: &[u8]) -> Vec<UcsChatRecord>;
         fn decode_ucs_channels(bytes: &[u8]) -> Vec<String>;
@@ -654,6 +659,20 @@ fn decode_loadout_swap(bytes: &[u8]) -> ffi::LoadoutSwap {
 #[cfg(not(feature = "backend-eql"))]
 fn decode_loadout_swap(_bytes: &[u8]) -> ffi::LoadoutSwap {
     loadout_swap_err()
+}
+
+// eql-only: OP_MoneyUpdate (0x4d77) running total copper.
+#[cfg(feature = "backend-eql")]
+fn decode_money_update(bytes: &[u8]) -> ffi::MoneyUpdate {
+    match seq_backend_eql::parse_money_update(bytes) {
+        Ok(m) => ffi::MoneyUpdate { copper: m.copper, ok: true },
+        Err(_) => ffi::MoneyUpdate { copper: 0, ok: false },
+    }
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn decode_money_update(_bytes: &[u8]) -> ffi::MoneyUpdate {
+    ffi::MoneyUpdate { copper: 0, ok: false }
 }
 
 // eql-only: OP_LootMessage (0x7d46) personal loot text, reusing SpecialMessage.
