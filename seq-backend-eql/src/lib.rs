@@ -120,7 +120,7 @@ pub use mob_update::{
 pub use new_zone::{NewZone, NewZoneError}; // eql owns canonical `parse_new_zone` (below)
 pub use npc_move_update::{parse_npc_move_update, NpcMoveUpdate, NpcMoveUpdateError};
 pub use player_profile::{PlayerProfile, PlayerProfileError}; // eql owns canonical `parse_player_profile` (below)
-pub use player_self_pos::{PlayerSelfPos, PlayerSelfPosError}; // eql owns canonical `parse_player_self_pos` (below)
+pub use player_self_pos::{parse_player_self_pos, PlayerSelfPos, PlayerSelfPosError}; // module owns the canonical parser (validates against its own PAYLOAD_LEN, same const the size override reads)
 pub use player_spawn_pos::{parse_player_spawn_pos, PlayerSpawnPos, PlayerSpawnPosError};
 pub use remove_spawn::{parse_remove_spawn, RemoveSpawn, RemoveSpawnError};
 pub use simple_message::{parse_simple_message, SimpleMessage, SimpleMessageError};
@@ -164,10 +164,6 @@ fn rd_u16(b: &[u8], o: usize) -> u16 { u16::from_le_bytes([b[o], b[o + 1]]) }
 #[inline]
 fn rd_u32(b: &[u8], o: usize) -> u32 {
     u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
-}
-#[inline]
-fn rd_f32(b: &[u8], o: usize) -> f32 {
-    f32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
 }
 #[inline]
 fn rd_i64(b: &[u8], o: usize) -> i64 {
@@ -423,25 +419,11 @@ pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
 /// u16 @14, 11-bit (0–2047 = full circle), North≈0** — confirmed against a Sense
 /// Heading capture (N=2043, E=1542, S=1036, W=492, i.e. value falls ~256 per 45°).
 /// deltaZ candidate @22 (0 on flat ground, unconfirmed).
-pub fn parse_player_self_pos(b: &[u8]) -> Result<PlayerSelfPos, DecodeError> {
-    if b.len() != 42 {
-        return Err(DecodeError::BadLength(b.len()));
-    }
-    // NOTE: @10 is gameY and @18 is gameX (EQ /loc prints Y,X,Z, so the /loc
-    // ground truth was in that order). Bind x=gameX=@18, y=gameY=@10 to match
-    // the daemon's Spawn convention; likewise deltaX=@26, deltaY=@6.
-    Ok(PlayerSelfPos {
-        spawn_id: rd_u16(b, 2),
-        x: rd_f32(b, 18),
-        y: rd_f32(b, 10),
-        z: rd_f32(b, 30),
-        delta_x: rd_f32(b, 26),
-        delta_y: rd_f32(b, 6),
-        delta_z: rd_f32(b, 22), // candidate; 0 on flat ground, unconfirmed
-        heading: rd_u16(b, 14) & 0x7FF,
-        ..Default::default()
-    })
-}
+// `parse_player_self_pos` lives in `player_self_pos.rs` (re-exported above) — one
+// parser that validates against its own `PAYLOAD_LEN`, the SAME const the
+// `playerSelfPosStruct` size override reads, so the SZC gate and the parser can
+// never disagree on the size (they diverged once — 42 vs 38 — and silently masked
+// the self-position, see OPCODES_LEGENDS.md 2026-07-14).
 
 /// `OP_NewZone` (Legends, id 0x1dbf) S>C, ~340B, once per zone-in. Carries the
 /// CURRENT zone as packed NUL-terminated text — `short_name` then `long_name`
@@ -617,20 +599,26 @@ pub fn parse_zone_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
         w.skip(20 + 2 * 5 * 4)?;
     }
 
-    // 2026-07-07 EQL insert (8 bytes) between equipment and the position words.
-    w.skip(8)?;
-
-    // posData: 4 words. Each coord is the low 19 bits (×8 fixed-point) of a
-    // word; the MIDDLE word additionally carries the heading as h2048 (0..2047)
-    // in its high 13 bits — per the validated `playerPosUpdateEQLStruct`
-    // writeup in everquest.h ("h2048 heading in x-word high bits"; the spawn
-    // union's separate word-3 heading is the unmapped 0x6000 candidate). Word 4
-    // holds unmapped delta/animation fields.
-    let z = pos19_word(w.u32()?);
+    // EQL spawn position block — six 32-bit words follow the equipment. The
+    // 2026-07-14 patch moved Z into the HIGH bits of the 2nd word (NOT the low-19
+    // of the 3rd word the pre-patch layout used, which read garbage Z ~±30000 and
+    // — via the map's z-depth filter — hid nearly every mob, "barely any coming in"):
+    //   word0            velocity / flags
+    //   word1 (z-word)   Z = (w >> 13) & 0x7FFFF, signed 19-bit ×8  — the SAME
+    //                    high-bit packing as OP_ClientUpdate's Z
+    //   word2            flag (~0xa8000000)
+    //   word3 (y-word)   Y in the low 19 bits (+ h2048 heading in bits 19..31)
+    //   word4 (x-word)   X in the low 19 bits
+    //   word5            delta / animation
+    // Re-derived 2026-07-14 by matching ZoneEntry Z to the OP_MobUpdate Z of the
+    // same spawns (35/36 exact, worst 1 unit).
+    let _vel = w.u32()?;
+    let z = pos19_word(w.u32()? >> 13); // Z rides bits 13..31 of this word
+    let _flag = w.u32()?;
     let mid = w.u32()?;
     let y = pos19_word(mid);
     let x = pos19_word(w.u32()?);
-    let _delta_word = w.u32()?;
+    let _delta = w.u32()?;
     let heading = ((mid >> 19) & 0x1FFF) as u16;
 
     // Title/suffix string block: 4 strings on ordinary spawns, 6 (title, suffix,
@@ -724,10 +712,11 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         // (packed) + 1 trailing byte; the shared decoder reads slot@0/spellId@4/
         // targetId@18, all within the first 39B, so only the size gate needs 40.
         ("startCastStruct", 40),
-        // eql OP_ClientUpdate S>C other-spawn position broadcast is 28B (19-bit ×8
-        // packed, coord in the low bits) — Live's playerSpawnPosStruct is 24B.
-        // Decoded by this crate's own parse_player_spawn_pos (28B); position
-        // cracked 2026-07-10, see OPCODES_LEGENDS.md.
+        // eql OP_ClientUpdate (0x5188) S>C other-spawn position broadcast: 19-bit ×8
+        // packed, coord in the low bits. The 2026-07-14 patch shrank it 28B -> 24B
+        // (and rotated the id) — now coincidentally the same size as Live's stock
+        // playerSpawnPosStruct, but a DIFFERENT packing. Decoded by this crate's own
+        // parse_player_spawn_pos; re-cracked 2026-07-14, see OPCODES_LEGENDS.md.
         ("playerSpawnPosStruct", player_spawn_pos::PAYLOAD_LEN as u32),
 
         // --- De-piggyback (2026-07-10): eql OWNS every mapped SZC_Match gate size ---
@@ -749,6 +738,9 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         ("manaDecrementStruct", core::mem::size_of::<eqstructs::manaDecrementStruct>() as u32),
         ("expUpdateStruct", core::mem::size_of::<eqstructs::expUpdateStruct>() as u32),
         ("skillIncStruct", core::mem::size_of::<eqstructs::skillIncStruct>() as u32),
+        // OP_Stamina (0x3b0c, 07/14): stock 8B staminaStruct {u32 food, u32 water};
+        // capture-verified food/water tick down together. Pinned so the gate is eql-owned.
+        ("staminaStruct", core::mem::size_of::<eqstructs::staminaStruct>() as u32),
         ("deleteSpawnStruct", core::mem::size_of::<eqstructs::deleteSpawnStruct>() as u32),
         ("newCorpseStruct", core::mem::size_of::<eqstructs::newCorpseStruct>() as u32),
         ("remDropStruct", core::mem::size_of::<eqstructs::remDropStruct>() as u32),
@@ -759,7 +751,7 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         // color, u32 0}; pinned binding so the gate tracks eql's own copy.
         ("simpleMessageStruct", core::mem::size_of::<eqstructs::simpleMessageStruct>() as u32),
         // No pinned eql binding (eql reuses the shared decode) — capture-confirmed size:
-        ("playerSelfPosStruct", 42),   // OP_ClientUpdate C>S self-position (float)
+        ("playerSelfPosStruct", player_self_pos::PAYLOAD_LEN as u32), // OP_ClientUpdate C>S self-pos: 38B post-07/14 (was 42B); floats X@14/Y@26/Z@10, heading@18
         ("altExpUpdateStruct", 12),    // OP_AAExpUpdate (0x42d1): u32 altexp, u32 aaUnspent, u32 tail
         // eql door rows are 132B (Live doorStruct is 136B); OP_SpawnDoor gates
         // SZC_Modulus on this and newDoorSpawns strides via door_stride().
@@ -1073,31 +1065,8 @@ mod tests {
         assert!(parse_new_zone(b"short\0").is_err()); // no long name
     }
 
-    #[test]
-    fn self_pos_rejects_wrong_len() {
-        assert!(parse_player_self_pos(&[0u8; 41]).is_err());
-        assert!(parse_player_self_pos(&[0u8; 43]).is_err());
-    }
-
-    #[test]
-    fn self_pos_reads_floats() {
-        let mut b = [0u8; 42];
-        b[2..4].copy_from_slice(&7u16.to_le_bytes());
-        b[18..22].copy_from_slice(&2246.5f32.to_le_bytes()); // @18 = x (gameX)
-        b[10..14].copy_from_slice(&(-954.77f32).to_le_bytes()); // @10 = y (gameY)
-        b[30..34].copy_from_slice(&(-4.97f32).to_le_bytes()); // z
-        b[26..30].copy_from_slice(&1.5f32.to_le_bytes()); // @26 = deltaX
-        b[6..10].copy_from_slice(&(-2.0f32).to_le_bytes()); // @6 = deltaY
-        b[14..16].copy_from_slice(&512u16.to_le_bytes()); // heading (11-bit)
-        let p = parse_player_self_pos(&b).unwrap();
-        assert_eq!(p.spawn_id, 7);
-        assert_eq!(p.x, 2246.5);
-        assert_eq!(p.y, -954.77);
-        assert_eq!(p.z, -4.97);
-        assert_eq!(p.delta_x, 1.5);
-        assert_eq!(p.delta_y, -2.0);
-        assert_eq!(p.heading, 512);
-    }
+    // parse_player_self_pos tests live in player_self_pos.rs (the module now owns
+    // the canonical parser; these lib.rs copies tested the retired 42B layout).
 
     /// Encode a game-unit coordinate as a wire position word: signed 19-bit
     /// ×8 fixed-point in the low bits.
@@ -1150,8 +1119,11 @@ mod tests {
         u32le(&mut b, 0); // petOwnerId
         b.extend_from_slice(&[0u8; 49]); // npc==1 extra
         b.extend_from_slice(&[0u8; 60]); // equipment (else branch: 20 + 2*5*4)
-        b.extend_from_slice(&[0u8; 8]); // eql insert
-        b.extend_from_slice(&pos_word(z));
+        // position block: word0 vel, word1 z-word (Z in bits 13..31), word2 flag,
+        // word3 y-word (Y low19 + heading), word4 x-word, word5 delta.
+        b.extend_from_slice(&[0u8; 4]); // word0: velocity/flags
+        b.extend_from_slice(&((((z * 8) as u32) & 0x7FFFF) << 13).to_le_bytes()); // word1: Z @bit13
+        b.extend_from_slice(&[0u8; 4]); // word2: flag
         // middle word: y in low 19 bits, h2048 heading in high 13 bits
         let mid = ((((y * 8) as u32) & 0x7FFFF) | ((heading as u32) << 19)).to_le_bytes();
         b.extend_from_slice(&mid);

@@ -1,31 +1,39 @@
-//! Parser for `OP_GroundSpawn` — variable-length payload built by
-//! the modern client around a single dropped item. Mirrors
-//! `SpawnShell::newGroundItem`'s NetStream-style read order:
-//! dropId u32, NUL-terminated idFile text, three skipped u32s,
-//! heading f32, three skipped u32s, then y/x/z f32 triplet.
+//! Parser for eql's `OP_GroundSpawn` (id 0x6360, post-2026-07-14).
 //!
-//! Total fixed size: 44 bytes around the variable text. The text
-//! field corresponds to the legacy `makeDropStruct.idFile[30]`
-//! actor-id string; longer strings are truncated to 30 bytes on
-//! the way out so the C++ side can `strcpy` into its fixed buffer.
+//! A ground drop is a fixed **32-byte** placement record — it carries only the
+//! object's id + world position, NOT the item name/stats (those arrive
+//! separately as the ~1KB item-definition, OP_ItemPacket-style). Confirmed
+//! drop-specific: it fires exactly once per dropped item and is absent from
+//! walk / combat captures with no drops.
+//!
+//! Layout (little-endian):
+//! ```text
+//!   /*0000*/ u32  dropId
+//!   /*0004*/ f32  x
+//!   /*0008*/ f32  y
+//!   /*0012*/ f32  z         (matches the OP_MobUpdate Z range for the zone)
+//!   /*0016*/ f32  heading
+//!   /*0020*/ 12 bytes pad
+//! ```
+//! `id_file` (the legacy actor/model string) is surfaced empty — the daemon's
+//! `SpawnShell::newGroundItem` places the drop from the position; naming it
+//! would require correlating the preceding item-def, a future refinement.
 
 use thiserror::Error;
 
 pub const ID_FILE_LEN: usize = 30;
-const FIXED_AROUND_TEXT: usize = 4 + 4 * 3 + 4 + 4 * 3 + 4 * 3; // 44
+const PAYLOAD_MIN: usize = 20; // dropId + 4 floats
 
 #[derive(Debug, Clone)]
 pub struct GroundSpawn {
     pub drop_id: u32,
-    /// NUL-terminated idFile text from the payload, truncated to
-    /// `ID_FILE_LEN` bytes to match the legacy fixed field.
+    /// Empty on the 32B eql record (the model/name is not carried here).
     pub id_file: String,
     pub heading: f32,
     pub y: f32,
     pub x: f32,
     pub z: f32,
-    /// Bytes consumed from the input. The C++ NetStream stops after
-    /// reading the trailing z float; surplus payload is ignored.
+    /// Bytes consumed from the input.
     pub bytes_consumed: u32,
 }
 
@@ -49,54 +57,22 @@ fn read_f32_le(bytes: &[u8], at: usize) -> Result<f32, GroundSpawnError> {
 }
 
 pub fn parse_ground_spawn(bytes: &[u8]) -> Result<GroundSpawn, GroundSpawnError> {
-    if bytes.len() < 4 {
-        return Err(GroundSpawnError::Truncated(bytes.len(), 4));
+    if bytes.len() < PAYLOAD_MIN {
+        return Err(GroundSpawnError::Truncated(bytes.len(), PAYLOAD_MIN));
     }
     let drop_id = read_u32_le(bytes, 0)?;
-
-    // Variable-length NUL-terminated text starting at offset 4.
-    let text_start = 4usize;
-    let mut p = text_start;
-    while p < bytes.len() && bytes[p] != 0 {
-        p += 1;
-    }
-    if p >= bytes.len() {
-        return Err(GroundSpawnError::UnterminatedText);
-    }
-    let text_len = p - text_start;
-    let text_end = p + 1; // skip the NUL
-
-    let copy_len = text_len.min(ID_FILE_LEN);
-    let id_file = String::from_utf8_lossy(
-        &bytes[text_start..text_start + copy_len],
-    )
-    .into_owned();
-
-    // After the text, the netstream layout is:
-    //   3× u32 skip (zoneId, zoneInstance, unknown)
-    //   f32 heading
-    //   3× u32 skip
-    //   f32 y, f32 x, f32 z
-    let after_text = text_end;
-    let need = FIXED_AROUND_TEXT - 4;
-    if bytes.len() < after_text + need {
-        return Err(GroundSpawnError::Truncated(bytes.len(), need));
-    }
-
-    let heading = read_f32_le(bytes, after_text + 4 * 3)?;
-    let y = read_f32_le(bytes, after_text + 4 * 3 + 4 + 4 * 3)?;
-    let x = read_f32_le(bytes, after_text + 4 * 3 + 4 + 4 * 3 + 4)?;
-    let z = read_f32_le(bytes, after_text + 4 * 3 + 4 + 4 * 3 + 4 + 4)?;
-
-    let bytes_consumed = (after_text + need) as u32;
+    let x = read_f32_le(bytes, 4)?;
+    let y = read_f32_le(bytes, 8)?;
+    let z = read_f32_le(bytes, 12)?;
+    let heading = read_f32_le(bytes, 16)?;
     Ok(GroundSpawn {
         drop_id,
-        id_file,
+        id_file: String::new(),
         heading,
         y,
         x,
         z,
-        bytes_consumed,
+        bytes_consumed: PAYLOAD_MIN as u32,
     })
 }
 
@@ -106,57 +82,25 @@ mod tests {
 
     #[test]
     fn rejects_short_payload() {
-        assert!(parse_ground_spawn(&[0; 3]).is_err());
-    }
-
-    #[test]
-    fn rejects_unterminated_text() {
-        let mut buf = vec![0u8; 4];
-        buf.extend_from_slice(b"NoNullEver"); // no NUL byte
-        assert!(matches!(
-            parse_ground_spawn(&buf),
-            Err(GroundSpawnError::UnterminatedText)
-        ));
+        assert!(parse_ground_spawn(&[0; 19]).is_err());
     }
 
     #[test]
     fn parses_fields() {
-        // Build a payload: dropId=42, idFile="IT63_ACTORDEF",
-        // skip 3×u32, heading=90.0, skip 3×u32, y=1.0, x=2.0, z=3.0.
+        // dropId=42, x=601.0, y=570.0, z=-682.5, heading=204.0, + pad.
         let mut buf = Vec::new();
         buf.extend_from_slice(&42u32.to_le_bytes());
-        buf.extend_from_slice(b"IT63_ACTORDEF");
-        buf.push(0); // NUL terminator
-        // 3 u32 placeholders for zoneId / zoneInstance / unknown
-        buf.extend_from_slice(&[0u8; 12]);
-        buf.extend_from_slice(&90.0f32.to_le_bytes());
-        // 3 u32 unknowns
-        buf.extend_from_slice(&[0u8; 12]);
-        buf.extend_from_slice(&1.0f32.to_le_bytes());
-        buf.extend_from_slice(&2.0f32.to_le_bytes());
-        buf.extend_from_slice(&3.0f32.to_le_bytes());
-
+        buf.extend_from_slice(&601.0f32.to_le_bytes());
+        buf.extend_from_slice(&570.0f32.to_le_bytes());
+        buf.extend_from_slice(&(-682.5f32).to_le_bytes());
+        buf.extend_from_slice(&204.0f32.to_le_bytes());
+        buf.extend_from_slice(&[0u8; 12]); // pad
         let g = parse_ground_spawn(&buf).unwrap();
         assert_eq!(g.drop_id, 42);
-        assert_eq!(g.id_file, "IT63_ACTORDEF");
-        assert_eq!(g.heading, 90.0);
-        assert_eq!(g.y, 1.0);
-        assert_eq!(g.x, 2.0);
-        assert_eq!(g.z, 3.0);
-        assert_eq!(g.bytes_consumed, buf.len() as u32);
-    }
-
-    #[test]
-    fn truncates_long_id_file() {
-        let mut buf = Vec::new();
-        buf.extend_from_slice(&1u32.to_le_bytes());
-        // 35-char text — longer than ID_FILE_LEN(30).
-        let long_name = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ_xxxxx_yz";
-        assert!(long_name.len() > ID_FILE_LEN);
-        buf.extend_from_slice(long_name);
-        buf.push(0);
-        buf.extend_from_slice(&[0u8; FIXED_AROUND_TEXT - 4]);
-        let g = parse_ground_spawn(&buf).unwrap();
-        assert_eq!(g.id_file.as_bytes(), &long_name[..ID_FILE_LEN]);
+        assert_eq!(g.x, 601.0);
+        assert_eq!(g.y, 570.0);
+        assert_eq!(g.z, -682.5);
+        assert_eq!(g.heading, 204.0);
+        assert!(g.id_file.is_empty());
     }
 }

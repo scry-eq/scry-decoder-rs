@@ -1,54 +1,63 @@
-//! Parser for the 42-byte `playerSelfPosStruct` (`OP_ClientUpdate`, C>S — the
+//! Parser for the 38-byte `playerSelfPosStruct` (`OP_ClientUpdate`, C>S — the
 //! local player's own position report).
 //!
-//! **Re-derived 2026-07-10** from `eqlegends-levelup.vpk`. The prior layout
-//! (x@26/y@6/z@22, heading in the @10 word) was misaligned — it read the
-//! *velocity* fields as position, so `Player::applySelfPosition` painted the PC
-//! at ~origin, making the player dot flicker to the map corner (~7% of frames,
-//! interleaved with the correct OP_NpcMoveUpdate position). The offsets were
-//! wrong on both the 07-07 and 07-10 captures (position has always been at
-//! @18/@10/@30), so this is a long-standing bug, not a fresh patch drift.
-//!
-//! Layout on the current wire (little-endian; floats are game-world units, no
-//! ×8 packing — this is C>S, distinct from the S>C packed `playerSpawnPosStruct`):
+//! **Re-cracked 2026-07-14** against a `/loc` ground-truth capture
+//! (`eql-locref.vpk`, 3 known points, exact match). The 2026-07-14 patch rotated
+//! the opcode id (0x7171 -> 0x5188) and shrank this report 42B -> 38B with a
+//! **fully rearranged layout** (the old 42B had x@18/y@10/z@30/heading@14; none
+//! of those survive). Positions are IEEE floats in game-world units (no ×8
+//! packing — this is C>S, distinct from the S>C packed `playerSpawnPosStruct`):
 //!
 //! ```text
-//!   /*0002*/ u16  spawnId
-//!   /*0006*/ f32  deltaY
-//!   /*0010*/ f32  y
-//!   /*0014*/ u32  heading:11 (0..2047, h2048)   + unmapped high bits
-//!   /*0018*/ f32  x
-//!   /*0022*/ u32  (unmapped — pitch/flags; unused by the daemon)
-//!   /*0026*/ f32  deltaX
-//!   /*0030*/ f32  z
-//!   /*0034*/ f32  deltaZ
-//!   /*0038*/ u32  (unmapped — pitch/anim; unused by the daemon)
+//!   /*0000*/ f32  counter    (~16640, +~0.1/tick; unused)
+//!   /*0010*/ f32  z          (gameZ)
+//!   /*0014*/ f32  x          (gameX)
+//!   /*0018*/ u32  { lowfrac:8 | heading:13 @bit8 | turnrate:11 }
+//!   /*0026*/ f32  y          (gameY)
 //! ```
 //!
-//! Evidence (see `showeq-daemon/OPCODES_LEGENDS.md`): x@18/y@10 land 3.9u from a
-//! mob being meleed (same frame as the mob positions); z@30 reads 31.7 while
-//! standing. heading@14 correlates R=0.88 with the player's own movement
-//! direction (a player faces where they run) and the daemon's existing
-//! `360 - ((h*360) >> 11)` conversion confirms the 11-bit scale. deltaX@26 /
-//! deltaY@6 correlate r≈0.83 with the per-axis position delta and yield speed
-//! ≈ 1.0 through the daemon's `×80/119` formula. deltaZ@34 (r=0.58, best
-//! candidate). pitch/animation/deltaHeading are not consumed by
-//! `applySelfPosition`, so the two unmapped `@22`/`@38` words are surfaced as 0.
+//! Verified: X@14/Y@26/Z@10 match all 3 `/loc` points exactly (X 654/744/1156,
+//! Y 942/388/373, Z 190/33/58).
+//!
+//! **Heading re-cracked 2026-07-15** against a stationary full-360 spin capture
+//! (position pinned, two clockwise rotations). The facing is a
+//! **13-bit field at bit 8** (`(w>>8) & 0x1FFF`, 8192 per circle), NOT the low 12
+//! bits: `(w>>8)&0x1FFF` sweeps two clean monotonic cycles across the spin and
+//! puts the /loc south/west walks at 4072/2100 → 90° apart. The earlier "low 12"
+//! read was wrong — bit 0..7 (`lowfrac`) is a separate sub-field that reads 0 when
+//! the player isn't translating, which made a *rotating-but-stationary* facing
+//! collapse to 4 cardinals (only bits 10-11 of the low-12 window survived) and the
+//! turn-rate bits above the heading (24..31) look like corruption. Bits 24..31 are
+//! the **turn rate** (nonzero only while turning), not garbage; there is nothing to
+//! reject. The daemon maps via `360 - ((h*360) >> 13)` → /loc S=180, W=270.
+//!
+//! **No spawnId field** — unlike the old 42B (`spawnId@2`), the client's self
+//! report carries no id (the server keys the connection). The daemon's
+//! `EqlDispatch::playerUpdateSelf` therefore applies this to the local player
+//! directly and the self-id is adopted elsewhere (`SpawnShell::zoneEntry`
+//! name-match), so `spawn_id` is surfaced as 0. Deltas are not yet located in the
+//! 38B form and are surfaced as 0 (only the speed indicator uses them).
 
 use thiserror::Error;
 
-pub const PAYLOAD_LEN: usize = 42;
+pub const PAYLOAD_LEN: usize = 38;
+
+/// Full circle in wire heading units (13-bit field → 8192 steps).
+pub const HEADING_UNITS: u16 = 8192;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PlayerSelfPos {
+    /// Not carried on the 38B C>S wire (the client's self report has no id) — 0.
     pub spawn_id: u16,
     pub x: f32,
     pub y: f32,
     pub z: f32,
+    /// Not yet located in the 38B form — surfaced as 0 (only speed uses them).
     pub delta_x: f32,
     pub delta_y: f32,
     pub delta_z: f32,
-    /// 11-bit unsigned (0..2047, h2048); daemon maps via `360 - ((h*360) >> 11)`.
+    /// 13-bit unsigned (0..8191, 8192 per circle); daemon maps via
+    /// `360 - ((h*360) >> 13)`. Valid on every packet — turning included.
     pub heading: u16,
     /// Not carried on eql's C>S wire (unused by the daemon) — surfaced as 0.
     pub delta_heading: i16,
@@ -72,34 +81,30 @@ fn read_f32_le(bytes: &[u8], at: usize) -> f32 {
     f32::from_bits(read_u32_le(bytes, at))
 }
 
-fn read_u16_le(bytes: &[u8], at: usize) -> u16 {
-    u16::from_le_bytes([bytes[at], bytes[at + 1]])
-}
-
 pub fn parse_player_self_pos(bytes: &[u8]) -> Result<PlayerSelfPos, PlayerSelfPosError> {
     if bytes.len() != PAYLOAD_LEN {
         return Err(PlayerSelfPosError::BadLength(bytes.len()));
     }
 
-    let spawn_id = read_u16_le(bytes, 2);
-
-    let delta_y = read_f32_le(bytes, 6);
-    let y = read_f32_le(bytes, 10);
-    // offset 14: heading in the low 11 bits (h2048, 0..2047); high bits unmapped.
-    let heading = (read_u32_le(bytes, 14) & 0x7FF) as u16;
-    let x = read_f32_le(bytes, 18);
-    let delta_x = read_f32_le(bytes, 26);
-    let z = read_f32_le(bytes, 30);
-    let delta_z = read_f32_le(bytes, 34);
+    let z = read_f32_le(bytes, 10);
+    let x = read_f32_le(bytes, 14);
+    // offset 18 packs `lowfrac:8 | heading:13 @bit8 | turnrate:11`. The facing is
+    // the 13-bit field at bit 8 (8192 per circle) — reliable on every packet,
+    // moving or stationary. The low 8 bits are a separate sub-fraction that reads
+    // 0 when not translating; the bits above the heading are the turn rate. See
+    // the module doc: verified against a stationary 360-spin capture.
+    let w = read_u32_le(bytes, 18);
+    let heading = ((w >> 8) & 0x1FFF) as u16;
+    let y = read_f32_le(bytes, 26);
 
     Ok(PlayerSelfPos {
-        spawn_id,
+        spawn_id: 0,
         x,
         y,
         z,
-        delta_x,
-        delta_y,
-        delta_z,
+        delta_x: 0.0,
+        delta_y: 0.0,
+        delta_z: 0.0,
         heading,
         delta_heading: 0,
         animation: 0,
@@ -113,37 +118,45 @@ mod tests {
 
     #[test]
     fn rejects_wrong_length() {
-        assert!(parse_player_self_pos(&[0; 41]).is_err());
-        assert!(parse_player_self_pos(&[0; 43]).is_err());
+        assert!(parse_player_self_pos(&[0; 42]).is_err()); // the pre-07/14 size is rejected
+        assert!(parse_player_self_pos(&[0; 37]).is_err());
+        assert!(parse_player_self_pos(&[0; 39]).is_err());
     }
 
     #[test]
-    fn parses_position_deltas_and_spawn_id() {
+    fn parses_floats_x14_y26_z10() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        buf[2..4].copy_from_slice(&0x12b7u16.to_le_bytes()); // spawnId
-        buf[6..10].copy_from_slice(&1.5f32.to_le_bytes()); // deltaY
-        buf[10..14].copy_from_slice(&(-24.6f32).to_le_bytes()); // y
-        buf[18..22].copy_from_slice(&(-263.0f32).to_le_bytes()); // x
-        buf[26..30].copy_from_slice(&0.5f32.to_le_bytes()); // deltaX
-        buf[30..34].copy_from_slice(&31.8f32.to_le_bytes()); // z
-        buf[34..38].copy_from_slice(&(-2.0f32).to_le_bytes()); // deltaZ
+        buf[10..14].copy_from_slice(&190.01f32.to_le_bytes()); // z
+        buf[14..18].copy_from_slice(&654.25f32.to_le_bytes()); // x
+        buf[26..30].copy_from_slice(&941.50f32.to_le_bytes()); // y
         let p = parse_player_self_pos(&buf).unwrap();
-        assert_eq!(p.spawn_id, 0x12b7);
-        assert_eq!(p.x, -263.0);
-        assert_eq!(p.y, -24.6);
-        assert_eq!(p.z, 31.8);
-        assert_eq!(p.delta_x, 0.5);
-        assert_eq!(p.delta_y, 1.5);
-        assert_eq!(p.delta_z, -2.0);
+        assert_eq!(p.x, 654.25);
+        assert_eq!(p.y, 941.50);
+        assert_eq!(p.z, 190.01);
+        assert_eq!(p.spawn_id, 0);
     }
 
     #[test]
-    fn heading_is_11_bit_at_offset14() {
+    fn heading_is_13_bit_at_bit8() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        // heading = 0x7FF (11-bit max); high bits set must be masked off.
-        buf[14..18].copy_from_slice(&(0x7FFu32 | (0x1Fu32 << 11)).to_le_bytes());
+        // heading = 0x1FFF (13-bit max) at bit 8; the low 8 bits (sub-fraction) and
+        // the turn-rate bits above must not bleed into it.
+        buf[18..22].copy_from_slice(&(0xFFu32 | (0x1FFFu32 << 8) | (0x7FFu32 << 21)).to_le_bytes());
         let p = parse_player_self_pos(&buf).unwrap();
-        assert_eq!(p.heading, 0x7FF);
+        assert_eq!(p.heading, 0x1FFF);
+        assert!(p.heading < HEADING_UNITS);
+    }
+
+    #[test]
+    fn turning_packet_still_decodes_heading() {
+        // A real turning packet has nonzero turn-rate bits (24..31); the heading is
+        // still valid — nothing to reject. idx-72 of the spin capture: w=0xebcef000
+        // -> heading = (0xebcef000 >> 8) & 0x1FFF = 0x1cef0 & 0x1FFF ... exercised
+        // here with a crafted value so the field is unambiguous.
+        let mut buf = [0u8; PAYLOAD_LEN];
+        buf[18..22].copy_from_slice(&(0x1234u32 << 8 | 0xdd_u32 << 24).to_le_bytes());
+        let p = parse_player_self_pos(&buf).unwrap();
+        assert_eq!(p.heading, 0x1234 & 0x1FFF);
     }
 
     #[test]
