@@ -48,6 +48,7 @@ pub mod end_update;
 pub mod exp_update;
 pub mod formatted_message;
 pub mod ground_spawn;
+pub mod links;
 pub mod loot_message;
 pub mod group_disband;
 pub mod group_follow;

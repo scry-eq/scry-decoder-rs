@@ -122,7 +122,7 @@ pub fn parse_ucs_chat(payload: &[u8]) -> Vec<UcsRecord> {
             continue;
         }
 
-        let message = latin1(&buf[msg_start..msg_end]);
+        let message = crate::links::clean_links(&latin1(&buf[msg_start..msg_end]));
         let server_sender = latin1(&buf[ss_start..ss_end]);
         let sender = match server_sender.rfind('.') {
             Some(d) => server_sender[d + 1..].to_string(),

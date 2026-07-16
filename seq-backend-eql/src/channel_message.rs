@@ -69,7 +69,7 @@ pub fn parse_channel_message(bytes: &[u8]) -> Result<ChannelMessage, ChannelMess
     r.skip(4)?;                              // unknown u32
     r.skip(1)?;                              // unknown u8
     let skill_in_language = r.u32()?;
-    let message = r.text("message")?;
+    let message = crate::links::clean_links(&r.text("message")?); // players link items in chat
     Ok(ChannelMessage {
         sender, target, language, chan_num, skill_in_language, message,
     })

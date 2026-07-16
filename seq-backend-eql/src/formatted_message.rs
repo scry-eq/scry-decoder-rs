@@ -69,24 +69,10 @@ fn split_args(blob: &[u8]) -> Vec<String> {
         if pos + len > blob.len() {
             break; // truncated / corrupt
         }
-        out.push(clean_link(&String::from_utf8_lossy(&blob[pos..pos + len])));
+        out.push(crate::links::clean_links(&String::from_utf8_lossy(&blob[pos..pos + len])));
         pos += len;
     }
     out
-}
-
-/// Reduce an EQ `\x12`-wrapped link to a readable name. Spell links are
-/// `\x12 fmt^spellId^..^'Name \x12` — keep the trailing name after the last `^`.
-/// Plain args (no `\x12`) pass through unchanged.
-fn clean_link(raw: &str) -> String {
-    if !raw.contains('\u{12}') {
-        return raw.to_string();
-    }
-    let stripped: String = raw.chars().filter(|&c| c != '\u{12}').collect();
-    match stripped.rfind('^') {
-        Some(i) => stripped[i + 1..].trim_start_matches('\'').to_string(),
-        None => stripped,
-    }
 }
 
 #[cfg(test)]
