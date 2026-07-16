@@ -1220,18 +1220,20 @@ fn decode_formatted_message(bytes: &[u8]) -> ffi::FormattedMessage {
     }
 }
 
-// eql: 0x3c0a carries the full header + pre-split arg list (see task-#1
-// parser). message_format/message_color mirror format_id/spell_id for stock
-// symbol compatibility; the eql handler consumes the rich fields.
+// eql: 0x15d0 (07/14) carries a stock length-prefixed FormattedMessage —
+// formatId@5, msgType/colour@9, length-prefixed args@13 (see the parser). The
+// args are already positional (empty slots dropped, links cleaned); the daemon
+// interpolates via EQStr::formatMessage(format_id, args). message_format/
+// message_color mirror format_id/msg_color for stock symbol compatibility.
 #[cfg(feature = "backend-eql")]
 fn decode_formatted_message(bytes: &[u8]) -> ffi::FormattedMessage {
     match backend::parse_formatted_message(bytes) {
         Ok(m) => ffi::FormattedMessage {
             message_format: m.format_id,
-            message_color:  m.spell_id,
-            spell_id: m.spell_id,
-            msg_type: m.msg_type,
-            spawn_id: m.spawn_id,
+            message_color:  m.msg_color,
+            spell_id: 0,
+            msg_type: 0,
+            spawn_id: 0,
             format_id: m.format_id,
             args: m.args,
             ok: true,
