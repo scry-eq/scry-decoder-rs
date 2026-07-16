@@ -49,6 +49,7 @@ pub mod exp_update;
 pub mod formatted_message;
 pub mod ground_spawn;
 pub mod links;
+pub mod loot_drops;
 pub mod loot_message;
 pub mod money_update;
 pub mod group_disband;
@@ -105,6 +106,7 @@ pub use formatted_message::{
     parse_formatted_message, FormattedMessage, FormattedMessageError,
 };
 pub use ground_spawn::{parse_ground_spawn, GroundSpawn, GroundSpawnError};
+pub use loot_drops::{parse_loot_drops, LootDrops, LootDropsError};
 pub use loot_message::{parse_loot_message, LootMessage, LootMessageError};
 pub use money_update::{parse_money_update, MoneyUpdate, MoneyUpdateError};
 pub use group_disband::{parse_group_disband, GroupDisband, GroupDisbandError};
