@@ -741,6 +741,16 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         // OP_Stamina (0x3b0c, 07/14): stock 8B staminaStruct {u32 food, u32 water};
         // capture-verified food/water tick down together. Pinned so the gate is eql-owned.
         ("staminaStruct", core::mem::size_of::<eqstructs::staminaStruct>() as u32),
+        // OP_Illusion (0x2e7d, 07/14): 332B spawnIllusionStruct — the /*0336*/
+        // offset marker in everquest.h is stale; eql's pinned copy is 332 (fires
+        // 332x33 in the fight capture). parse_illusion.
+        ("spawnIllusionStruct", core::mem::size_of::<eqstructs::spawnIllusionStruct>() as u32),
+        // OP_TimeOfDay (0x0b7f): 8B timeOfDayStruct {u8 hour/min/day/month,u16 year};
+        // no pinned eql binding, literal capture-confirmed size (fires 8x12).
+        ("timeOfDayStruct", 8),
+        // OP_InspectAnswer (0x6a04): 1956B inspectDataStruct; not seen in the fight
+        // capture (inspect is passive) — size from the struct def.
+        ("inspectDataStruct", 1956),
         ("deleteSpawnStruct", core::mem::size_of::<eqstructs::deleteSpawnStruct>() as u32),
         ("newCorpseStruct", core::mem::size_of::<eqstructs::newCorpseStruct>() as u32),
         ("remDropStruct", core::mem::size_of::<eqstructs::remDropStruct>() as u32),
