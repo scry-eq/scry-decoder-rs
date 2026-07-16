@@ -48,6 +48,7 @@ pub mod end_update;
 pub mod exp_update;
 pub mod formatted_message;
 pub mod ground_spawn;
+pub mod loot_message;
 pub mod group_disband;
 pub mod group_follow;
 pub mod group_member_list;
@@ -102,6 +103,7 @@ pub use formatted_message::{
     parse_formatted_message, FormattedMessage, FormattedMessageError,
 };
 pub use ground_spawn::{parse_ground_spawn, GroundSpawn, GroundSpawnError};
+pub use loot_message::{parse_loot_message, LootMessage, LootMessageError};
 pub use group_disband::{parse_group_disband, GroupDisband, GroupDisbandError};
 pub use group_follow::{parse_group_follow, GroupFollow, GroupFollowError};
 // Vendored 18B `hpNpcUpdateStruct` parser: eql never sees Live's fixed HP

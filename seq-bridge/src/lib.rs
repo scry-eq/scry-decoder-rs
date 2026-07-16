@@ -507,6 +507,7 @@ mod ffi {
         fn decode_simple_message(bytes: &[u8]) -> SimpleMessage;
         fn decode_formatted_message(bytes: &[u8]) -> FormattedMessage;
         fn decode_special_message(bytes: &[u8]) -> SpecialMessage;
+        fn decode_loot_message(bytes: &[u8]) -> SpecialMessage;
         fn decode_channel_message(bytes: &[u8]) -> ChannelMessage;
         fn decode_new_zone(bytes: &[u8]) -> NewZone;
         fn decode_player_profile(bytes: &[u8]) -> PlayerProfile;
@@ -653,6 +654,29 @@ fn decode_loadout_swap(bytes: &[u8]) -> ffi::LoadoutSwap {
 #[cfg(not(feature = "backend-eql"))]
 fn decode_loadout_swap(_bytes: &[u8]) -> ffi::LoadoutSwap {
     loadout_swap_err()
+}
+
+// eql-only: OP_LootMessage (0x7d46) personal loot text, reusing SpecialMessage.
+#[cfg(feature = "backend-eql")]
+fn decode_loot_message(bytes: &[u8]) -> ffi::SpecialMessage {
+    match seq_backend_eql::parse_loot_message(bytes) {
+        Ok(m) => ffi::SpecialMessage {
+            message_color: m.color, target: 0,
+            source: String::new(), message: m.text, ok: true,
+        },
+        Err(_) => ffi::SpecialMessage {
+            message_color: 0, target: 0,
+            source: String::new(), message: String::new(), ok: false,
+        },
+    }
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn decode_loot_message(_bytes: &[u8]) -> ffi::SpecialMessage {
+    ffi::SpecialMessage {
+        message_color: 0, target: 0,
+        source: String::new(), message: String::new(), ok: false,
+    }
 }
 
 #[cfg(not(feature = "backend-eql"))]
