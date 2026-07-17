@@ -58,7 +58,7 @@ pub struct PlayerSelfPos {
     pub x: f32,
     pub y: f32,
     pub z: f32,
-    /// Not yet located in the 38B form — surfaced as 0 (only speed uses them).
+    /// Velocity units/tick (deltaY@6, deltaX@22, deltaZ@30); ±~2.26 = full run.
     pub delta_x: f32,
     pub delta_y: f32,
     pub delta_z: f32,
@@ -94,11 +94,11 @@ pub fn parse_player_self_pos(bytes: &[u8]) -> Result<PlayerSelfPos, PlayerSelfPo
 
     let z = read_f32_le(bytes, 10);
     let x = read_f32_le(bytes, 14);
-    // offset 18 packs `lowfrac:8 | heading:13 @bit8 | turnrate:11`. The facing is
-    // the 13-bit field at bit 8 (8192 per circle) — reliable on every packet,
-    // moving or stationary. The low 8 bits are a separate sub-fraction that reads
-    // 0 when not translating; the bits above the heading are the turn rate. See
-    // the module doc: verified against a stationary 360-spin capture.
+    // offset 18 packs `lowfrac:8 | heading:13 @bit8 | hi:11`. The facing is the
+    // 13-bit field at bit 8 (8192 per circle) — reliable on every packet, moving
+    // or stationary. The low 8 bits are a separate sub-fraction that reads 0 when
+    // not translating; the 11 bits above are NOT a turn rate (they read 0 through
+    // a full spin). See the module doc: verified vs a stationary 360-spin capture.
     let w = read_u32_le(bytes, 18);
     let heading = ((w >> 8) & 0x1FFF) as u16;
     let y = read_f32_le(bytes, 26);
@@ -155,7 +155,7 @@ mod tests {
     fn heading_is_13_bit_at_bit8() {
         let mut buf = [0u8; PAYLOAD_LEN];
         // heading = 0x1FFF (13-bit max) at bit 8; the low 8 bits (sub-fraction) and
-        // the turn-rate bits above must not bleed into it.
+        // the high 11 bits above must not bleed into it.
         buf[18..22].copy_from_slice(&(0xFFu32 | (0x1FFFu32 << 8) | (0x7FFu32 << 21)).to_le_bytes());
         let p = parse_player_self_pos(&buf).unwrap();
         assert_eq!(p.heading, 0x1FFF);
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn turning_packet_still_decodes_heading() {
-        // A real turning packet has nonzero turn-rate bits (24..31); the heading is
+        // A real turning packet has nonzero high bits (24..31); the heading is
         // still valid — nothing to reject. idx-72 of the spin capture: w=0xebcef000
         // -> heading = (0xebcef000 >> 8) & 0x1FFF = 0x1cef0 & 0x1FFF ... exercised
         // here with a crafted value so the field is unambiguous.
