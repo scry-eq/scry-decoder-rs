@@ -19,6 +19,12 @@ pub struct PlayerProfile {
     pub race: u32,
     pub class_: u32,
     pub class_mask: u32,
+    // EQL active stance / invocation ability ids, read at a FIXED offset in the
+    // profile (33777 / 33781; verified identical across 2 chars of different
+    // class/level/server). OP_Stance/OP_Invocation echo only on a SWAP, so this
+    // seeds the initial state at zone-in. 0 = none / out of range.
+    pub stance: u32,
+    pub invocation: u32,
     pub level: u8,
     pub level1: u8,
     pub bind0_zone_id: u32,

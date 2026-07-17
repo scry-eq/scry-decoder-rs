@@ -425,6 +425,8 @@ mod ffi {
         race: u32,
         class_: u32,
         class_mask: u32,
+        stance: u32,       // EQL active stance ability id (profile @33777); 0 = none
+        invocation: u32,   // EQL active invocation ability id (profile @33781); 0 = none
         level: u8,
         level1: u8,
         bind0_zone_id: u32,
@@ -1477,6 +1479,8 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
             race: p.race,
             class_: p.class_,
             class_mask: p.class_mask,
+            stance: p.stance,
+            invocation: p.invocation,
             level: p.level,
             level1: p.level1,
             bind0_zone_id: p.bind0_zone_id,
@@ -1548,7 +1552,7 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
             ok: false,
             bytes_consumed: 0,
             checksum: 0,
-            gender: 0, race: 0, class_: 0, class_mask: 0, level: 0, level1: 0,
+            gender: 0, race: 0, class_: 0, class_mask: 0, stance: 0, invocation: 0, level: 0, level1: 0,
             bind0_zone_id: 0,
             bind0_x: 0.0, bind0_y: 0.0, bind0_z: 0.0, bind0_heading: 0.0,
             deity: 0, intoxication: 0, points: 0, mana: 0, cur_hp: 0,

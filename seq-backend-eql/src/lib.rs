@@ -429,6 +429,15 @@ pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
     if let Some(p) = find_profile_name_block(b) {
         read_profile_name_and_tail(b, p, &mut prof);
     }
+    // EQL active stance / invocation live at a FIXED offset (33777 / 33781): the
+    // combat-state block sits in the profile's fixed prefix, verified byte-
+    // identical across two chars of different class/level/server (the variable
+    // netstream is all AFTER it). Bounds-guarded; the C++ side range-validates
+    // the id via stanceName()/invocationName().
+    if b.len() >= 33785 {
+        prof.stance = rd_u32(b, 33777);
+        prof.invocation = rd_u32(b, 33781);
+    }
     Ok(prof)
 }
 
