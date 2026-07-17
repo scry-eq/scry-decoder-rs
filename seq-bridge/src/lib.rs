@@ -243,6 +243,15 @@ mod ffi {
         remaining_ticks: i32,
         slot: u32,
     }
+    // One point in the EQL self-position breadcrumb (OP_SelfPosEQL 0x4fb6). Game
+    // coords (not screen-negated); `ts` is a per-sample monotonic timer. Ordered
+    // oldest -> newest. An empty Vec = decode failed / not the breadcrumb.
+    struct SelfPosPoint {
+        x: f32,
+        y: f32,
+        z: f32,
+        ts: u32,
+    }
     // One EQL UCS (cross-zone chat) line. `channel_first` is the still-masked
     // first byte of the channel name; `channel_rest` is the clean remainder.
     // The caller recovers the per-session mask (from the General* crib) to
@@ -513,6 +522,7 @@ mod ffi {
         fn decode_money_update(bytes: &[u8]) -> MoneyUpdate;
         fn decode_loot_drops(bytes: &[u8]) -> LootDrops;
         fn decode_buff_list(bytes: &[u8]) -> Vec<BuffListEntry>;
+        fn decode_self_pos_breadcrumb(bytes: &[u8]) -> Vec<SelfPosPoint>;
         fn decode_ucs_chat(bytes: &[u8]) -> Vec<UcsChatRecord>;
         fn decode_ucs_channels(bytes: &[u8]) -> Vec<String>;
         fn decode_mob_health(bytes: &[u8]) -> MobHealth;
@@ -837,6 +847,23 @@ fn decode_buff_list(_bytes: &[u8]) -> Vec<ffi::BuffListEntry> {
     Vec::new()
 }
 
+// eql-only: OP_SelfPosEQL (0x4fb6) — the local player's position-history
+// breadcrumb, flattened to ordered points (empty = decode failed / not present).
+// live/test stub empty.
+#[cfg(feature = "backend-eql")]
+fn decode_self_pos_breadcrumb(bytes: &[u8]) -> Vec<ffi::SelfPosPoint> {
+    seq_backend_eql::parse_self_pos_breadcrumb(bytes)
+        .points
+        .into_iter()
+        .map(|p| ffi::SelfPosPoint { x: p.x, y: p.y, z: p.z, ts: p.ts })
+        .collect()
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn decode_self_pos_breadcrumb(_bytes: &[u8]) -> Vec<ffi::SelfPosPoint> {
+    Vec::new()
+}
+
 // EQL UCS cross-zone chat. Flattened to a Vec (empty = no chat / not present).
 // live/test stub empty.
 #[cfg(feature = "backend-eql")]
@@ -1113,7 +1140,7 @@ fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
 // Spawn — decoded x/y/z vs raw pos arrays).
 #[cfg(feature = "backend-eql")]
 fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
-    match seq_backend_eql::parse_zone_spawn(bytes) {
+    match seq_backend_eql::parse_spawn(bytes) {
         Ok(s) => ffi::Spawn {
             ok: true,
             name: s.name,

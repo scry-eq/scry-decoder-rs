@@ -10,12 +10,13 @@
 //!
 //! Header: `u32 spawnId | u8 | u16 innerLen | <record> | <inventory tail>`.
 //! `innerLen` covers the header (7 bytes) + the embedded record, which is
-//! byte-identical to the OP_ZoneEntry (0x4606) spawn record — so we reuse
-//! `parse_zone_spawn` (eql's ZoneEntry parser, NOT the Live-format `parse_spawn`)
-//! on `data[7..innerLen]` and surface the fields that change on a swap (level +
-//! class), plus the header spawnId for matching the tracked spawn.
+//! byte-identical to the OP_ZoneEntry (0x4606) spawn record — so we reuse this
+//! crate's `parse_spawn` (eql's ZoneEntry parser; same canonical name as Live's
+//! `seq-decode` twin, different impl) on `data[7..innerLen]` and surface the
+//! fields that change on a swap (level + class), plus the header spawnId for
+//! matching the tracked spawn.
 
-use crate::{parse_zone_spawn, DecodeError};
+use crate::{parse_spawn, DecodeError};
 
 pub struct LoadoutSwap {
     /// Header spawnId — the id of the player who swapped (matches the tracked
@@ -47,7 +48,7 @@ pub fn parse_loadout_swap(data: &[u8]) -> Result<LoadoutSwap, LoadoutSwapError> 
     if inner_len < 8 || inner_len > data.len() {
         return Err(LoadoutSwapError::BadInnerLen);
     }
-    let record = parse_zone_spawn(&data[7..inner_len]).map_err(LoadoutSwapError::Record)?;
+    let record = parse_spawn(&data[7..inner_len]).map_err(LoadoutSwapError::Record)?;
     Ok(LoadoutSwap {
         spawn_id,
         level: record.level,

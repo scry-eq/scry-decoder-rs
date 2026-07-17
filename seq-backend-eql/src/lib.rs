@@ -10,11 +10,14 @@
 //!
 //! Two kinds of module live here:
 //!   * eql's OWN byte-offset parsers for the opcodes whose Legends wire diverges
-//!     from Live — `parse_zone_spawn` / `parse_player_profile` /
-//!     `parse_player_self_pos` / `parse_new_zone` / `parse_consider` below. They
-//!     take the same canonical names as the vendored Live copies (which stay
-//!     reachable via their module path), so the bridge's `backend` alias routes
-//!     to them with no per-opcode cfg. /loc-confirmed; see `OPCODES_LEGENDS.md`.
+//!     from Live — `parse_spawn` / `parse_player_profile` / `parse_player_self_pos`
+//!     / `parse_new_zone` / `parse_consider` below. Each takes the SAME canonical
+//!     name as its Live counterpart in `seq-decode` (uniform surface — only the
+//!     impl differs), so the bridge's `backend` alias routes to them with no
+//!     per-opcode cfg. The lone exception is `decode_spawn`: eql's decoded output
+//!     shape (x/y/z) differs from Live's raw `Spawn`, so its bridge fn keeps a
+//!     cfg-split — both branches still call the backend's `parse_spawn`.
+//!     /loc-confirmed; see `OPCODES_LEGENDS.md`.
 //!   * pinned copies of the shared parsers (identical to Live *today*) that we
 //!     now OWN — when eql and Live diverge, edit only the copy here.
 //!
@@ -67,6 +70,7 @@ pub mod npc_move_update;
 pub mod player_profile;
 pub mod player_self_pos;
 pub mod player_spawn_pos;
+pub mod self_pos_breadcrumb;
 pub mod remove_spawn;
 pub mod simple_message;
 pub mod skill_update;
@@ -129,6 +133,7 @@ pub use npc_move_update::{parse_npc_move_update, NpcMoveUpdate, NpcMoveUpdateErr
 pub use player_profile::{PlayerProfile, PlayerProfileError}; // eql owns canonical `parse_player_profile` (below)
 pub use player_self_pos::{parse_player_self_pos, PlayerSelfPos, PlayerSelfPosError}; // module owns the canonical parser (validates against its own PAYLOAD_LEN, same const the size override reads)
 pub use player_spawn_pos::{parse_player_spawn_pos, PlayerSpawnPos, PlayerSpawnPosError};
+pub use self_pos_breadcrumb::{parse_self_pos_breadcrumb, BreadcrumbPoint, SelfPosBreadcrumb};
 pub use remove_spawn::{parse_remove_spawn, RemoveSpawn, RemoveSpawnError};
 pub use simple_message::{parse_simple_message, SimpleMessage, SimpleMessageError};
 pub use skill_update::{parse_skill_update, SkillUpdate, SkillUpdateError};
@@ -648,7 +653,7 @@ fn pos19_word(w: u32) -> i16 {
 /// against a 1617-record eql corpus). Supersedes the old tail-anchored partial,
 /// which assumed a fixed 95-byte tail and so mis-read position and dropped
 /// titles on any spawn carrying a title/suffix string block.
-pub fn parse_zone_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
+pub fn parse_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     let mut w = Walk::new(b);
 
     let name = w.text()?;
@@ -1337,7 +1342,7 @@ mod tests {
             "a guard", 4242, 55, 90, 14, 396, 3, 80, -15, 10, 1234, "", "Protector",
             "of Qeynos",
         );
-        let s = parse_zone_spawn(&b).unwrap();
+        let s = parse_spawn(&b).unwrap();
         assert_eq!(s.id, 4242);
         assert_eq!(s.name, "a guard");
         assert_eq!(s.level, 55);
@@ -1363,7 +1368,7 @@ mod tests {
         let b = build_spawn(
             "Grarf", 7, 60, 100, 14, 0, 5, 12, -4700, 5200, 0, "Ironforge", "", "",
         );
-        let s = parse_zone_spawn(&b).unwrap();
+        let s = parse_spawn(&b).unwrap();
         assert_eq!(s.y, -4700);
         assert_eq!(s.x, 5200);
         assert_eq!(s.last_name, "Ironforge");
@@ -1376,7 +1381,7 @@ mod tests {
         let mut b = Vec::new();
         b.extend_from_slice(b"orc\0");
         b.extend_from_slice(&[0u8; 40]); // walk overruns the header
-        assert!(parse_zone_spawn(&b).is_err());
+        assert!(parse_spawn(&b).is_err());
     }
 
     #[test]
