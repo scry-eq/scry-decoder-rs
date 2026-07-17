@@ -783,6 +783,12 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         ("randomStruct", 76),               // OP_RandomReply (76B, l-patch addendum 3)
         ("tradeSpellBookSlotsStruct", 8),   // OP_SwapSpell
         ("buffWindowSlotStruct", 12),       // OP_BuffWindow
+        // 07/14 remap SZC_Match opcodes; no pinned eql binding, gate = eql WIRE size.
+        // OP_BeginCast: eql wire is 19B (spellId u16@0, spawnId u16@4, castTime u16@6 —
+        // Xerxes-confirmed), NOT the stock 15B beginCastStruct; gate at 19 so SZC_Match passes.
+        ("beginCastStruct", 19),            // OP_BeginCast (0x6cbd)
+        ("consentResponseStruct", 193),     // OP_ConsentResponse (0x2265) + OP_DenyResponse (0x05fc)
+        ("GuildMemberUpdate", 88),          // OP_GuildMemberUpdate (0x0717)
     ]
 }
 
