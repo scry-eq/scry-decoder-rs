@@ -406,6 +406,7 @@ pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
         gender: b[20],
         race: rd_u32(b, 21),
         class_: rd_u32(b, 25),
+        class_mask: rd_u32(b, 29),  // EQL multiclass bitmask (bit N = class N)
         level: b[33],
         ..Default::default()
     };

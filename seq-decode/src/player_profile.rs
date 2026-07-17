@@ -35,6 +35,7 @@ pub struct PlayerProfile {
     pub gender: u8,
     pub race: u32,
     pub class_: u32,
+    pub class_mask: u32,
     pub level: u8,
     pub level1: u8,
     pub bind0_zone_id: u32,
@@ -498,6 +499,7 @@ pub fn parse_player_profile(bytes: &[u8]) -> Result<PlayerProfile, PlayerProfile
         gender,
         race,
         class_,
+        class_mask: 0, // live isn't multiclass; eql fills its own bitmask
         level,
         level1,
         bind0_zone_id,
