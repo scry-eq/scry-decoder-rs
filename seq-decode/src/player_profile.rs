@@ -57,6 +57,10 @@ pub struct PlayerProfile {
     pub wis: u32,
     pub aa_ids: Vec<u32>,
     pub aa_values: Vec<u32>,
+    /// Player skill values (eql populates these via its own profile walk; the
+    /// live/test walk leaves it empty). Kept field-symmetric with the eql
+    /// `PlayerProfile` so the shared `seq-bridge` mapping compiles for all backends.
+    pub skills: Vec<u32>,
     pub disciplines: Vec<u32>,
     pub recast_timers: Vec<u32>,
     pub spell_book: Vec<i32>,
@@ -521,6 +525,7 @@ pub fn parse_player_profile(bytes: &[u8]) -> Result<PlayerProfile, PlayerProfile
         wis,
         aa_ids,
         aa_values,
+        skills: Vec::new(), // eql-only; live surfaces skills via loadProfile's own path
         disciplines,
         recast_timers,
         spell_book,

@@ -40,6 +40,9 @@ pub struct PlayerProfile {
     pub wis: u32,
     pub aa_ids: Vec<u32>,
     pub aa_values: Vec<u32>,
+    /// Player skill values, index = skill id (0..MAX_KNOWN_SKILLS). Populated by
+    /// the eql `parse_player_profile` walk; empty on a short-read.
+    pub skills: Vec<u32>,
     pub disciplines: Vec<u32>,
     pub recast_timers: Vec<u32>,
     pub spell_book: Vec<i32>,

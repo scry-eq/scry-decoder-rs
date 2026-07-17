@@ -421,6 +421,9 @@ mod ffi {
         int_: u32, agi: u32, wis: u32,
         aa_ids: Vec<u32>,
         aa_values: Vec<u32>,
+        // Player skill values, index = skill id. Populated by the eql profile
+        // walk (parse_player_profile); empty on live/test.
+        skills: Vec<u32>,
         disciplines: Vec<u32>,
         recast_timers: Vec<u32>,
         spell_book: Vec<i32>,
@@ -1438,6 +1441,7 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
             int_: p.int_, agi: p.agi, wis: p.wis,
             aa_ids: p.aa_ids,
             aa_values: p.aa_values,
+            skills: p.skills,
             disciplines: p.disciplines,
             recast_timers: p.recast_timers,
             spell_book: p.spell_book,
@@ -1501,6 +1505,7 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
             str_: 0, sta: 0, cha: 0, dex: 0, int_: 0, agi: 0, wis: 0,
             aa_ids: Vec::new(),
             aa_values: Vec::new(),
+            skills: Vec::new(),
             disciplines: Vec::new(),
             recast_timers: Vec::new(),
             spell_book: Vec::new(),

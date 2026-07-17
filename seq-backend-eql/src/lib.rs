@@ -411,6 +411,13 @@ pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
         level: b[33],
         ..Default::default()
     };
+    // Variable-length NetStream walk to the SKILL array (and the AA array en
+    // route), mirroring ZoneMgr::fillProfileStructEQL (zonemgr.cpp). Populates
+    // `skills`, `aa_ids`/`aa_values`, and `aa_spent`. Bounds-guarded: any
+    // short-read leaves whatever it read so far — identity above + name below
+    // are unaffected, and skills fall back to incremental OP_SkillUpdate.
+    walk_profile_skills(b, &mut prof);
+
     // Name + tail via absolute anchor-scan. If the block isn't found (heavy
     // drift / truncation) the identity fields above still stand and the C++
     // side falls back to own-spawn name adoption.
@@ -418,6 +425,102 @@ pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
         read_profile_name_and_tail(b, p, &mut prof);
     }
     Ok(prof)
+}
+
+/// Walk the eql OP_PlayerProfile from the identity header (cursor @35, one byte
+/// past `level1`) through every count-prefixed section to the SKILL array,
+/// filling `skills`, `aa_ids`/`aa_values`, and `aa_spent` (= Σ aa value). Direct
+/// port of ZoneMgr::fillProfileStructEQL: little-endian scalars, sequential
+/// cursor. Every section count varies per character, so there are no fixed
+/// offsets past `level1` — the cursor must be walked. Bounds-guarded: any
+/// underflow returns early, leaving the fields populated so far untouched.
+fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
+    // MAX_KNOWN_SKILLS in the daemon headers (src/backend/*/everquest.h).
+    const MAX_KNOWN_SKILLS: usize = 100;
+    let len = b.len();
+    // checksum@0, skip 16, gender@20, race@21, class@25, classMask@29,
+    // level@33, level1@34 => walk resumes at 35.
+    let mut p: usize = 35;
+
+    // Read a LE u32 and advance; bail out of the whole walk on underflow.
+    macro_rules! next_u32 {
+        () => {{
+            if p + 4 > len { return; }
+            let v = rd_u32(b, p);
+            p += 4;
+            v
+        }};
+    }
+    // Skip `n` bytes; bail on underflow.
+    macro_rules! skip {
+        ($n:expr) => {{
+            let n = $n;
+            if p.checked_add(n).map_or(true, |e| e > len) { return; }
+            p += n;
+        }};
+    }
+
+    // bind points: u32 count, then count * 20 bytes.
+    let bind_count = next_u32!() as usize;
+    skip!(bind_count.saturating_mul(20));
+
+    // deity, intoxication (2 u32).
+    let _deity = next_u32!();
+    let _intoxication = next_u32!();
+
+    // spell-slot refresh: u32 count, then count * u32.
+    let refresh_count = next_u32!() as usize;
+    skip!(refresh_count.saturating_mul(4));
+
+    // equipment: u32 count, then count * 20 bytes.
+    let equip_count = next_u32!() as usize;
+    skip!(equip_count.saturating_mul(20));
+
+    // three unknown count-prefixed arrays: 20B, 4B, 4B entries.
+    let s0 = next_u32!() as usize; skip!(s0.saturating_mul(20));
+    let s1 = next_u32!() as usize; skip!(s1.saturating_mul(4));
+    let s2 = next_u32!() as usize; skip!(s2.saturating_mul(4));
+
+    // face / hair / beard / eyes / etc.
+    skip!(51);
+
+    // points, MANA, curHp, STR, STA, CHA, DEX, INT, AGI, WIS (10 u32).
+    skip!(40);
+
+    // unknown padding.
+    skip!(28);
+
+    // AA array: u32 count, then count * {u32 id, u32 value, u32 unk}. Guard the
+    // whole block before the loop so a corrupt count can't over-allocate.
+    let aa_count = next_u32!() as usize;
+    let aa_bytes = aa_count.saturating_mul(12);
+    if p.checked_add(aa_bytes).map_or(true, |e| e > len) { return; }
+    let mut aa_spent: u32 = 0;
+    prof.aa_ids.reserve(aa_count);
+    prof.aa_values.reserve(aa_count);
+    for _ in 0..aa_count {
+        let id = rd_u32(b, p);
+        let val = rd_u32(b, p + 4);
+        // unknown at p + 8.
+        p += 12;
+        aa_spent = aa_spent.wrapping_add(val);
+        prof.aa_ids.push(id);
+        prof.aa_values.push(val);
+    }
+    prof.aa_spent = aa_spent;
+
+    // SKILLS: u32 count, then count * u32 (store up to MAX_KNOWN_SKILLS).
+    let skill_count = next_u32!() as usize;
+    if p.checked_add(skill_count.saturating_mul(4)).map_or(true, |e| e > len) { return; }
+    let stored = skill_count.min(MAX_KNOWN_SKILLS);
+    prof.skills.reserve(stored);
+    for i in 0..skill_count {
+        let v = rd_u32(b, p);
+        p += 4;
+        if i < MAX_KNOWN_SKILLS {
+            prof.skills.push(v);
+        }
+    }
 }
 
 /// `OP_ClientUpdate` (Legends) C>S, 42B: IEEE-float position + velocity + heading.
