@@ -144,6 +144,13 @@ mod ffi {
         cast_time_ms: u32,
         ok: bool,
     }
+    // eql OP_Stance (0x0fab) / OP_Invocation (0x3b12), S>C: 4B {u32 abilityId}.
+    // The daemon resolves ability_id to a display name (stance vs invocation
+    // table picked by the opcode). ok=false = wrong-size payload.
+    struct ActivateAbility {
+        ability_id: u32,
+        ok: bool,
+    }
     // eql OP_LoadoutSwap (0x7477): a player's multiclass loadout change. Only
     // the identity fields that change on a swap are surfaced; spawn_id is the
     // header id of the player who swapped (self or a nearby tracked spawn).
@@ -520,6 +527,7 @@ mod ffi {
         fn decode_dz_switch_info(bytes: &[u8]) -> DzSwitch;
         fn decode_start_cast(bytes: &[u8]) -> StartCast;
         fn decode_begin_cast(bytes: &[u8]) -> BeginCast;
+        fn decode_activate_ability(bytes: &[u8]) -> ActivateAbility;
         fn decode_action(bytes: &[u8]) -> Action;
         fn decode_action_alt(bytes: &[u8]) -> Action;
         fn decode_group_disband(bytes: &[u8]) -> GroupDisband;
@@ -677,6 +685,20 @@ fn decode_begin_cast(bytes: &[u8]) -> ffi::BeginCast {
 #[cfg(not(feature = "backend-eql"))]
 fn decode_begin_cast(_bytes: &[u8]) -> ffi::BeginCast {
     ffi::BeginCast { caster_id: 0, spell_id: 0, cast_time_ms: 0, ok: false }
+}
+
+// eql-only: OP_Stance (0x0fab) / OP_Invocation (0x3b12) — 4B {u32 abilityId}.
+// live/test have no such opcode wired, so their build gets an inert stub.
+#[cfg(feature = "backend-eql")]
+fn decode_activate_ability(bytes: &[u8]) -> ffi::ActivateAbility {
+    match seq_backend_eql::parse_activate_ability(bytes) {
+        Ok(id) => ffi::ActivateAbility { ability_id: id, ok: true },
+        Err(_) => ffi::ActivateAbility { ability_id: 0, ok: false },
+    }
+}
+#[cfg(not(feature = "backend-eql"))]
+fn decode_activate_ability(_bytes: &[u8]) -> ffi::ActivateAbility {
+    ffi::ActivateAbility { ability_id: 0, ok: false }
 }
 
 fn loadout_swap_err() -> ffi::LoadoutSwap {

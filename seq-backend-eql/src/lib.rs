@@ -736,6 +736,18 @@ pub fn parse_begin_cast(b: &[u8]) -> Result<BeginCast, DecodeError> {
     })
 }
 
+/// eql OP_Stance (0x0fab) / OP_Invocation (0x3b12), S>C echo (authoritative): a
+/// swappable stance or invocation was activated. 4B payload = a single u32
+/// ability id @0 (a stable client enum; the daemon resolves it to a name). The
+/// opcode id distinguishes stance from invocation; the payload shape is shared.
+pub fn parse_activate_ability(b: &[u8]) -> Result<u32, DecodeError> {
+    if b.len() < 4 {
+        Err(DecodeError::Short(b.len()))
+    } else {
+        Ok(rd_u32(b, 0))
+    }
+}
+
 pub fn size_overrides() -> Vec<(&'static str, u32)> {
     vec![
         // eql /consider is 24B both ways; Live's considerStruct is 32B.
@@ -813,6 +825,9 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         ("beginCastStruct", 19),            // OP_BeginCast (0x6cbd)
         ("consentResponseStruct", 193),     // OP_ConsentResponse (0x2265) + OP_DenyResponse (0x05fc)
         ("GuildMemberUpdate", 88),          // OP_GuildMemberUpdate (0x0717)
+        // OP_Stance (0x0fab) + OP_Invocation (0x3b12): 4B {u32 abilityId}. Same
+        // struct/size for both; the opcode id picks stance vs invocation.
+        ("activateAbilityStruct", 4),
     ]
 }
 
