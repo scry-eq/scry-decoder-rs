@@ -149,10 +149,14 @@ mod ffi {
         copper: u32,
         ok: bool,
     }
+    struct LootItem {
+        name: String,
+        icon: u32,
+    }
     struct LootDrops {
         corpse_id: u32,
         corpse_name: String,
-        item_names: Vec<String>,
+        items: Vec<LootItem>,
         ok: bool,
     }
     struct MobHealth {
@@ -687,22 +691,22 @@ fn decode_money_update(_bytes: &[u8]) -> ffi::MoneyUpdate {
 fn decode_loot_drops(bytes: &[u8]) -> ffi::LootDrops {
     match seq_backend_eql::parse_loot_drops(bytes) {
         Ok(l) => ffi::LootDrops {
-            corpse_id: l.corpse_id, corpse_name: l.corpse_name,
-            item_names: l.item_names, ok: true,
+            corpse_id: l.corpse_id,
+            corpse_name: l.corpse_name,
+            items: l.items.into_iter()
+                .map(|it| ffi::LootItem { name: it.name, icon: it.icon })
+                .collect(),
+            ok: true,
         },
         Err(_) => ffi::LootDrops {
-            corpse_id: 0, corpse_name: String::new(),
-            item_names: Vec::new(), ok: false,
+            corpse_id: 0, corpse_name: String::new(), items: Vec::new(), ok: false,
         },
     }
 }
 
 #[cfg(not(feature = "backend-eql"))]
 fn decode_loot_drops(_bytes: &[u8]) -> ffi::LootDrops {
-    ffi::LootDrops {
-        corpse_id: 0, corpse_name: String::new(),
-        item_names: Vec::new(), ok: false,
-    }
+    ffi::LootDrops { corpse_id: 0, corpse_name: String::new(), items: Vec::new(), ok: false }
 }
 
 // eql-only: OP_LootMessage (0x7d46) personal loot text, reusing SpecialMessage.
