@@ -96,15 +96,24 @@ pub fn parse_player_self_pos(bytes: &[u8]) -> Result<PlayerSelfPos, PlayerSelfPo
     let w = read_u32_le(bytes, 18);
     let heading = ((w >> 8) & 0x1FFF) as u16;
     let y = read_f32_le(bytes, 26);
+    // Velocity (units/tick, ±~2.26 = full run speed) — cracked 2026-07-17 vs a
+    // run-south-then-run-west /loc capture: deltaY@6 lit up (−2.27) only during
+    // the south leg, deltaX@22 (+2.26) only during the west leg, both ~0 while
+    // still; deltaZ@30 is small and nonzero only while translating (slope bob).
+    // deltaY@6 held its offset across the 07/14 rearrangement (the old 42B form
+    // also carried Y-velocity @6); only deltaX moved (@26 → @22).
+    let delta_y = read_f32_le(bytes, 6);
+    let delta_x = read_f32_le(bytes, 22);
+    let delta_z = read_f32_le(bytes, 30);
 
     Ok(PlayerSelfPos {
         spawn_id: 0,
         x,
         y,
         z,
-        delta_x: 0.0,
-        delta_y: 0.0,
-        delta_z: 0.0,
+        delta_x,
+        delta_y,
+        delta_z,
         heading,
         delta_heading: 0,
         animation: 0,
