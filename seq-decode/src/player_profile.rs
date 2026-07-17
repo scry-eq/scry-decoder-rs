@@ -36,6 +36,12 @@ pub struct PlayerProfile {
     pub race: u32,
     pub class_: u32,
     pub class_mask: u32,
+    // eql-only combat state (read at a fixed profile offset on eql); live/test
+    // have no swappable stance/invocation, so these stay 0 — same pattern as
+    // class_mask. Present here so the shared decode_player_profile FFI (which maps
+    // p.stance/p.invocation) compiles for every backend.
+    pub stance: u32,
+    pub invocation: u32,
     pub level: u8,
     pub level1: u8,
     pub bind0_zone_id: u32,
@@ -504,6 +510,8 @@ pub fn parse_player_profile(bytes: &[u8]) -> Result<PlayerProfile, PlayerProfile
         race,
         class_,
         class_mask: 0, // live isn't multiclass; eql fills its own bitmask
+        stance: 0,     // eql-only; live/test have no swappable stance/invocation
+        invocation: 0,
         level,
         level1,
         bind0_zone_id,
