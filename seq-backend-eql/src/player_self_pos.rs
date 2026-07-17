@@ -10,10 +10,13 @@
 //!
 //! ```text
 //!   /*0000*/ f32  counter    (~16640, +~0.1/tick; unused)
+//!   /*0006*/ f32  deltaY     (Y-velocity; cracked 2026-07-17)
 //!   /*0010*/ f32  z          (gameZ)
 //!   /*0014*/ f32  x          (gameX)
-//!   /*0018*/ u32  { lowfrac:8 | heading:13 @bit8 | turnrate:11 }
+//!   /*0018*/ u32  { lowfrac:8 | heading:13 @bit8 | hi:11 (NOT a turn rate) }
+//!   /*0022*/ f32  deltaX     (X-velocity)
 //!   /*0026*/ f32  y          (gameY)
+//!   /*0030*/ f32  deltaZ     (Z-velocity)
 //! ```
 //!
 //! Verified: X@14/Y@26/Z@10 match all 3 `/loc` points exactly (X 654/744/1156,
@@ -26,17 +29,20 @@
 //! puts the /loc south/west walks at 4072/2100 → 90° apart. The earlier "low 12"
 //! read was wrong — bit 0..7 (`lowfrac`) is a separate sub-field that reads 0 when
 //! the player isn't translating, which made a *rotating-but-stationary* facing
-//! collapse to 4 cardinals (only bits 10-11 of the low-12 window survived) and the
-//! turn-rate bits above the heading (24..31) look like corruption. Bits 24..31 are
-//! the **turn rate** (nonzero only while turning), not garbage; there is nothing to
-//! reject. The daemon maps via `360 - ((h*360) >> 13)` → /loc S=180, W=270.
+//! collapse to 4 cardinals (only bits 10-11 of the low-12 window survived). The
+//! bits above the heading (21..31) read 0 on most packets and spike to garbage on a
+//! few — **there is no turn-rate field** (confirmed 2026-07-17 vs the spin capture:
+//! every delta reads 0 while the facing sweeps ~245 units/frame, so EQL sends the
+//! absolute heading each frame and no rate). The daemon maps the facing via
+//! `360 - ((h*360) >> 13)` → /loc S=180, W=270; delta_heading stays 0.
 //!
 //! **No spawnId field** — unlike the old 42B (`spawnId@2`), the client's self
 //! report carries no id (the server keys the connection). The daemon's
 //! `EqlDispatch::playerUpdateSelf` therefore applies this to the local player
 //! directly and the self-id is adopted elsewhere (`SpawnShell::zoneEntry`
-//! name-match), so `spawn_id` is surfaced as 0. Deltas are not yet located in the
-//! 38B form and are surfaced as 0 (only the speed indicator uses them).
+//! name-match), so `spawn_id` is surfaced as 0. Velocity cracked 2026-07-17
+//! (run-south-then-west /loc capture): deltaY@6, deltaX@22, deltaZ@30 (f32,
+//! ±~2.26 units/tick = full run). delta_heading has no wire field (see above).
 
 use thiserror::Error;
 
