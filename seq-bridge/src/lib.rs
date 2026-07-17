@@ -151,6 +151,14 @@ mod ffi {
         ability_id: u32,
         ok: bool,
     }
+    // eql OP_SendAATable (0x31ae, S>C): one AA ability-rank definition per packet
+    // (burst at zone-in). desc_id == the profile's per-rank aa id; title_sid is a
+    // dbstr type-1 id the daemon resolves to the AA display name. ok=false = short.
+    struct AaTableEntry {
+        desc_id: u32,
+        title_sid: u32,
+        ok: bool,
+    }
     // eql OP_LoadoutSwap (0x7477): a player's multiclass loadout change. Only
     // the identity fields that change on a swap are surfaced; spawn_id is the
     // header id of the player who swapped (self or a nearby tracked spawn).
@@ -531,6 +539,7 @@ mod ffi {
         fn decode_start_cast(bytes: &[u8]) -> StartCast;
         fn decode_begin_cast(bytes: &[u8]) -> BeginCast;
         fn decode_activate_ability(bytes: &[u8]) -> ActivateAbility;
+        fn decode_aa_table_entry(bytes: &[u8]) -> AaTableEntry;
         fn decode_action(bytes: &[u8]) -> Action;
         fn decode_action_alt(bytes: &[u8]) -> Action;
         fn decode_group_disband(bytes: &[u8]) -> GroupDisband;
@@ -702,6 +711,20 @@ fn decode_activate_ability(bytes: &[u8]) -> ffi::ActivateAbility {
 #[cfg(not(feature = "backend-eql"))]
 fn decode_activate_ability(_bytes: &[u8]) -> ffi::ActivateAbility {
     ffi::ActivateAbility { ability_id: 0, ok: false }
+}
+
+// eql-only: OP_SendAATable (0x31ae) — one AA ability-rank definition. live/test
+// have no such opcode wired, so their build gets an inert stub.
+#[cfg(feature = "backend-eql")]
+fn decode_aa_table_entry(bytes: &[u8]) -> ffi::AaTableEntry {
+    match seq_backend_eql::parse_aa_table_entry(bytes) {
+        Ok(e) => ffi::AaTableEntry { desc_id: e.desc_id, title_sid: e.title_sid, ok: true },
+        Err(_) => ffi::AaTableEntry { desc_id: 0, title_sid: 0, ok: false },
+    }
+}
+#[cfg(not(feature = "backend-eql"))]
+fn decode_aa_table_entry(_bytes: &[u8]) -> ffi::AaTableEntry {
+    ffi::AaTableEntry { desc_id: 0, title_sid: 0, ok: false }
 }
 
 fn loadout_swap_err() -> ffi::LoadoutSwap {

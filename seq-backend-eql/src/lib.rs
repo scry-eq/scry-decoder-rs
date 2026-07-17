@@ -839,6 +839,31 @@ pub fn parse_begin_cast(b: &[u8]) -> Result<BeginCast, DecodeError> {
     })
 }
 
+/// eql `OP_SendAATable` (0x31ae, S>C): one AA ability-rank definition, burst at
+/// zone-in (one record per packet; variable length 130..346B = a 37B fixed head
+/// + a variable prereq/effect tail). Only the fixed head is needed. Layout
+/// matches Live's `aaInfoStruct`: `descID`@0 (== the profile's `aa_array[].AA`,
+/// the per-rank id) and `titleSID`@13 (a dbstr type-1 id shared by every rank of
+/// an AA — the daemon resolves it to the display name). Verified against 15/15
+/// owned AAs in the fight capture (titleSID@13 → dbstr type-1 gives the correct
+/// names: Packrat, Fury of Magic, Destructive Fury, Mnemonic Retention, …).
+pub struct AaTableEntry {
+    pub desc_id: u32,
+    pub title_sid: u32,
+}
+
+pub fn parse_aa_table_entry(b: &[u8]) -> Result<AaTableEntry, DecodeError> {
+    // Guard the whole fixed head (37B through the record's rank field); titleSID
+    // sits at 13, well before the variable tail, so a fixed read reaches it.
+    if b.len() < 37 {
+        return Err(DecodeError::Short(b.len()));
+    }
+    Ok(AaTableEntry {
+        desc_id: rd_u32(b, 0),
+        title_sid: rd_u32(b, 13),
+    })
+}
+
 /// eql OP_Stance (0x0fab) / OP_Invocation (0x3b12), S>C echo (authoritative): a
 /// swappable stance or invocation was activated. 4B payload = a single u32
 /// ability id @0 (a stable client enum; the daemon resolves it to a name). The
