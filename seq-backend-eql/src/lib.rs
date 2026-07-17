@@ -712,6 +712,28 @@ pub fn parse_consider(b: &[u8]) -> Result<Consider, DecodeError> {
 /// Sourced from the pinned `eqstructs` sizes so a size and its decoder move
 /// together. (live/test diverge from nothing; the bridge ships them an empty
 /// list.)
+/// eql `OP_BeginCast` (0x6cbd, S>C, 19B): a spawn started casting a spell.
+/// Wire layout validated across 3127 fight-capture packets: spellId u32@0,
+/// casterSpawnId u16@4, castTime_ms u16@6 (cast times 0/2010/4500/5000ms;
+/// spell ids include 74023 > u16, so spellId MUST be read as u32). The stock
+/// 15B beginCastStruct covers only the first 8B; the trailing 11B are flags.
+pub struct BeginCast {
+    pub caster_id: u32,
+    pub spell_id: u32,
+    pub cast_time_ms: u32,
+}
+
+pub fn parse_begin_cast(b: &[u8]) -> Result<BeginCast, DecodeError> {
+    if b.len() < 8 {
+        return Err(DecodeError::Short(b.len()));
+    }
+    Ok(BeginCast {
+        spell_id: rd_u32(b, 0),
+        caster_id: rd_u16(b, 4) as u32,
+        cast_time_ms: rd_u16(b, 6) as u32,
+    })
+}
+
 pub fn size_overrides() -> Vec<(&'static str, u32)> {
     vec![
         // eql /consider is 24B both ways; Live's considerStruct is 32B.

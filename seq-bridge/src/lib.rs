@@ -135,6 +135,14 @@ mod ffi {
         end_max: i64,
         ok: bool,
     }
+    // eql OP_BeginCast (0x6cbd, S>C): a spawn started casting. spell_id/caster_id
+    // are resolved to names daemon-side; cast_time_ms drives the web cast timer.
+    struct BeginCast {
+        caster_id: u32,
+        spell_id: u32,
+        cast_time_ms: u32,
+        ok: bool,
+    }
     // eql OP_LoadoutSwap (0x7477): a player's multiclass loadout change. Only
     // the identity fields that change on a swap are surfaced; spawn_id is the
     // header id of the player who swapped (self or a nearby tracked spawn).
@@ -510,6 +518,7 @@ mod ffi {
         fn decode_dz_info(bytes: &[u8]) -> DzInfo;
         fn decode_dz_switch_info(bytes: &[u8]) -> DzSwitch;
         fn decode_start_cast(bytes: &[u8]) -> StartCast;
+        fn decode_begin_cast(bytes: &[u8]) -> BeginCast;
         fn decode_action(bytes: &[u8]) -> Action;
         fn decode_action_alt(bytes: &[u8]) -> Action;
         fn decode_group_disband(bytes: &[u8]) -> GroupDisband;
@@ -650,6 +659,23 @@ fn decode_stat_sync(bytes: &[u8]) -> ffi::StatSync {
         },
         Err(_) => stat_sync_err(),
     }
+}
+
+// eql-only: OP_BeginCast (0x6cbd) — a spawn started casting a spell. live/test
+// have no such opcode wired, so their build gets an inert stub.
+#[cfg(feature = "backend-eql")]
+fn decode_begin_cast(bytes: &[u8]) -> ffi::BeginCast {
+    match seq_backend_eql::parse_begin_cast(bytes) {
+        Ok(c) => ffi::BeginCast {
+            caster_id: c.caster_id, spell_id: c.spell_id,
+            cast_time_ms: c.cast_time_ms, ok: true,
+        },
+        Err(_) => ffi::BeginCast { caster_id: 0, spell_id: 0, cast_time_ms: 0, ok: false },
+    }
+}
+#[cfg(not(feature = "backend-eql"))]
+fn decode_begin_cast(_bytes: &[u8]) -> ffi::BeginCast {
+    ffi::BeginCast { caster_id: 0, spell_id: 0, cast_time_ms: 0, ok: false }
 }
 
 fn loadout_swap_err() -> ffi::LoadoutSwap {
