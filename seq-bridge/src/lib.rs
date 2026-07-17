@@ -75,6 +75,7 @@ mod ffi {
         guild_id: u32,
         guild_server_id: u32,
         class_: u32,
+        class_mask: u32,
         pet_owner_id: u32,
 
         // 9 slots × 5 u32s — same memory layout as
@@ -1012,7 +1013,7 @@ fn spawn_err() -> ffi::Spawn {
         title: String::new(),
         suffix: String::new(),
         spawn_id: 0, misc_data: 0, body_type: 0, race: 0,
-        deity: 0, guild_id: 0, guild_server_id: 0, class_: 0,
+        deity: 0, guild_id: 0, guild_server_id: 0, class_: 0, class_mask: 0,
         pet_owner_id: 0,
         equip_data: [0; 45],
         pos_data: [0; 5],
@@ -1040,6 +1041,7 @@ fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
             guild_id: s.guild_id,
             guild_server_id: s.guild_server_id,
             class_: s.class_,
+            class_mask: 0, // live isn't multiclass
             pet_owner_id: s.pet_owner_id,
             equip_data: s.equip_data,
             pos_data: s.pos_data,
@@ -1073,6 +1075,7 @@ fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
             spawn_id: u32::from(s.id),
             race: s.race,
             class_: s.class_,
+            class_mask: s.class_mask,
             deity: s.deity,
             guild_id: s.guild_id,
             guild_server_id: s.guild_server_id,

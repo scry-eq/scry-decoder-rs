@@ -207,6 +207,7 @@ pub struct ZoneSpawn {
     pub max_hp: u8,
     pub race: u32,
     pub class_: u32,
+    pub class_mask: u32,
     pub deity: u32,
     pub guild_id: u32,
     pub guild_server_id: u32,
@@ -586,7 +587,7 @@ pub fn parse_zone_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     let guild_id = w.u32()?;
     let guild_server_id = w.u32()?;
     let class_ = w.u32()?;
-    let _class_mask = w.u32()?; // EQ Legends multiclass bitmask
+    let class_mask = w.u32()?; // EQL multiclass bitmask (bit N = class N)
     w.skip(1)?;
     let state = w.u8()?;
     let light = w.u8()?;
@@ -675,6 +676,7 @@ pub fn parse_zone_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
         max_hp: 100, // curHp is a percentage; base is 100
         race,
         class_,
+        class_mask,
         deity,
         guild_id,
         guild_server_id,
