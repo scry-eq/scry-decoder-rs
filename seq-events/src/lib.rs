@@ -124,6 +124,18 @@ pub enum Event {
     Targeted { spawn_id: u32 },
     /// The player considered a spawn (OP_Consider) — `spawn_id` is the target.
     Considered { spawn_id: u32 },
+    /// A player chat message (OP_CommonMessage). `channel` is the MessageType
+    /// (0=Guild 2=Group 3=Shout 4=Auction 5=OOC 7=Tell 8=Say 15=Raid). `target`
+    /// is meaningful only for tells; `chat_color`/`channel_name` are 0/empty for
+    /// channel messages (set by the formatted/UCS paths).
+    Chat {
+        channel: u32,
+        from: String,
+        target: String,
+        text: String,
+        chat_color: u32,
+        channel_name: String,
+    },
     /// The authoritative active-buff list for one spawn (eql OP_BuffList), sent
     /// at zone-in and on every buff change. A full snapshot: the consumer
     /// REPLACES that owner's buffs. `owner` == the player → the buff panel; a

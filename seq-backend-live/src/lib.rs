@@ -31,6 +31,7 @@ impl Backend for LiveBackend {
             "OP_Action2" => action2(bytes),
             "OP_TargetMouse" => target(bytes),
             "OP_Consider" => consider(bytes),
+            "OP_CommonMessage" => chat(bytes),
             "OP_SpawnDoor" => doors(bytes),
             "OP_EnterWorld" => Decoded::One(Event::EnterWorld),
             _ => Decoded::Unhandled,
@@ -139,6 +140,28 @@ fn consider(bytes: &[u8]) -> Decoded {
         Ok(c) => Decoded::One(Event::Considered { spawn_id: c.target_id }),
         Err(_) => Decoded::Malformed,
     }
+}
+
+// OP_CommonMessage = player chat; keep only the player channels (drop system
+// noise), matching MessageShell::channelMessage.
+fn chat(bytes: &[u8]) -> Decoded {
+    match seq_decode::channel_message::parse_channel_message(bytes) {
+        Ok(c) if is_player_channel(c.chan_num) => Decoded::One(Event::Chat {
+            channel: c.chan_num,
+            from: c.sender,
+            target: c.target,
+            text: c.message,
+            chat_color: 0,
+            channel_name: String::new(),
+        }),
+        Ok(_) => Decoded::Ignored,
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// Guild/Group/Shout/Auction/OOC/Tell/Say/Raid (MessageType enum).
+fn is_player_channel(c: u32) -> bool {
+    matches!(c, 0 | 2 | 3 | 4 | 5 | 7 | 8 | 15)
 }
 
 // OP_Action2 = a damage event; matches the daemon's CombatRouter::action2.
