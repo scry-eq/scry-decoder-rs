@@ -33,6 +33,7 @@ impl Backend for EqlBackend {
             "OP_NewZone" => new_zone(bytes),
             "OP_PlayerProfile" => player_profile(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
+            "OP_SelfPos" => self_pos_breadcrumb(bytes),
             "OP_Action2" => action2(bytes),
             "OP_TargetMouse" => target(bytes),
             "OP_Consider" => consider(bytes),
@@ -143,6 +144,16 @@ fn self_pos(bytes: &[u8]) -> Decoded {
         })),
         Err(_) => Decoded::Malformed,
     }
+}
+
+// OP_SelfPos = the eql self-pos breadcrumb (a position-history trail, N×17B).
+// Wired but INERT: it decodes (so the path is live and validated) yet emits
+// nothing — the trail is redundant with the OP_ClientUpdate self-pos and carries
+// no heading. Return `One(Event::SelfPos ...)` from the last point here if we
+// ever surface the trail.
+fn self_pos_breadcrumb(bytes: &[u8]) -> Decoded {
+    let _ = crate::self_pos_breadcrumb::parse_self_pos_breadcrumb(bytes);
+    Decoded::Ignored
 }
 
 // OP_TargetMouse = target select (byte-identical to Live's clientTargetStruct).
@@ -291,6 +302,14 @@ mod tests {
     fn enter_world_has_no_payload() {
         let d = EqlBackend.decode("OP_EnterWorld", Dir::ServerToClient, &[]);
         assert_eq!(d, Decoded::One(Event::EnterWorld));
+    }
+
+    #[test]
+    fn self_pos_is_wired_but_inert() {
+        // Recognized (not Unhandled) so it leaves the gap report, but emits
+        // nothing — the wired-but-inert breadcrumb path.
+        let d = EqlBackend.decode("OP_SelfPos", Dir::ServerToClient, &[0u8; 18]);
+        assert_eq!(d, Decoded::Ignored);
     }
 
     #[test]
