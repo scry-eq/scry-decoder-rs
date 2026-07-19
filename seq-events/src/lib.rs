@@ -62,6 +62,9 @@ pub struct ProfileInfo {
     pub deity: u32,
     pub cur_hp: u32,
     pub mana: u32,
+    /// Purchased-AA descIDs, paired index-for-index with `aa_values` (ranks).
+    pub aa_ids: Vec<u32>,
+    pub aa_values: Vec<u32>,
 }
 
 /// Zone identity from OP_NewZone.
@@ -124,6 +127,9 @@ pub enum Event {
     Targeted { spawn_id: u32 },
     /// The player considered a spawn (OP_Consider) — `spawn_id` is the target.
     Considered { spawn_id: u32 },
+    /// One AA definition from the OP_SendAATable burst: maps a purchased AA's
+    /// `desc_id` to a `title_sid` (a dbstring type-1 id → the AA's display name).
+    AaTable { desc_id: u32, title_sid: u32 },
     /// A player chat message (OP_CommonMessage). `channel` is the MessageType
     /// (0=Guild 2=Group 3=Shout 4=Auction 5=OOC 7=Tell 8=Say 15=Raid). `target`
     /// is meaningful only for tells; `chat_color`/`channel_name` are 0/empty for

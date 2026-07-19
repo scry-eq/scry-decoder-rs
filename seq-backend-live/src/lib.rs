@@ -199,6 +199,8 @@ fn player_profile(bytes: &[u8]) -> Decoded {
             deity: p.deity,
             cur_hp: p.cur_hp,
             mana: p.mana,
+            aa_ids: p.aa_ids,
+            aa_values: p.aa_values,
         })),
         Err(_) => Decoded::Malformed,
     }

@@ -37,6 +37,7 @@ impl Backend for EqlBackend {
             "OP_TargetMouse" => target(bytes),
             "OP_Consider" => consider(bytes),
             "OP_CommonMessage" => chat(bytes),
+            "OP_SendAATable" => aa_table(bytes),
             "OP_BuffList" | "OP_BuffList2" | "OP_BuffList3" => buff_list(bytes),
             "OP_SpawnDoor" => doors(bytes),
             "OP_EnterWorld" => Decoded::One(Event::EnterWorld),
@@ -182,6 +183,17 @@ fn is_player_channel(c: u32) -> bool {
     matches!(c, 0 | 2 | 3 | 4 | 5 | 7 | 8 | 15)
 }
 
+// eql OP_SendAATable = one AA definition (descID -> titleSID) per packet.
+fn aa_table(bytes: &[u8]) -> Decoded {
+    match crate::parse_aa_table_entry(bytes) {
+        Ok(a) => Decoded::One(Event::AaTable {
+            desc_id: a.desc_id,
+            title_sid: a.title_sid,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
 // eql OP_BuffList = the authoritative per-spawn active-buff snapshot.
 fn buff_list(bytes: &[u8]) -> Decoded {
     match crate::parse_buff_list(bytes) {
@@ -236,6 +248,8 @@ fn player_profile(bytes: &[u8]) -> Decoded {
             deity: p.deity,
             cur_hp: p.cur_hp,
             mana: p.mana,
+            aa_ids: p.aa_ids,
+            aa_values: p.aa_values,
         })),
         Err(_) => Decoded::Malformed,
     }
