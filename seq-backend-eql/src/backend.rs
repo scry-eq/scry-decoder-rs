@@ -38,6 +38,8 @@ impl Backend for EqlBackend {
             "OP_TargetMouse" => target(bytes),
             "OP_Consider" => consider(bytes),
             "OP_CommonMessage" => chat(bytes),
+            "OP_ExpUpdate" => exp(bytes),
+            "OP_AAExpUpdate" => aa_exp(bytes),
             "OP_SendAATable" => aa_table(bytes),
             "OP_BuffList" | "OP_BuffList2" | "OP_BuffList3" => buff_list(bytes),
             "OP_SpawnDoor" => doors(bytes),
@@ -194,6 +196,27 @@ fn is_player_channel(c: u32) -> bool {
     matches!(c, 0 | 2 | 3 | 4 | 5 | 7 | 8 | 15)
 }
 
+// OP_ExpUpdate = the regular exp bar (0..100000). Shared expUpdateStruct.
+fn exp(bytes: &[u8]) -> Decoded {
+    match crate::exp_update::parse_exp_update(bytes) {
+        Ok(e) => Decoded::One(Event::Exp { exp: e.exp }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_AAExpUpdate = altExpUpdateStruct {u32 altexp@0, u32 aapoints@4, u32 tail};
+// the daemon reads it directly (no dedicated parser), so decode the two fields.
+fn aa_exp(bytes: &[u8]) -> Decoded {
+    if bytes.len() < 8 {
+        return Decoded::Malformed;
+    }
+    let rd = |o: usize| u32::from_le_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]]);
+    Decoded::One(Event::AaExp {
+        alt_exp: rd(0),
+        aa_points: rd(4),
+    })
+}
+
 // eql OP_SendAATable = one AA definition (descID -> titleSID) per packet.
 fn aa_table(bytes: &[u8]) -> Decoded {
     match crate::parse_aa_table_entry(bytes) {
@@ -261,6 +284,7 @@ fn player_profile(bytes: &[u8]) -> Decoded {
             mana: p.mana,
             aa_ids: p.aa_ids,
             aa_values: p.aa_values,
+            aa_spent: p.aa_spent,
         })),
         Err(_) => Decoded::Malformed,
     }

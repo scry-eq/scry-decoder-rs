@@ -65,6 +65,8 @@ pub struct ProfileInfo {
     /// Purchased-AA descIDs, paired index-for-index with `aa_values` (ranks).
     pub aa_ids: Vec<u32>,
     pub aa_values: Vec<u32>,
+    /// Total AA points spent (the profile's `aa_spent`).
+    pub aa_spent: u32,
 }
 
 /// Zone identity from OP_NewZone.
@@ -130,6 +132,12 @@ pub enum Event {
     /// One AA definition from the OP_SendAATable burst: maps a purchased AA's
     /// `desc_id` to a `title_sid` (a dbstring type-1 id → the AA's display name).
     AaTable { desc_id: u32, title_sid: u32 },
+    /// The regular experience bar (OP_ExpUpdate), 0..100000 within a level. On
+    /// eql there is no discrete level packet — a wrap (decrease) is a ding.
+    Exp { exp: u32 },
+    /// AA experience (OP_AAExpUpdate): `alt_exp` 0..100000 toward the next point,
+    /// `aa_points` = unspent points.
+    AaExp { alt_exp: u32, aa_points: u32 },
     /// A player chat message (OP_CommonMessage). `channel` is the MessageType
     /// (0=Guild 2=Group 3=Shout 4=Auction 5=OOC 7=Tell 8=Say 15=Raid). `target`
     /// is meaningful only for tells; `chat_color`/`channel_name` are 0/empty for

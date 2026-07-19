@@ -201,6 +201,7 @@ fn player_profile(bytes: &[u8]) -> Decoded {
             mana: p.mana,
             aa_ids: p.aa_ids,
             aa_values: p.aa_values,
+            aa_spent: p.aa_spent,
         })),
         Err(_) => Decoded::Malformed,
     }
