@@ -362,29 +362,10 @@ fn read_profile_name_and_tail(b: &[u8], p0: usize, prof: &mut PlayerProfile) -> 
     prof.guild_id = opt_u32_le(b, p)?;
     p += 4;
     prof.guild_server_id = opt_u32_le(b, p)?;
-    p += 4;
 
-    // Tail money: 2 unknown bytes, then carried P/G/S/C, then bank P/G/S/C.
-    // Cursor coin rides a second money block in the unmapped middle region
-    // (recoverable by scanning for the duplicate carried quadruple) — left a
-    // follow-up; cursor fields stay 0 here.
-    p += 2;
-    prof.platinum = opt_u32_le(b, p)?;
-    p += 4;
-    prof.gold = opt_u32_le(b, p)?;
-    p += 4;
-    prof.silver = opt_u32_le(b, p)?;
-    p += 4;
-    prof.copper = opt_u32_le(b, p)?;
-    p += 4;
-    prof.platinum_bank = opt_u32_le(b, p)?;
-    p += 4;
-    prof.gold_bank = opt_u32_le(b, p)?;
-    p += 4;
-    prof.silver_bank = opt_u32_le(b, p)?;
-    p += 4;
-    prof.copper_bank = opt_u32_le(b, p)?;
-
+    // Money is NOT in this walk. The relative tail landed in the wrong place —
+    // and its assumed layout was wrong too: carried is followed by CURSOR, not
+    // bank. Read from fixed offsets in `parse_player_profile` instead.
     Some(())
 }
 
@@ -438,6 +419,53 @@ pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
     if b.len() >= 33785 {
         prof.stance = rd_u32(b, 33777);
         prof.invocation = rd_u32(b, 33781);
+    }
+    // Money at FIXED offsets, same fixed-prefix region as stance above. Two
+    // blocks exist; verified against a known purse across 10 captured profiles:
+    //   33687 carried P/G/S/C   33703 cursor P/G/S/C
+    //   36245 inventory mirror  36261 bank P/G/S/C
+    // Carried is authoritative and sits BELOW stance (33777), so it is inside
+    // the prefix already verified byte-identical across chars. Denominations are
+    // NOT normalized on the wire (101 silver / 281 copper observed) — always sum
+    // to copper rather than assuming each is < 10.
+    if b.len() >= 33719 {
+        prof.platinum = rd_u32(b, 33687);
+        prof.gold = rd_u32(b, 33691);
+        prof.silver = rd_u32(b, 33695);
+        prof.copper = rd_u32(b, 33699);
+        prof.platinum_cursor = rd_u32(b, 33703);
+        prof.gold_cursor = rd_u32(b, 33707);
+        prof.silver_cursor = rd_u32(b, 33711);
+        prof.copper_cursor = rd_u32(b, 33715);
+    }
+    // Bank follows the inventory mirror of the carried quadruple, which sits
+    // PAST the stance-verified prefix — locate it by signature instead of a raw
+    // constant so it survives drift in the variable region. An all-zero purse
+    // would match padding anywhere, so bank is left 0 in that case.
+    if b.len() >= 36277 {
+        let carried = [prof.platinum, prof.gold, prof.silver, prof.copper];
+        if carried != [0; 4] {
+            let mut sig = [0u8; 16];
+            for (i, v) in carried.iter().enumerate() {
+                sig[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
+            }
+            // Search starts past the carried block so we find the mirror, not it.
+            if let Some(off) = b[33703..]
+                .windows(16)
+                .position(|w| w == sig)
+                .map(|o| o + 33703)
+                .filter(|o| o + 32 <= b.len())
+            {
+                prof.platinum_inventory = rd_u32(b, off);
+                prof.gold_inventory = rd_u32(b, off + 4);
+                prof.silver_inventory = rd_u32(b, off + 8);
+                prof.copper_inventory = rd_u32(b, off + 12);
+                prof.platinum_bank = rd_u32(b, off + 16);
+                prof.gold_bank = rd_u32(b, off + 20);
+                prof.silver_bank = rd_u32(b, off + 24);
+                prof.copper_bank = rd_u32(b, off + 28);
+            }
+        }
     }
     Ok(prof)
 }
