@@ -29,6 +29,8 @@ impl Backend for LiveBackend {
             "OP_PlayerProfile" => player_profile(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_Action2" => action2(bytes),
+            "OP_TargetMouse" => target(bytes),
+            "OP_Consider" => consider(bytes),
             "OP_SpawnDoor" => doors(bytes),
             "OP_EnterWorld" => Decoded::One(Event::EnterWorld),
             _ => Decoded::Unhandled,
@@ -119,6 +121,22 @@ fn self_pos(bytes: &[u8]) -> Decoded {
             z: s.z.round() as i32,
             heading_deg: heading_deg(s.heading, 12),
         })),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_TargetMouse = the player's target selection (0 = cleared).
+fn target(bytes: &[u8]) -> Decoded {
+    match seq_decode::client_target::parse_client_target(bytes) {
+        Ok(t) => Decoded::One(Event::Targeted { spawn_id: t.new_target }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_Consider = the player conned a spawn; the target is the considered spawn.
+fn consider(bytes: &[u8]) -> Decoded {
+    match seq_decode::consider::parse_consider(bytes) {
+        Ok(c) => Decoded::One(Event::Considered { spawn_id: c.target_id }),
         Err(_) => Decoded::Malformed,
     }
 }

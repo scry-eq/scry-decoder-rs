@@ -34,6 +34,8 @@ impl Backend for EqlBackend {
             "OP_PlayerProfile" => player_profile(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_Action2" => action2(bytes),
+            "OP_TargetMouse" => target(bytes),
+            "OP_Consider" => consider(bytes),
             "OP_BuffList" | "OP_BuffList2" | "OP_BuffList3" => buff_list(bytes),
             "OP_SpawnDoor" => doors(bytes),
             "OP_EnterWorld" => Decoded::One(Event::EnterWorld),
@@ -137,6 +139,22 @@ fn self_pos(bytes: &[u8]) -> Decoded {
             z: s.z.round() as i32,
             heading_deg: heading_deg(s.heading, 13),
         })),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_TargetMouse = target select (byte-identical to Live's clientTargetStruct).
+fn target(bytes: &[u8]) -> Decoded {
+    match crate::client_target::parse_client_target(bytes) {
+        Ok(t) => Decoded::One(Event::Targeted { spawn_id: t.new_target }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_Consider = con result; the considered spawn is the target (eql's own 24B).
+fn consider(bytes: &[u8]) -> Decoded {
+    match crate::consider::parse_consider(bytes) {
+        Ok(c) => Decoded::One(Event::Considered { spawn_id: c.target_id }),
         Err(_) => Decoded::Malformed,
     }
 }
