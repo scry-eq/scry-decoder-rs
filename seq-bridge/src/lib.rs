@@ -170,6 +170,9 @@ mod ffi {
         ok: bool,
     }
     struct MoneyUpdate {
+        platinum: u32,
+        gold: u32,
+        silver: u32,
         copper: u32,
         ok: bool,
     }
@@ -760,18 +763,32 @@ fn decode_loadout_swap(_bytes: &[u8]) -> ffi::LoadoutSwap {
     loadout_swap_err()
 }
 
-// eql-only: OP_MoneyUpdate (0x4d77) running total copper.
+const MONEY_NONE: ffi::MoneyUpdate = ffi::MoneyUpdate {
+    platinum: 0,
+    gold: 0,
+    silver: 0,
+    copper: 0,
+    ok: false,
+};
+
+// eql-only: OP_MoneyUpdate (0x6414) carried purse, four denominations.
 #[cfg(feature = "backend-eql")]
 fn decode_money_update(bytes: &[u8]) -> ffi::MoneyUpdate {
     match seq_backend_eql::parse_money_update(bytes) {
-        Ok(m) => ffi::MoneyUpdate { copper: m.copper, ok: true },
-        Err(_) => ffi::MoneyUpdate { copper: 0, ok: false },
+        Ok(m) => ffi::MoneyUpdate {
+            platinum: m.platinum,
+            gold: m.gold,
+            silver: m.silver,
+            copper: m.copper,
+            ok: true,
+        },
+        Err(_) => MONEY_NONE,
     }
 }
 
 #[cfg(not(feature = "backend-eql"))]
 fn decode_money_update(_bytes: &[u8]) -> ffi::MoneyUpdate {
-    ffi::MoneyUpdate { copper: 0, ok: false }
+    MONEY_NONE
 }
 
 // eql-only: OP_LootDrops (0x6768) corpse loot window.
