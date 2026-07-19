@@ -288,8 +288,10 @@ mod ffi {
     }
     struct Buff {
         spawn_id: u32, spell_id: u32,
-        // form: 0=fade(13b) | 1=initial(30b) | 2=live-update(34+b).
-        form: u8, slot: u8, dur_ticks: u32, ok: bool,
+        // form: 0=fade(13b) | 1=initial(30b) | 2=live-update(34+b) |
+        // 3=compact(24b, eql buff-slot channel). For form 3, spawn_id is 0 and
+        // slot is 0xff for scribe/bar refreshes; change_type is 1=faded/4=applied.
+        form: u8, slot: u8, dur_ticks: u32, change_type: u32, ok: bool,
     }
     struct Action2 {
         target: u16, source: u16, damage: i32, spell: i32, kind: u8, ok: bool,
@@ -1072,13 +1074,23 @@ fn decode_illusion(bytes: &[u8]) -> ffi::Illusion {
 
 fn decode_buff(bytes: &[u8]) -> ffi::Buff {
     match backend::parse_buff(bytes) {
-        Ok(b) => ffi::Buff {
-            spawn_id: b.spawn_id, spell_id: b.spell_id,
-            form: b.form, slot: b.slot, dur_ticks: b.dur_ticks,
-            ok: true,
-        },
+        Ok(b) => {
+            // Only the eql wire has the 24b compact form, so only its parser
+            // carries change_type; Live's Buff is left untouched.
+            #[cfg(feature = "backend-eql")]
+            let change_type = b.change_type;
+            #[cfg(not(feature = "backend-eql"))]
+            let change_type = 0u32;
+            ffi::Buff {
+                spawn_id: b.spawn_id, spell_id: b.spell_id,
+                form: b.form, slot: b.slot, dur_ticks: b.dur_ticks,
+                change_type,
+                ok: true,
+            }
+        }
         Err(_) => ffi::Buff {
-            spawn_id: 0, spell_id: 0, form: 0, slot: 0, dur_ticks: 0, ok: false,
+            spawn_id: 0, spell_id: 0, form: 0, slot: 0, dur_ticks: 0,
+            change_type: 0, ok: false,
         },
     }
 }
