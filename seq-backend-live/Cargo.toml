@@ -1,0 +1,18 @@
+[package]
+name = "seq-backend-live"
+description = "Live EQ (and Test) backend: implements seq_events::Backend by mapping the shared seq-decode parsers into the neutral event vocabulary. Thin wrapper — the parsing lives in seq-decode; this crate only projects per-server structs into neutral Events."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+seq-events = { workspace = true }
+# Live struct set + shared parsers. seq-decode's workspace dep is
+# default-features = false, so pick the backend explicitly (it compile_errors
+# without exactly one). Test would swap this for backend-test in a sibling crate.
+seq-decode = { workspace = true, features = ["backend-live"] }
+
+[lints]
+workspace = true

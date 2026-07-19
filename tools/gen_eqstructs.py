@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate seq-eqstructs-<target>/src/bindings.rs from showeq-daemon/src/backend/<target>/everquest.h.
+"""Generate seq-structs-<target>/src/bindings.rs from showeq-daemon/src/backend/<target>/everquest.h.
 
 Replaces bindgen for the explicit allowlist of EQ wire structs. Parses each
 struct's `/*OFFSET*/` field comments to derive layout, emits #[repr(C, packed)]
@@ -331,8 +331,8 @@ def emit_rust(structs: list[tuple[str, list[tuple[str, str, str]], int]]) -> str
 # only when eql's own wire diverges.
 AUTO_TARGETS = ("live", "test")
 OUT_PATH = {
-    "live": Path("seq-eqstructs-live") / "src" / "bindings.rs",
-    "test": Path("seq-eqstructs-test") / "src" / "bindings.rs",
+    "live": Path("seq-structs-live") / "src" / "bindings.rs",
+    "test": Path("seq-structs-test") / "src" / "bindings.rs",
     "eql": Path("seq-backend-eql") / "src" / "bindings.rs",
 }
 

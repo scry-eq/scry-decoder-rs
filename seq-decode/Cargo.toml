@@ -9,16 +9,16 @@ rust-version.workspace = true
 
 [dependencies]
 thiserror.workspace = true
-seq-eqstructs-live = { workspace = true, optional = true }
-seq-eqstructs-test = { workspace = true, optional = true }
+seq-structs-live = { workspace = true, optional = true }
+seq-structs-test = { workspace = true, optional = true }
 
 # Backend selection (forwarded from seq-bridge) — picks the struct-mirror crate.
 # eql has no feature here: it reuses backend-live and layers seq-backend-eql
 # on top (in seq-bridge) for its 5 diverged opcodes.
 [features]
 default = ["backend-live"]
-backend-live = ["dep:seq-eqstructs-live"]
-backend-test = ["dep:seq-eqstructs-test"]
+backend-live = ["dep:seq-structs-live"]
+backend-test = ["dep:seq-structs-test"]
 
 [lints]
 workspace = true

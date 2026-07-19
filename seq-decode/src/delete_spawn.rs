@@ -4,7 +4,7 @@
 //! is overkill for the field count but keeps the layout tied to
 //! `everquest.h` in case the wire ever grows fields (a `reason` byte,
 //! e.g.) — bindgen would catch the size change at build time via the
-//! `delete_spawn_struct_layout` test in `seq-eqstructs-live`.
+//! `delete_spawn_struct_layout` test in `seq-structs-live`.
 
 use crate::eqstructs::deleteSpawnStruct;
 use thiserror::Error;

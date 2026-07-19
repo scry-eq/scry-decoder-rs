@@ -1,5 +1,5 @@
 //! PINNED, eql-OWNED Rust mirrors of the EQ wire structs. Forked from
-//! `seq-eqstructs-live` at the 2026-07-07 layout so the EQ Legends backend does
+//! `seq-structs-live` at the 2026-07-07 layout so the EQ Legends backend does
 //! NOT ride Live's struct bindings — a Live `everquest.h` change (and its
 //! `gen_eqstructs.py` regen) must not be able to shift eql's decoders. This
 //! `bindings.rs` is a frozen snapshot: `gen_eqstructs.py` does not touch it;

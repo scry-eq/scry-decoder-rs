@@ -1,0 +1,11 @@
+[package]
+name = "seq-events"
+description = "Neutral, backend-agnostic decoded-event vocabulary + the Backend trait each server backend (live/test/eql) implements. The daemon programs against these types and never learns which server it is decoding. Contains no wire-decode logic, so depending on it never couples a backend to another server's parsers."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

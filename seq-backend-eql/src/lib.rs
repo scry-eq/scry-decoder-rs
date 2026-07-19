@@ -4,7 +4,7 @@
 //! separate server that merely shares wire ancestry with Live *today*; to keep
 //! a Live-only wire patch from silently corrupting eql, this crate vendors its
 //! own copy of every parser + output struct (the modules below, forked from
-//! `seq-decode`) and reads them through its own PINNED `seq-eqstructs-eql`
+//! `seq-decode`) and reads them through its own PINNED in-crate `eqstructs`
 //! layouts. `seq-bridge`'s `backend-eql` feature routes every `decode_*` here —
 //! there is no eql → seq-decode edge.
 //!
@@ -36,6 +36,7 @@ pub(crate) mod eqstructs;
 pub mod action;
 pub mod action2;
 pub mod action_alt;
+pub mod backend;
 pub mod buff;
 pub mod channel_message;
 pub mod click_object;

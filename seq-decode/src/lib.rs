@@ -34,9 +34,9 @@
 #[cfg(not(any(feature = "backend-live", feature = "backend-test")))]
 compile_error!("seq-decode: enable exactly one backend feature (default: backend-live)");
 #[cfg(feature = "backend-live")]
-pub(crate) use seq_eqstructs_live as eqstructs;
+pub(crate) use seq_structs_live as eqstructs;
 #[cfg(feature = "backend-test")]
-pub(crate) use seq_eqstructs_test as eqstructs;
+pub(crate) use seq_structs_test as eqstructs;
 
 pub mod action;
 pub mod action2;

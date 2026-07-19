@@ -13,8 +13,8 @@ features on `seq-bridge` (the daemon's `-DSEQ_TARGET=live|test|eql` maps 1:1):
 
 | Feature        | Decode stack                                             |
 |----------------|----------------------------------------------------------|
-| `backend-live` | `seq-decode` + `seq-eqstructs-live` (default)            |
-| `backend-test` | `seq-decode` + `seq-eqstructs-test`                      |
+| `backend-live` | `seq-decode` + `seq-structs-live` (default)              |
+| `backend-test` | `seq-decode` + `seq-structs-test`                        |
 | `backend-eql`  | `seq-backend-eql` only — no `seq-decode` edge            |
 
 The FFI surface is uniform: `decode_*` names are identical for every backend;
@@ -27,8 +27,8 @@ backend feature must be enabled (`compile_error!` otherwise).
 | Crate               | Purpose                                                    |
 |---------------------|------------------------------------------------------------|
 | `seq-decode`        | Shared backend-neutral Live parsers — pure `&[u8]` → typed struct, no I/O or global state. Live and Test share these. |
-| `seq-eqstructs-live`| Generated Rust mirrors of `showeq-daemon/src/backend/live/everquest.h` (via `tools/gen_eqstructs.py`, committed). |
-| `seq-eqstructs-test`| Same for `backend/test/everquest.h`. Byte-identical to live today; forks when the Test server diverges. |
+| `seq-structs-live`  | Generated Rust mirrors of `showeq-daemon/src/backend/live/everquest.h` (via `tools/gen_eqstructs.py`, committed). |
+| `seq-structs-test`  | Same for `backend/test/everquest.h`. Byte-identical to live today; forks when the Test server diverges. |
 | `seq-backend-eql`   | Fully self-contained EQ Legends decode stack: vendored copies of the shared parsers, its own diverged parsers, eql-only decoders (stat-sync, buff-list, loadout-swap, UCS chat), a pinned `eqstructs` fork, and `size_overrides()` for the daemon's payload size table. |
 | `seq-bridge`        | `cxx` FFI shim (staticlib) — the only crate the daemon links. |
 
@@ -51,7 +51,7 @@ and run its `tests/replay/check.sh` tier-2 golden suite for the configured
 
 ## Struct codegen (no bindgen)
 
-`seq-eqstructs-{live,test}/src/bindings.rs` are generated and committed —
+`seq-structs-{live,test}/src/bindings.rs` are generated and committed —
 regenerate after any `everquest.h` struct change:
 
 ```sh
