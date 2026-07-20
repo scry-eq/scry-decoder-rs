@@ -1253,10 +1253,46 @@ mod tests {
         assert_eq!(p.stand_state, 100);
         assert_eq!(p.guild_id, 999);
         assert_eq!(p.guild_server_id, 1);
-        assert_eq!(p.platinum, 10);
-        assert_eq!(p.copper, 40);
-        assert_eq!(p.platinum_bank, 50);
-        assert_eq!(p.copper_bank, 80);
+        // Money is deliberately NOT part of this walk any more — it is read from
+        // fixed offsets instead (see money_at_fixed_offsets below), so a short
+        // synthetic profile like this one carries none.
+        assert_eq!(p.platinum, 0);
+        assert_eq!(p.copper, 0);
+    }
+
+    #[test]
+    fn money_at_fixed_offsets() {
+        // Carried coin sits at 33687 and cursor at 33703, both inside the
+        // fixed prefix; the bank follows the inventory MIRROR of the carried
+        // quadruple, located by signature rather than a constant.
+        let mut b = vec![0u8; 40000];
+        let put = |b: &mut Vec<u8>, off: usize, v: u32| {
+            b[off..off + 4].copy_from_slice(&v.to_le_bytes());
+        };
+        for (i, v) in [9275u32, 10, 25, 47].iter().enumerate() {
+            put(&mut b, 33687 + i * 4, *v);   // carried
+            put(&mut b, 36245 + i * 4, *v);   // inventory mirror
+        }
+        for (i, v) in [1234u32, 5, 3, 5].iter().enumerate() {
+            put(&mut b, 36261 + i * 4, *v);   // bank, right after the mirror
+        }
+        let p = parse_player_profile(&b).unwrap();
+        assert_eq!((p.platinum, p.gold, p.silver, p.copper), (9275, 10, 25, 47));
+        assert_eq!(
+            (p.platinum_bank, p.gold_bank, p.silver_bank, p.copper_bank),
+            (1234, 5, 3, 5)
+        );
+        // Nothing on the cursor in this fixture.
+        assert_eq!((p.platinum_cursor, p.copper_cursor), (0, 0));
+    }
+
+    #[test]
+    fn empty_purse_leaves_bank_unread() {
+        // An all-zero carried quadruple would match padding anywhere, so the
+        // mirror scan is skipped rather than latching onto the first zeros.
+        let b = vec![0u8; 40000];
+        let p = parse_player_profile(&b).unwrap();
+        assert_eq!((p.platinum, p.platinum_bank), (0, 0));
     }
 
     #[test]
