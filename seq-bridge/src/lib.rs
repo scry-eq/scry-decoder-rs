@@ -335,6 +335,12 @@ mod ffi {
         names: String,
         ok: bool,
     }
+    struct GroupRoster {
+        group_id: u32,
+        // full-roster member names, '\n'-separated (solo group = empty).
+        names: String,
+        ok: bool,
+    }
     struct CorpseLoc {
         spawn_id: u32, x: f32, y: f32, z: f32, ok: bool,
     }
@@ -568,6 +574,7 @@ mod ffi {
         fn decode_group_disband(bytes: &[u8]) -> GroupDisband;
         fn decode_group_follow(bytes: &[u8]) -> GroupFollow;
         fn decode_group_member_list(bytes: &[u8]) -> GroupMemberList;
+        fn decode_group_roster(bytes: &[u8]) -> GroupRoster;
         fn decode_corpse_loc(bytes: &[u8]) -> CorpseLoc;
         // Stage A+7
         fn decode_door(bytes: &[u8]) -> Door;
@@ -1336,6 +1343,23 @@ fn decode_group_follow(bytes: &[u8]) -> ffi::GroupFollow {
         Ok(g) => ffi::GroupFollow { name: g.name, ok: true },
         Err(_) => ffi::GroupFollow { name: String::new(), ok: false },
     }
+}
+
+// OP_GroupUpdate full roster — eql-only (the legends variable-length format).
+#[cfg(feature = "backend-eql")]
+fn decode_group_roster(bytes: &[u8]) -> ffi::GroupRoster {
+    match seq_backend_eql::parse_group_roster(bytes) {
+        Ok(g) => ffi::GroupRoster {
+            group_id: g.group_id,
+            names: g.members.join("\n"),
+            ok: true,
+        },
+        Err(_) => ffi::GroupRoster { group_id: 0, names: String::new(), ok: false },
+    }
+}
+#[cfg(not(feature = "backend-eql"))]
+fn decode_group_roster(_bytes: &[u8]) -> ffi::GroupRoster {
+    ffi::GroupRoster { group_id: 0, names: String::new(), ok: false }
 }
 
 fn decode_group_member_list(bytes: &[u8]) -> ffi::GroupMemberList {

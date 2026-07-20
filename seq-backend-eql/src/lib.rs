@@ -60,6 +60,7 @@ pub mod money_update;
 pub mod group_disband;
 pub mod group_follow;
 pub mod group_member_list;
+pub mod group_roster;
 pub mod hp_update;
 pub mod illusion;
 pub mod level_update;
@@ -118,6 +119,7 @@ pub use loot_transaction::{parse_loot_transaction, LootTransaction, LootTransact
 pub use money_update::{parse_money_update, MoneyUpdate, MoneyUpdateError};
 pub use group_disband::{parse_group_disband, GroupDisband, GroupDisbandError};
 pub use group_follow::{parse_group_follow, GroupFollow, GroupFollowError};
+pub use group_roster::{parse_group_roster, GroupRoster, GroupRosterError};
 // Vendored 18B `hpNpcUpdateStruct` parser: eql never sees Live's fixed HP
 // struct (0x2735 is the multiplexed stat channel decoded by `parse_stat_sync`
 // below), so the shared `decode_hp_update` FFI is stubbed inert for eql in the

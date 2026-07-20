@@ -253,10 +253,9 @@ pub enum Event {
         owner: u32,
         entries: Vec<BuffEntry>,
     },
-    /// The group roster (OP_GroupMemberList): raw scanned member names (may
-    /// include the leader twice + the local player). The consumer dedups,
-    /// self-filters, and diffs against its tracked roster.
-    GroupMemberList { names: Vec<String> },
+    /// A member joined the group (OP_GroupFollow): `name` (the invitee) is added
+    /// to the roster. `level` is the member's wire level (0 if absent).
+    GroupFollow { name: String, level: u32 },
     /// A group departure (OP_GroupDisband / OP_GroupDisband2): `membername`
     /// leaves; `membername == yourname` means the whole group disbanded.
     GroupDisband { yourname: String, membername: String },
