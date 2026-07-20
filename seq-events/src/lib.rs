@@ -253,6 +253,13 @@ pub enum Event {
         owner: u32,
         entries: Vec<BuffEntry>,
     },
+    /// The group roster (OP_GroupMemberList): raw scanned member names (may
+    /// include the leader twice + the local player). The consumer dedups,
+    /// self-filters, and diffs against its tracked roster.
+    GroupMemberList { names: Vec<String> },
+    /// A group departure (OP_GroupDisband / OP_GroupDisband2): `membername`
+    /// leaves; `membername == yourname` means the whole group disbanded.
+    GroupDisband { yourname: String, membername: String },
     /// Zone-in boundary marker (OP_EnterWorld) — no payload; the daemon uses it
     /// to reset per-zone state.
     EnterWorld,

@@ -69,6 +69,10 @@ impl Backend for EqlBackend {
             "OP_BuffList" | "OP_BuffList2" | "OP_BuffList3" => buff_list(bytes),
             "OP_GroundSpawn" => ground_item(bytes),
             "OP_SpawnDoor" => doors(bytes),
+            "OP_GroupMemberList" => group_member_list(bytes),
+            "OP_GroupDisband" | "OP_GroupDisband2" => group_disband(bytes),
+            // OP_GroupUpdate carries no peer identity — the daemon noops it.
+            "OP_GroupUpdate" => Decoded::Ignored,
             "OP_EnterWorld" => Decoded::One(Event::EnterWorld),
             _ => Decoded::Unhandled,
         }
@@ -266,6 +270,25 @@ fn special_message(bytes: &[u8]) -> Decoded {
             target: u32::from(m.target),
             source: m.source,
             message: m.message,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_GroupMemberList: the roster broadcast — raw scanned names.
+fn group_member_list(bytes: &[u8]) -> Decoded {
+    match crate::group_member_list::parse_group_member_list(bytes) {
+        Ok(g) => Decoded::One(Event::GroupMemberList { names: g.names }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_GroupDisband / OP_GroupDisband2: a member left (self = whole disband).
+fn group_disband(bytes: &[u8]) -> Decoded {
+    match crate::group_disband::parse_group_disband(bytes) {
+        Ok(g) => Decoded::One(Event::GroupDisband {
+            yourname: g.yourname,
+            membername: g.membername,
         }),
         Err(_) => Decoded::Malformed,
     }
