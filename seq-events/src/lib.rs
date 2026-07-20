@@ -119,6 +119,10 @@ pub enum Event {
     SpawnHp { id: u32, cur: i32, max: i32 },
     /// The local player moved (OP_ClientUpdate self position).
     SelfPos(Pos),
+    /// A spawn changed race/model via an illusion (OP_Illusion). The consumer
+    /// merges the new race into the tracked spawn and re-renders it; the daemon
+    /// ignores it for an unknown spawn (the spawn arrives already illusioned).
+    SpawnIllusion { spawn_id: u32, race: u32, gender: u8 },
     /// Zone changed (OP_NewZone).
     ZoneChanged(ZoneInfo),
     /// The local player's profile (OP_PlayerProfile).

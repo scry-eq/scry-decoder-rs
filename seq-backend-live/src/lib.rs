@@ -29,6 +29,7 @@ impl Backend for LiveBackend {
             "OP_NewZone" => new_zone(bytes),
             "OP_PlayerProfile" => player_profile(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
+            "OP_Illusion" => illusion(bytes),
             "OP_Action2" => action2(bytes),
             "OP_TargetMouse" => target(bytes),
             "OP_Consider" => consider(bytes),
@@ -239,6 +240,18 @@ fn doors(bytes: &[u8]) -> Decoded {
         })
         .collect();
     Decoded::One(Event::Doors(doors))
+}
+
+// OP_Illusion: a spawn changed race/model (id + new race/gender).
+fn illusion(bytes: &[u8]) -> Decoded {
+    match seq_decode::illusion::parse_illusion(bytes) {
+        Ok(i) => Decoded::One(Event::SpawnIllusion {
+            spawn_id: i.spawn_id,
+            race: i.race,
+            gender: i.gender,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
 }
 
 // OP_GroundSpawn: one ground object per packet. Coords truncate toward zero to
