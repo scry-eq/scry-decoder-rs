@@ -169,6 +169,10 @@ mod ffi {
         race: u32,
         ok: bool,
     }
+    struct LootTransaction {
+        item_id: u32, slot: u32, corpse_id: u32,
+        quantity: u32, sequence: u32, coin_copper: u32, ok: bool,
+    }
     struct MoneyUpdate {
         platinum: u32,
         gold: u32,
@@ -527,6 +531,7 @@ mod ffi {
         fn decode_stat_sync(bytes: &[u8]) -> StatSync;
         fn decode_loadout_swap(bytes: &[u8]) -> LoadoutSwap;
         fn decode_money_update(bytes: &[u8]) -> MoneyUpdate;
+        fn decode_loot_transaction(bytes: &[u8]) -> LootTransaction;
         fn decode_loot_drops(bytes: &[u8]) -> LootDrops;
         fn decode_buff_list(bytes: &[u8]) -> Vec<BuffListEntry>;
         fn decode_self_pos_breadcrumb(bytes: &[u8]) -> Vec<SelfPosPoint>;
@@ -763,6 +768,29 @@ fn decode_loadout_swap(bytes: &[u8]) -> ffi::LoadoutSwap {
 #[cfg(not(feature = "backend-eql"))]
 fn decode_loadout_swap(_bytes: &[u8]) -> ffi::LoadoutSwap {
     loadout_swap_err()
+}
+
+const LOOT_TXN_NONE: ffi::LootTransaction = ffi::LootTransaction {
+    item_id: 0, slot: 0, corpse_id: 0, quantity: 0, sequence: 0,
+    coin_copper: 0, ok: false,
+};
+
+// eql-only: OP_LootTransaction (0x7d1c) subcode-7 server confirmation.
+#[cfg(feature = "backend-eql")]
+fn decode_loot_transaction(bytes: &[u8]) -> ffi::LootTransaction {
+    match seq_backend_eql::parse_loot_transaction(bytes) {
+        Ok(t) => ffi::LootTransaction {
+            item_id: t.item_id, slot: t.slot, corpse_id: t.corpse_id,
+            quantity: t.quantity, sequence: t.sequence,
+            coin_copper: t.coin_copper, ok: true,
+        },
+        Err(_) => LOOT_TXN_NONE,
+    }
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn decode_loot_transaction(_bytes: &[u8]) -> ffi::LootTransaction {
+    LOOT_TXN_NONE
 }
 
 const MONEY_NONE: ffi::MoneyUpdate = ffi::MoneyUpdate {
