@@ -33,6 +33,7 @@ impl Backend for LiveBackend {
             "OP_TargetMouse" => target(bytes),
             "OP_Consider" => consider(bytes),
             "OP_CommonMessage" => chat(bytes),
+            "OP_GroundSpawn" => ground_item(bytes),
             "OP_SpawnDoor" => doors(bytes),
             "OP_EnterWorld" => Decoded::One(Event::EnterWorld),
             _ => Decoded::Unhandled,
@@ -238,6 +239,21 @@ fn doors(bytes: &[u8]) -> Decoded {
         })
         .collect();
     Decoded::One(Event::Doors(doors))
+}
+
+// OP_GroundSpawn: one ground object per packet. Coords truncate toward zero to
+// match the daemon's float→int position cast.
+fn ground_item(bytes: &[u8]) -> Decoded {
+    match seq_decode::ground_spawn::parse_ground_spawn(bytes) {
+        Ok(g) => Decoded::One(Event::GroundItem {
+            drop_id: g.drop_id,
+            id_file: g.id_file,
+            x: g.x as i32,
+            y: g.y as i32,
+            z: g.z as i32,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
 }
 
 #[cfg(test)]

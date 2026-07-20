@@ -125,6 +125,17 @@ pub enum Event {
     PlayerProfile(ProfileInfo),
     /// A batch of doors / static objects (OP_SpawnDoor).
     Doors(Vec<DoorInfo>),
+    /// A ground item / static placeable (OP_GroundSpawn). The daemon renders it
+    /// as a DROP-type spawn (it keeps a separate drop map; a single-map consumer
+    /// offsets the id like doors). `id_file` is the actorDef model string —
+    /// resolving it to a real item name needs the item DB (deferred).
+    GroundItem {
+        drop_id: u32,
+        id_file: String,
+        x: i32,
+        y: i32,
+        z: i32,
+    },
     /// A damage event (OP_Action2). Ids only; the consumer resolves names from
     /// its spawn map. `kind` is the wire damage type; `spell_id` 0 = melee.
     Combat {

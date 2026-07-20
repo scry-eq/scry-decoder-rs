@@ -44,6 +44,7 @@ impl Backend for EqlBackend {
             "OP_MoneyUpdate" => money(bytes),
             "OP_SendAATable" => aa_table(bytes),
             "OP_BuffList" | "OP_BuffList2" | "OP_BuffList3" => buff_list(bytes),
+            "OP_GroundSpawn" => ground_item(bytes),
             "OP_SpawnDoor" => doors(bytes),
             "OP_EnterWorld" => Decoded::One(Event::EnterWorld),
             _ => Decoded::Unhandled,
@@ -336,6 +337,21 @@ fn doors(bytes: &[u8]) -> Decoded {
         })
         .collect();
     Decoded::One(Event::Doors(doors))
+}
+
+// OP_GroundSpawn: one ground object per packet (variable-length actorDef name).
+// Coords truncate toward zero to match the daemon's float→int position cast.
+fn ground_item(bytes: &[u8]) -> Decoded {
+    match crate::ground_spawn::parse_ground_spawn(bytes) {
+        Ok(g) => Decoded::One(Event::GroundItem {
+            drop_id: g.drop_id,
+            id_file: g.id_file,
+            x: g.x as i32,
+            y: g.y as i32,
+            z: g.z as i32,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
 }
 
 #[cfg(test)]
