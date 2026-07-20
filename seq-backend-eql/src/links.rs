@@ -3,6 +3,18 @@
 /// EQL item link = `\x12` + this many hex chars + item name + `\x12`.
 pub const ITEM_LINK_HEX: usize = 197;
 
+/// The EQ item id is the leading 6 hex chars of an item-link body (big-endian),
+/// e.g. "0057F5…" -> 22517. Wire-verified across the eql-fighting fixture
+/// (consecutive Lady-Vox loot ids 002D56/002D57 = 11606/11607; Motes 02446E =
+/// 148590 confirm the field is 6 wide). Spell links (which carry `^` args) and
+/// short bodies yield 0.
+pub fn item_id_from_link(body: &[u8]) -> u32 {
+    std::str::from_utf8(body.get(0..6).unwrap_or(&[]))
+        .ok()
+        .and_then(|h| u32::from_str_radix(h, 16).ok())
+        .unwrap_or(0)
+}
+
 /// Replace each `\x12 … \x12` span with its name. Spell links carry caret args
 /// (`fmt^id^..^'Name`) — keep the trailing name; item links are a fixed hex
 /// header + name — skip the header.

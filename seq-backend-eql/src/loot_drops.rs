@@ -10,6 +10,7 @@ use thiserror::Error;
 pub struct LootItem {
     pub name: String,
     pub icon: u32,
+    pub item_id: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,11 +53,10 @@ pub fn parse_loot_drops(bytes: &[u8]) -> Result<LootDrops, LootDropsError> {
         let open = pos + open;
         let Some(close) = bytes[open + 1..].iter().position(|&c| c == 0x12) else { break };
         let close = open + 1 + close;
-        let name = String::from_utf8_lossy(
-            bytes[open + 1..close].get(ITEM_LINK_HEX..).unwrap_or(&[]),
-        )
-        .into_owned();
-        items.push(LootItem { name, icon });
+        let body = &bytes[open + 1..close];
+        let item_id = crate::links::item_id_from_link(body);
+        let name = String::from_utf8_lossy(body.get(ITEM_LINK_HEX..).unwrap_or(&[])).into_owned();
+        items.push(LootItem { name, icon, item_id });
         pos = close + 1;
     }
     Ok(LootDrops { corpse_id, corpse_name, items })
@@ -66,7 +66,7 @@ pub fn parse_loot_drops(bytes: &[u8]) -> Result<LootDrops, LootDropsError> {
 mod tests {
     use super::*;
 
-    fn item(entry_fields: &[u32; 3], name: &str) -> Vec<u8> {
+    fn item(entry_fields: &[u32; 3], name: &str, item_id: u32) -> Vec<u8> {
         let mut b = Vec::new();
         for f in entry_fields {
             b.extend_from_slice(&f.to_le_bytes()); // field[0..2]; [2]=icon
@@ -74,7 +74,10 @@ mod tests {
         b.extend_from_slice(name.as_bytes());
         b.push(0); // plain name terminator
         b.push(0x12);
-        b.extend_from_slice(&vec![b'0'; ITEM_LINK_HEX]);
+        // item id = leading 6 hex of the link body, then zero-padding to length.
+        let mut hdr = format!("{item_id:06X}").into_bytes();
+        hdr.resize(ITEM_LINK_HEX, b'0');
+        b.extend_from_slice(&hdr);
         b.extend_from_slice(name.as_bytes());
         b.push(0x12);
         b
@@ -87,13 +90,13 @@ mod tests {
         b.extend_from_slice(&11613u32.to_le_bytes()); // corpse_id
         b.extend_from_slice(&2u32.to_le_bytes());      // count
         b.extend_from_slice(b"Lady Vox\0");
-        b.extend_from_slice(&item(&[11607, 1, 593], "McVaxius` Horn of War"));
-        b.extend_from_slice(&item(&[9240, 0, 552], "White Dragon Hide"));
+        b.extend_from_slice(&item(&[11607, 1, 593], "McVaxius` Horn of War", 11607));
+        b.extend_from_slice(&item(&[9240, 0, 552], "White Dragon Hide", 9240));
         let l = parse_loot_drops(&b).unwrap();
         assert_eq!(l.corpse_id, 11613);
         assert_eq!(l.corpse_name, "Lady Vox");
         assert_eq!(l.items.len(), 2);
-        assert_eq!(l.items[0], LootItem { name: "McVaxius` Horn of War".into(), icon: 593 });
-        assert_eq!(l.items[1], LootItem { name: "White Dragon Hide".into(), icon: 552 });
+        assert_eq!(l.items[0], LootItem { name: "McVaxius` Horn of War".into(), icon: 593, item_id: 11607 });
+        assert_eq!(l.items[1], LootItem { name: "White Dragon Hide".into(), icon: 552, item_id: 9240 });
     }
 }

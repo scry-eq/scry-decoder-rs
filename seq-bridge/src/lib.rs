@@ -183,6 +183,7 @@ mod ffi {
     struct LootItem {
         name: String,
         icon: u32,
+        item_id: u32,
     }
     struct LootDrops {
         corpse_id: u32,
@@ -829,7 +830,7 @@ fn decode_loot_drops(bytes: &[u8]) -> ffi::LootDrops {
             corpse_id: l.corpse_id,
             corpse_name: l.corpse_name,
             items: l.items.into_iter()
-                .map(|it| ffi::LootItem { name: it.name, icon: it.icon })
+                .map(|it| ffi::LootItem { name: it.name, icon: it.icon, item_id: it.item_id })
                 .collect(),
             ok: true,
         },
