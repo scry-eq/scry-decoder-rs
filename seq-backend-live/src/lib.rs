@@ -18,12 +18,6 @@ impl Backend for LiveBackend {
     }
 
     fn decode(&self, opcode: &str, dir: Dir, bytes: &[u8]) -> Decoded {
-        // Chat is server→client only; the client's own sends echo back (the
-        // daemon's DIR_Client guard). Needs the caller to thread real direction.
-        if dir == Dir::ClientToServer && opcode == "OP_CommonMessage" {
-            return Decoded::Ignored;
-        }
-
         match opcode {
             "OP_ZoneEntry" => spawn(bytes),
             "OP_MobUpdate" => mob_update(bytes),
@@ -41,7 +35,7 @@ impl Backend for LiveBackend {
             "OP_Action2" => action2(bytes),
             "OP_TargetMouse" => target(bytes),
             "OP_Consider" => consider(bytes),
-            "OP_CommonMessage" => chat(bytes),
+            "OP_CommonMessage" => chat(bytes, dir),
             "OP_GroundSpawn" => ground_item(bytes),
             "OP_SpawnDoor" => doors(bytes),
             "OP_EnterWorld" => Decoded::One(Event::EnterWorld),
@@ -155,8 +149,11 @@ fn consider(bytes: &[u8]) -> Decoded {
 
 // OP_CommonMessage = player chat; keep only the player channels (drop system
 // noise), matching MessageShell::channelMessage.
-fn chat(bytes: &[u8]) -> Decoded {
+fn chat(bytes: &[u8], dir: Dir) -> Decoded {
     match seq_decode::channel_message::parse_channel_message(bytes) {
+        // Drop the client's C→S copy of the echoed channels (tells/group/…), but
+        // keep C→S Say — matches MessageShell::channelMessage.
+        Ok(c) if dir == Dir::ClientToServer && is_echoed_channel(c.chan_num) => Decoded::Ignored,
         Ok(c) if is_player_channel(c.chan_num) => Decoded::One(Event::Chat {
             channel: c.chan_num,
             from: c.sender,
@@ -168,6 +165,11 @@ fn chat(bytes: &[u8]) -> Decoded {
         Ok(_) => Decoded::Ignored,
         Err(_) => Decoded::Malformed,
     }
+}
+
+// Player channels the server echoes back (drop the C→S copy): all except Say.
+fn is_echoed_channel(c: u32) -> bool {
+    matches!(c, 0 | 2 | 3 | 4 | 5 | 7 | 15)
 }
 
 // Guild/Group/Shout/Auction/OOC/Tell/Say/Raid (MessageType enum).

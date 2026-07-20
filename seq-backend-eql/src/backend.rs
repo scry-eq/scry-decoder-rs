@@ -23,18 +23,14 @@ impl Backend for EqlBackend {
     }
 
     fn decode(&self, opcode: &str, dir: Dir, bytes: &[u8]) -> Decoded {
-        // Chat/message opcodes are server→client only; the client's own outgoing
-        // sends echo back S→C, so decoding the C→S copy would double-display
-        // (the daemon's DIR_Client guard). Requires the caller to thread the real
-        // direction — a :server placeholder leaves these unfiltered.
+        // Server-message opcodes are server→client only; the client's own
+        // outgoing sends echo back S→C, so decoding the C→S copy would
+        // double-display (the daemon's DIR_Client guard). OP_CommonMessage is
+        // filtered per-channel instead (see `chat`) — Say isn't echoed.
         if dir == Dir::ClientToServer
             && matches!(
                 opcode,
-                "OP_CommonMessage"
-                    | "OP_SimpleMessage"
-                    | "OP_FormattedMessage"
-                    | "OP_SpecialMesg"
-                    | "OP_LootMessage"
+                "OP_SimpleMessage" | "OP_FormattedMessage" | "OP_SpecialMesg" | "OP_LootMessage"
             )
         {
             return Decoded::Ignored;
@@ -57,7 +53,7 @@ impl Backend for EqlBackend {
             "OP_BeginCast" => begin_cast(bytes),
             "OP_TargetMouse" => target(bytes),
             "OP_Consider" => consider(bytes),
-            "OP_CommonMessage" => chat(bytes),
+            "OP_CommonMessage" => chat(bytes, dir),
             "OP_SimpleMessage" => simple_message(bytes),
             "OP_FormattedMessage" => formatted_message(bytes),
             "OP_SpecialMesg" => special_message(bytes),
@@ -219,8 +215,12 @@ fn consider(bytes: &[u8]) -> Decoded {
 
 // OP_CommonMessage = player chat; keep only the player channels (drop system
 // noise), matching MessageShell::channelMessage.
-fn chat(bytes: &[u8]) -> Decoded {
+fn chat(bytes: &[u8], dir: Dir) -> Decoded {
     match crate::channel_message::parse_channel_message(bytes) {
+        // The server echoes tells/group/guild/etc. back, so drop the C→S copy of
+        // those (matches MessageShell::channelMessage); Say is not echoed — keep
+        // its C→S copy.
+        Ok(c) if dir == Dir::ClientToServer && is_echoed_channel(c.chan_num) => Decoded::Ignored,
         Ok(c) if is_player_channel(c.chan_num) => Decoded::One(Event::Chat {
             channel: c.chan_num,
             from: c.sender,
@@ -285,6 +285,12 @@ fn loot_message(bytes: &[u8]) -> Decoded {
 // Guild/Group/Shout/Auction/OOC/Tell/Say/Raid (MessageType enum).
 fn is_player_channel(c: u32) -> bool {
     matches!(c, 0 | 2 | 3 | 4 | 5 | 7 | 8 | 15)
+}
+
+// Player channels the server echoes back (so the C→S copy is dropped): all of
+// them except Say (8), which is not echoed.
+fn is_echoed_channel(c: u32) -> bool {
+    matches!(c, 0 | 2 | 3 | 4 | 5 | 7 | 15)
 }
 
 // OP_ExpUpdate = the regular exp bar (0..100000). Shared expUpdateStruct.
