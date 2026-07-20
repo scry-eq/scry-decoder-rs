@@ -44,6 +44,7 @@ impl Backend for EqlBackend {
             "OP_ExpUpdate" => exp(bytes),
             "OP_AAExpUpdate" => aa_exp(bytes),
             "OP_ManaChange" => mana_change(bytes),
+            "OP_LootTransaction" => loot_transaction(bytes),
             "OP_MoneyUpdate" => money(bytes),
             "OP_SendAATable" => aa_table(bytes),
             "OP_BuffList" | "OP_BuffList2" | "OP_BuffList3" => buff_list(bytes),
@@ -255,6 +256,22 @@ fn mana_change(bytes: &[u8]) -> Decoded {
         Ok(m) => Decoded::One(Event::ManaUpdate {
             mana: m.new_mana.max(0) as u32,
         }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_LootTransaction: only the subcode-7 server confirmation carries the sale
+// coin; the other subcodes (3/5/6) ride the same id but surface nothing.
+fn loot_transaction(bytes: &[u8]) -> Decoded {
+    use crate::loot_transaction::LootTransactionError::NotConfirm;
+    match crate::loot_transaction::parse_loot_transaction(bytes) {
+        Ok(t) => Decoded::One(Event::LootTransaction {
+            corpse_id: t.corpse_id,
+            item_id: t.item_id,
+            quantity: t.quantity,
+            coin_copper: t.coin_copper,
+        }),
+        Err(NotConfirm(_)) => Decoded::Ignored,
         Err(_) => Decoded::Malformed,
     }
 }

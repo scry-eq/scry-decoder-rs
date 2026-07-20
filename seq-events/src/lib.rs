@@ -173,6 +173,15 @@ pub enum Event {
     /// The player's current mana (OP_ManaChange). eql sends no max on the wire —
     /// the consumer tracks the observed high-water mark, like the daemon.
     ManaUpdate { mana: u32 },
+    /// A corpse-loot confirmation (OP_LootTransaction subcode 7). `coin_copper`
+    /// is the auto-sale proceeds (0 when the loot produced none) — the consumer
+    /// adds it to the running money total, like the daemon's adjustMoney.
+    LootTransaction {
+        corpse_id: u32,
+        item_id: u32,
+        quantity: u32,
+        coin_copper: u32,
+    },
     /// The carried purse (OP_MoneyUpdate, 0x6414). Denominations are NOT
     /// normalized on the wire — the consumer sums to total copper.
     Money {
