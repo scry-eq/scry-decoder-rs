@@ -44,6 +44,7 @@ impl Backend for EqlBackend {
             "OP_ExpUpdate" => exp(bytes),
             "OP_AAExpUpdate" => aa_exp(bytes),
             "OP_ManaChange" => mana_change(bytes),
+            "OP_SkillUpdate" => skill_update(bytes),
             "OP_LootTransaction" => loot_transaction(bytes),
             "OP_MoneyUpdate" => money(bytes),
             "OP_SendAATable" => aa_table(bytes),
@@ -260,6 +261,17 @@ fn mana_change(bytes: &[u8]) -> Decoded {
     }
 }
 
+// OP_SkillUpdate: one skill's new value (skillIncStruct).
+fn skill_update(bytes: &[u8]) -> Decoded {
+    match crate::skill_update::parse_skill_update(bytes) {
+        Ok(s) => Decoded::One(Event::SkillUpdate {
+            skill_id: s.skill_id,
+            value: s.value.max(0) as u32,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
 // OP_LootTransaction: only the subcode-7 server confirmation carries the sale
 // coin; the other subcodes (3/5/6) ride the same id but surface nothing.
 fn loot_transaction(bytes: &[u8]) -> Decoded {
@@ -358,6 +370,7 @@ fn player_profile(bytes: &[u8]) -> Decoded {
             aa_ids: p.aa_ids,
             aa_values: p.aa_values,
             aa_spent: p.aa_spent,
+            skills: p.skills,
             platinum: p.platinum,
             gold: p.gold,
             silver: p.silver,

@@ -67,6 +67,10 @@ pub struct ProfileInfo {
     pub aa_values: Vec<u32>,
     /// Total AA points spent (the profile's `aa_spent`).
     pub aa_spent: u32,
+    /// Learned-skill values, indexed by skill id (eql fills this; Live surfaces
+    /// skills by another path, so it's empty there). `0xFFFFFFFF` = the skill is
+    /// unavailable to this class; the consumer filters those (and 0) out.
+    pub skills: Vec<u32>,
     /// On-hand carried coins (the base the OP_MoneyUpdate purse resyncs).
     pub platinum: u32,
     pub gold: u32,
@@ -173,6 +177,9 @@ pub enum Event {
     /// The player's current mana (OP_ManaChange). eql sends no max on the wire —
     /// the consumer tracks the observed high-water mark, like the daemon.
     ManaUpdate { mana: u32 },
+    /// A single skill's new value (OP_SkillUpdate) — the consumer updates that
+    /// skill id in the player's skill map.
+    SkillUpdate { skill_id: u32, value: u32 },
     /// A corpse-loot confirmation (OP_LootTransaction subcode 7). `coin_copper`
     /// is the auto-sale proceeds (0 when the loot produced none) — the consumer
     /// adds it to the running money total, like the daemon's adjustMoney.
