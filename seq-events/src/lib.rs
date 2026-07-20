@@ -67,6 +67,11 @@ pub struct ProfileInfo {
     pub aa_values: Vec<u32>,
     /// Total AA points spent (the profile's `aa_spent`).
     pub aa_spent: u32,
+    /// On-hand carried coins (the base the OP_MoneyUpdate purse resyncs).
+    pub platinum: u32,
+    pub gold: u32,
+    pub silver: u32,
+    pub copper: u32,
 }
 
 /// Zone identity from OP_NewZone.
@@ -138,6 +143,14 @@ pub enum Event {
     /// AA experience (OP_AAExpUpdate): `alt_exp` 0..100000 toward the next point,
     /// `aa_points` = unspent points.
     AaExp { alt_exp: u32, aa_points: u32 },
+    /// The carried purse (OP_MoneyUpdate, 0x6414). Denominations are NOT
+    /// normalized on the wire — the consumer sums to total copper.
+    Money {
+        platinum: u32,
+        gold: u32,
+        silver: u32,
+        copper: u32,
+    },
     /// A player chat message (OP_CommonMessage). `channel` is the MessageType
     /// (0=Guild 2=Group 3=Shout 4=Auction 5=OOC 7=Tell 8=Say 15=Raid). `target`
     /// is meaningful only for tells; `chat_color`/`channel_name` are 0/empty for

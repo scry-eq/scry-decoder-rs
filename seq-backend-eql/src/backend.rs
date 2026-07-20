@@ -40,6 +40,7 @@ impl Backend for EqlBackend {
             "OP_CommonMessage" => chat(bytes),
             "OP_ExpUpdate" => exp(bytes),
             "OP_AAExpUpdate" => aa_exp(bytes),
+            "OP_MoneyUpdate" => money(bytes),
             "OP_SendAATable" => aa_table(bytes),
             "OP_BuffList" | "OP_BuffList2" | "OP_BuffList3" => buff_list(bytes),
             "OP_SpawnDoor" => doors(bytes),
@@ -217,6 +218,19 @@ fn aa_exp(bytes: &[u8]) -> Decoded {
     })
 }
 
+// OP_MoneyUpdate (0x6414) = the authoritative carried purse (un-normalized coins).
+fn money(bytes: &[u8]) -> Decoded {
+    match crate::money_update::parse_money_update(bytes) {
+        Ok(m) => Decoded::One(Event::Money {
+            platinum: m.platinum,
+            gold: m.gold,
+            silver: m.silver,
+            copper: m.copper,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
 // eql OP_SendAATable = one AA definition (descID -> titleSID) per packet.
 fn aa_table(bytes: &[u8]) -> Decoded {
     match crate::parse_aa_table_entry(bytes) {
@@ -285,6 +299,10 @@ fn player_profile(bytes: &[u8]) -> Decoded {
             aa_ids: p.aa_ids,
             aa_values: p.aa_values,
             aa_spent: p.aa_spent,
+            platinum: p.platinum,
+            gold: p.gold,
+            silver: p.silver,
+            copper: p.copper,
         })),
         Err(_) => Decoded::Malformed,
     }

@@ -202,6 +202,10 @@ fn player_profile(bytes: &[u8]) -> Decoded {
             aa_ids: p.aa_ids,
             aa_values: p.aa_values,
             aa_spent: p.aa_spent,
+            platinum: p.platinum,
+            gold: p.gold,
+            silver: p.silver,
+            copper: p.copper,
         })),
         Err(_) => Decoded::Malformed,
     }
