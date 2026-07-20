@@ -95,6 +95,15 @@ pub struct BuffEntry {
     pub slot: u32,
 }
 
+/// One lootable item on a corpse (OP_LootDrops). `item_id` is parsed from the
+/// item-link header; `icon` is the dragitem-atlas id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LootItemInfo {
+    pub name: String,
+    pub icon: u32,
+    pub item_id: u32,
+}
+
 /// A single door / static object row from OP_SpawnDoor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DoorInfo {
@@ -188,6 +197,12 @@ pub enum Event {
         item_id: u32,
         quantity: u32,
         coin_copper: u32,
+    },
+    /// A corpse's loot window (OP_LootDrops) — the lootable items on a corpse.
+    LootDrops {
+        corpse_id: u32,
+        corpse_name: String,
+        items: Vec<LootItemInfo>,
     },
     /// The carried purse (OP_MoneyUpdate, 0x6414). Denominations are NOT
     /// normalized on the wire — the consumer sums to total copper.

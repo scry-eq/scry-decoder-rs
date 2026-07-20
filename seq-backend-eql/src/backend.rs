@@ -10,8 +10,8 @@
 //! output stays byte-for-byte identical across the migration.
 
 use seq_events::{
-    heading_deg, Backend, BuffEntry, Decoded, Dir, DoorInfo, Event, Pos, ProfileInfo, SpawnInfo,
-    ZoneInfo,
+    heading_deg, Backend, BuffEntry, Decoded, Dir, DoorInfo, Event, LootItemInfo, Pos, ProfileInfo,
+    SpawnInfo, ZoneInfo,
 };
 
 /// The EverQuest Legends backend (this crate's own parsers).
@@ -46,6 +46,7 @@ impl Backend for EqlBackend {
             "OP_ManaChange" => mana_change(bytes),
             "OP_SkillUpdate" => skill_update(bytes),
             "OP_LootTransaction" => loot_transaction(bytes),
+            "OP_LootDrops" => loot_drops(bytes),
             "OP_MoneyUpdate" => money(bytes),
             "OP_SendAATable" => aa_table(bytes),
             "OP_BuffList" | "OP_BuffList2" | "OP_BuffList3" => buff_list(bytes),
@@ -267,6 +268,26 @@ fn skill_update(bytes: &[u8]) -> Decoded {
         Ok(s) => Decoded::One(Event::SkillUpdate {
             skill_id: s.skill_id,
             value: s.value.max(0) as u32,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_LootDrops: the lootable items on a corpse (name/icon/item-id per item).
+fn loot_drops(bytes: &[u8]) -> Decoded {
+    match crate::loot_drops::parse_loot_drops(bytes) {
+        Ok(d) => Decoded::One(Event::LootDrops {
+            corpse_id: d.corpse_id,
+            corpse_name: d.corpse_name,
+            items: d
+                .items
+                .into_iter()
+                .map(|i| LootItemInfo {
+                    name: i.name,
+                    icon: i.icon,
+                    item_id: i.item_id,
+                })
+                .collect(),
         }),
         Err(_) => Decoded::Malformed,
     }
