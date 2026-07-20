@@ -30,6 +30,7 @@ impl Backend for LiveBackend {
             "OP_PlayerProfile" => player_profile(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_Illusion" => illusion(bytes),
+            "OP_ManaChange" => mana_change(bytes),
             "OP_Action2" => action2(bytes),
             "OP_TargetMouse" => target(bytes),
             "OP_Consider" => consider(bytes),
@@ -240,6 +241,16 @@ fn doors(bytes: &[u8]) -> Decoded {
         })
         .collect();
     Decoded::One(Event::Doors(doors))
+}
+
+// OP_ManaChange: the player's current mana (newMana); no max on the wire.
+fn mana_change(bytes: &[u8]) -> Decoded {
+    match seq_decode::mana_change::parse_mana_change(bytes) {
+        Ok(m) => Decoded::One(Event::ManaUpdate {
+            mana: m.new_mana.max(0) as u32,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
 }
 
 // OP_Illusion: a spawn changed race/model (id + new race/gender).

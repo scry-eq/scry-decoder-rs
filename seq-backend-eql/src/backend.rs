@@ -43,6 +43,7 @@ impl Backend for EqlBackend {
             "OP_CommonMessage" => chat(bytes),
             "OP_ExpUpdate" => exp(bytes),
             "OP_AAExpUpdate" => aa_exp(bytes),
+            "OP_ManaChange" => mana_change(bytes),
             "OP_MoneyUpdate" => money(bytes),
             "OP_SendAATable" => aa_table(bytes),
             "OP_BuffList" | "OP_BuffList2" | "OP_BuffList3" => buff_list(bytes),
@@ -243,6 +244,16 @@ fn money(bytes: &[u8]) -> Decoded {
             gold: m.gold,
             silver: m.silver,
             copper: m.copper,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_ManaChange: the player's current mana (newMana); no max on the wire.
+fn mana_change(bytes: &[u8]) -> Decoded {
+    match crate::mana_change::parse_mana_change(bytes) {
+        Ok(m) => Decoded::One(Event::ManaUpdate {
+            mana: m.new_mana.max(0) as u32,
         }),
         Err(_) => Decoded::Malformed,
     }
