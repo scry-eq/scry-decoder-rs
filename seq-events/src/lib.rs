@@ -212,6 +212,27 @@ pub enum Event {
         silver: u32,
         copper: u32,
     },
+    /// A string-id server message (OP_SimpleMessage): `format_id` resolves to
+    /// text via the eqstr DB (no args); `color` is the wire ChatColor.
+    SimpleMessage { format_id: u32, color: u32 },
+    /// A formatted server message (OP_FormattedMessage): `format_id` + `args`
+    /// interpolate through the eqstr template; `color` is the wire ChatColor.
+    FormattedMessage {
+        format_id: u32,
+        color: u32,
+        args: Vec<String>,
+    },
+    /// A special server message (OP_SpecialMesg): carries `message` text
+    /// directly + a `source` sender and a `target` spawn id (0 = none).
+    SpecialMessage {
+        color: u32,
+        target: u32,
+        source: String,
+        message: String,
+    },
+    /// Auto-loot / sell narration (OP_LootMessage), e.g. "You looted a …" —
+    /// `text` is already link-cleaned; the consumer shows it as general chat.
+    LootMessage { color: u32, text: String },
     /// A player chat message (OP_CommonMessage). `channel` is the MessageType
     /// (0=Guild 2=Group 3=Shout 4=Auction 5=OOC 7=Tell 8=Say 15=Raid). `target`
     /// is meaningful only for tells; `chat_color`/`channel_name` are 0/empty for

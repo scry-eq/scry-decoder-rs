@@ -17,7 +17,13 @@ impl Backend for LiveBackend {
         "live"
     }
 
-    fn decode(&self, opcode: &str, _dir: Dir, bytes: &[u8]) -> Decoded {
+    fn decode(&self, opcode: &str, dir: Dir, bytes: &[u8]) -> Decoded {
+        // Chat is server→client only; the client's own sends echo back (the
+        // daemon's DIR_Client guard). Needs the caller to thread real direction.
+        if dir == Dir::ClientToServer && opcode == "OP_CommonMessage" {
+            return Decoded::Ignored;
+        }
+
         match opcode {
             "OP_ZoneEntry" => spawn(bytes),
             "OP_MobUpdate" => mob_update(bytes),

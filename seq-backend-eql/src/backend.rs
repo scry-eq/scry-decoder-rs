@@ -22,7 +22,24 @@ impl Backend for EqlBackend {
         "eql"
     }
 
-    fn decode(&self, opcode: &str, _dir: Dir, bytes: &[u8]) -> Decoded {
+    fn decode(&self, opcode: &str, dir: Dir, bytes: &[u8]) -> Decoded {
+        // Chat/message opcodes are server→client only; the client's own outgoing
+        // sends echo back S→C, so decoding the C→S copy would double-display
+        // (the daemon's DIR_Client guard). Requires the caller to thread the real
+        // direction — a :server placeholder leaves these unfiltered.
+        if dir == Dir::ClientToServer
+            && matches!(
+                opcode,
+                "OP_CommonMessage"
+                    | "OP_SimpleMessage"
+                    | "OP_FormattedMessage"
+                    | "OP_SpecialMesg"
+                    | "OP_LootMessage"
+            )
+        {
+            return Decoded::Ignored;
+        }
+
         match opcode {
             "OP_ZoneEntry" => spawn(bytes),
             "OP_MobUpdate" => mob_update(bytes),
@@ -41,6 +58,10 @@ impl Backend for EqlBackend {
             "OP_TargetMouse" => target(bytes),
             "OP_Consider" => consider(bytes),
             "OP_CommonMessage" => chat(bytes),
+            "OP_SimpleMessage" => simple_message(bytes),
+            "OP_FormattedMessage" => formatted_message(bytes),
+            "OP_SpecialMesg" => special_message(bytes),
+            "OP_LootMessage" => loot_message(bytes),
             "OP_ExpUpdate" => exp(bytes),
             "OP_AAExpUpdate" => aa_exp(bytes),
             "OP_ManaChange" => mana_change(bytes),
@@ -209,6 +230,54 @@ fn chat(bytes: &[u8]) -> Decoded {
             channel_name: String::new(),
         }),
         Ok(_) => Decoded::Ignored,
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_SimpleMessage: a string-id message + colour (the consumer resolves text
+// from the eqstr DB).
+fn simple_message(bytes: &[u8]) -> Decoded {
+    match crate::simple_message::parse_simple_message(bytes) {
+        Ok(m) => Decoded::One(Event::SimpleMessage {
+            format_id: m.message_format,
+            color: m.message_color,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_FormattedMessage: eqstr template id + positional args + colour.
+fn formatted_message(bytes: &[u8]) -> Decoded {
+    match crate::formatted_message::parse_formatted_message(bytes) {
+        Ok(m) => Decoded::One(Event::FormattedMessage {
+            format_id: m.format_id,
+            color: m.msg_color,
+            args: m.args,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_SpecialMesg: message text carried inline + sender + target spawn id.
+fn special_message(bytes: &[u8]) -> Decoded {
+    match crate::special_message::parse_special_message(bytes) {
+        Ok(m) => Decoded::One(Event::SpecialMessage {
+            color: m.message_color,
+            target: u32::from(m.target),
+            source: m.source,
+            message: m.message,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_LootMessage: auto-loot / sell narration (text already link-cleaned).
+fn loot_message(bytes: &[u8]) -> Decoded {
+    match crate::loot_message::parse_loot_message(bytes) {
+        Ok(m) => Decoded::One(Event::LootMessage {
+            color: m.color,
+            text: m.text,
+        }),
         Err(_) => Decoded::Malformed,
     }
 }
