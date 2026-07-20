@@ -37,6 +37,7 @@ impl Backend for EqlBackend {
             "OP_SelfPos" => self_pos_breadcrumb(bytes),
             "OP_Illusion" => illusion(bytes),
             "OP_Action2" => action2(bytes),
+            "OP_BeginCast" => begin_cast(bytes),
             "OP_TargetMouse" => target(bytes),
             "OP_Consider" => consider(bytes),
             "OP_CommonMessage" => chat(bytes),
@@ -286,6 +287,20 @@ fn action2(bytes: &[u8]) -> Decoded {
             kind: u32::from(a.kind),
             damage: a.damage,
             spell_id: a.spell as u32,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_BeginCast: a spawn started casting. The daemon surfaces this (a transient
+// cast indicator), NOT OP_CastSpell — cast-start buff insertion was noise, buffs
+// ride OP_BuffList.
+fn begin_cast(bytes: &[u8]) -> Decoded {
+    match crate::parse_begin_cast(bytes) {
+        Ok(c) => Decoded::One(Event::SpawnCast {
+            caster_id: c.caster_id,
+            spell_id: c.spell_id,
+            cast_time_ms: c.cast_time_ms,
         }),
         Err(_) => Decoded::Malformed,
     }

@@ -149,6 +149,14 @@ pub enum Event {
         damage: i32,
         spell_id: u32,
     },
+    /// A spawn started casting a spell (OP_BeginCast). Ids only; the consumer
+    /// resolves the caster name from its spawn map and the spell name from its
+    /// spell DB. `cast_time_ms` is the wire cast time (0 = instant).
+    SpawnCast {
+        caster_id: u32,
+        spell_id: u32,
+        cast_time_ms: u32,
+    },
     /// The player selected a target (OP_TargetMouse). `spawn_id` 0 = cleared.
     Targeted { spawn_id: u32 },
     /// The player considered a spawn (OP_Consider) — `spawn_id` is the target.
