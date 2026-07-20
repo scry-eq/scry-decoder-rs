@@ -29,6 +29,7 @@ impl Backend for EqlBackend {
             "OP_NpcMoveUpdate" => npc_move_update(bytes),
             "OP_RemoveSpawn" => remove_spawn(bytes),
             "OP_DeleteSpawn" => delete_spawn(bytes),
+            "OP_Death" => death(bytes),
             "OP_HPUpdate" => hp_update(bytes),
             "OP_NewZone" => new_zone(bytes),
             "OP_PlayerProfile" => player_profile(bytes),
@@ -116,6 +117,19 @@ fn remove_spawn(bytes: &[u8]) -> Decoded {
 fn delete_spawn(bytes: &[u8]) -> Decoded {
     match crate::delete_spawn::parse_delete_spawn(bytes) {
         Ok(s) => Decoded::One(Event::SpawnRemoved { id: s.spawn_id }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_Death (newCorpseStruct): the deceased becomes a corpse, not a removal. The
+// caller owns the self-death case (it knows the player id) — see SpawnShell::
+// killSpawn / EqlDispatch::death.
+fn death(bytes: &[u8]) -> Decoded {
+    match crate::death::parse_death(bytes) {
+        Ok(d) => Decoded::One(Event::SpawnKilled {
+            deceased_id: d.spawn_id,
+            killer_id: d.killer_id,
+        }),
         Err(_) => Decoded::Malformed,
     }
 }

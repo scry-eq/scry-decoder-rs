@@ -110,6 +110,10 @@ pub enum Event {
     SpawnMoved { id: u32, pos: Pos },
     /// A spawn left the zone (OP_RemoveSpawn / OP_DeleteSpawn).
     SpawnRemoved { id: u32 },
+    /// A spawn died (OP_Death). Unlike SpawnRemoved the body stays as a corpse;
+    /// the consumer keeps it in its spawn map. `killer_id` 0 = no killer / self.
+    /// The consumer owns the self-death special case (it knows the player id).
+    SpawnKilled { deceased_id: u32, killer_id: u32 },
     /// A spawn's health changed (OP_HPUpdate). `max` is real HP for the self and
     /// a percentage base (100) for other spawns, mirroring the wire.
     SpawnHp { id: u32, cur: i32, max: i32 },

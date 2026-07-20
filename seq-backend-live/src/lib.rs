@@ -25,6 +25,7 @@ impl Backend for LiveBackend {
             "OP_RemoveSpawn" => remove_spawn(bytes),
             "OP_DeleteSpawn" => delete_spawn(bytes),
             "OP_HPUpdate" => hp_update(bytes),
+            "OP_Death" => death(bytes),
             "OP_NewZone" => new_zone(bytes),
             "OP_PlayerProfile" => player_profile(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
@@ -173,6 +174,18 @@ fn action2(bytes: &[u8]) -> Decoded {
             kind: u32::from(a.kind),
             damage: a.damage,
             spell_id: a.spell as u32,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_Death (newCorpseStruct): a death leaves a corpse, not a removal; the caller
+// owns the self-death case (SpawnShell::killSpawn).
+fn death(bytes: &[u8]) -> Decoded {
+    match seq_decode::death::parse_death(bytes) {
+        Ok(d) => Decoded::One(Event::SpawnKilled {
+            deceased_id: d.spawn_id,
+            killer_id: d.killer_id,
         }),
         Err(_) => Decoded::Malformed,
     }
