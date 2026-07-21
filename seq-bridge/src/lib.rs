@@ -136,6 +136,21 @@ mod ffi {
         end_max: i64,
         ok: bool,
     }
+    // One stat-sync packet's verdict from EqlSelfTracker. `is_self` false means
+    // the packet belongs to another spawn and the host routes its HP normally;
+    // the has_* flags are meaningful only when is_self is true.
+    struct SelfStat {
+        is_self: bool,
+        has_hp: bool,
+        hp_cur: i64,
+        hp_max: i64,
+        has_mana: bool,
+        mana_cur: i64,
+        mana_max: i64,
+        has_end: bool,
+        end_cur: i64,
+        end_max: i64,
+    }
     // eql OP_BeginCast (0x6cbd, S>C): a spawn started casting. spell_id/caster_id
     // are resolved to names daemon-side; cast_time_ms drives the web cast timer.
     struct BeginCast {
@@ -536,6 +551,25 @@ mod ffi {
         fn decode_remove_spawn(bytes: &[u8]) -> RemoveSpawn;
         fn decode_hp_update(bytes: &[u8]) -> HpUpdate;
         fn decode_stat_sync(bytes: &[u8]) -> StatSync;
+
+        // eql session identity. Unlike every other entry here this is stateful:
+        // eql issues the self ZoneEntry twice per zone and keys the player's
+        // stats to the SECOND id, which can land after the stats themselves do.
+        // Resolving that needs cross-packet memory, so it lives in the backend
+        // where every host inherits it rather than in each host's dispatch.
+        // One instance per session/box. Inert on live/test.
+        type EqlSelfTracker;
+        fn eql_self_tracker_new() -> Box<EqlSelfTracker>;
+        fn reset(self: &mut EqlSelfTracker);
+        fn self_id(self: &EqlSelfTracker) -> u32;
+        fn observe_spawn(
+            self: &mut EqlSelfTracker,
+            player_name: &str,
+            spawn_name: &str,
+            spawn_id: u32,
+        ) -> u8;
+        fn observe_stat_sync(self: &mut EqlSelfTracker, stat: &StatSync) -> SelfStat;
+        fn take_pending_vitals(self: &mut EqlSelfTracker) -> SelfStat;
         fn decode_loadout_swap(bytes: &[u8]) -> LoadoutSwap;
         fn decode_money_update(bytes: &[u8]) -> MoneyUpdate;
         fn decode_loot_transaction(bytes: &[u8]) -> LootTransaction;
@@ -710,6 +744,85 @@ fn decode_stat_sync(bytes: &[u8]) -> ffi::StatSync {
         },
         Err(_) => stat_sync_err(),
     }
+}
+
+// eql session identity — the one stateful thing on this bridge. See
+// seq_backend_eql::self_track for why it can't be a pure per-packet function.
+// The C++/Elixir side owns one per session; all logic stays in the backend so
+// the host only forwards packets and applies the verdict.
+#[cfg(feature = "backend-eql")]
+pub struct EqlSelfTracker(seq_backend_eql::SelfTracker);
+#[cfg(not(feature = "backend-eql"))]
+pub struct EqlSelfTracker;
+
+#[cfg(not(feature = "backend-eql"))]
+fn self_stat_none() -> ffi::SelfStat {
+    ffi::SelfStat {
+        is_self: false,
+        has_hp: false, hp_cur: 0, hp_max: 0,
+        has_mana: false, mana_cur: 0, mana_max: 0,
+        has_end: false, end_cur: 0, end_max: 0,
+    }
+}
+
+#[cfg(feature = "backend-eql")]
+fn self_stat_to_ffi(v: seq_backend_eql::SelfStat) -> ffi::SelfStat {
+    ffi::SelfStat {
+        is_self: v.is_self,
+        has_hp: v.has_hp, hp_cur: v.hp_cur, hp_max: v.hp_max,
+        has_mana: v.has_mana, mana_cur: v.mana_cur, mana_max: v.mana_max,
+        has_end: v.has_end, end_cur: v.end_cur, end_max: v.end_max,
+    }
+}
+
+#[cfg(feature = "backend-eql")]
+fn eql_self_tracker_new() -> Box<EqlSelfTracker> {
+    Box::new(EqlSelfTracker(seq_backend_eql::SelfTracker::new()))
+}
+
+#[cfg(feature = "backend-eql")]
+impl EqlSelfTracker {
+    fn reset(&mut self) {
+        self.0.reset();
+    }
+
+    fn self_id(&self) -> u32 {
+        self.0.self_id()
+    }
+
+    fn observe_spawn(&mut self, player_name: &str, spawn_name: &str, spawn_id: u32) -> u8 {
+        self.0.observe_spawn(player_name, spawn_name, spawn_id) as u8
+    }
+
+    fn observe_stat_sync(&mut self, stat: &ffi::StatSync) -> ffi::SelfStat {
+        let s = seq_backend_eql::StatSync {
+            spawn_id: stat.spawn_id,
+            wide: stat.wide,
+            has_hp: stat.has_hp, hp_cur: stat.hp_cur, hp_max: stat.hp_max,
+            has_mana: stat.has_mana, mana_cur: stat.mana_cur, mana_max: stat.mana_max,
+            has_end: stat.has_end, end_cur: stat.end_cur, end_max: stat.end_max,
+        };
+        self_stat_to_ffi(self.0.observe_stat_sync(&s))
+    }
+
+    fn take_pending_vitals(&mut self) -> ffi::SelfStat {
+        self_stat_to_ffi(self.0.take_pending_vitals())
+    }
+}
+
+// live/test never see the eql self-record pair, so the tracker is inert there.
+#[cfg(not(feature = "backend-eql"))]
+fn eql_self_tracker_new() -> Box<EqlSelfTracker> {
+    Box::new(EqlSelfTracker)
+}
+
+#[cfg(not(feature = "backend-eql"))]
+impl EqlSelfTracker {
+    fn reset(&mut self) {}
+    fn self_id(&self) -> u32 { 0 }
+    fn observe_spawn(&mut self, _player_name: &str, _spawn_name: &str, _spawn_id: u32) -> u8 { 0 }
+    fn observe_stat_sync(&mut self, _stat: &ffi::StatSync) -> ffi::SelfStat { self_stat_none() }
+    fn take_pending_vitals(&mut self) -> ffi::SelfStat { self_stat_none() }
 }
 
 // eql-only: OP_BeginCast (0x6cbd) — a spawn started casting a spell. live/test
