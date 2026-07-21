@@ -45,6 +45,8 @@ impl Backend for EqlBackend {
             "OP_Death" => death(bytes),
             "OP_HPUpdate" => hp_update(bytes),
             "OP_NewZone" => new_zone(bytes),
+            "OP_GuildsInZoneList" => guilds_in_zone_list(bytes),
+            "OP_NewGuildInZone" => new_guild_in_zone(bytes),
             "OP_PlayerProfile" => player_profile(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_SelfPos" => self_pos_breadcrumb(bytes),
@@ -93,6 +95,7 @@ fn spawn(bytes: &[u8]) -> Decoded {
             cur_hp: u32::from(s.cur_hp),
             max_hp: Some(u32::from(s.max_hp)),
             guild_id: s.guild_id,
+            guild_server_id: s.guild_server_id,
             // eql spawn carries position inline; heading is h2048 (11-bit).
             pos: Some(Pos {
                 x: i32::from(s.x),
@@ -185,6 +188,24 @@ fn hp_update(bytes: &[u8]) -> Decoded {
             end_cur: s.end_cur as i32,
             end_max: s.end_max as i32,
         }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// Both guild-in-zone opcodes resolve guild ids to names and differ only in
+// cardinality, so a single-guild arrival is just a one-element list.
+fn guilds_in_zone_list(bytes: &[u8]) -> Decoded {
+    match crate::guild_in_zone::parse_guilds_in_zone_list(bytes) {
+        // An empty list is normal (an unguilded zone) and carries nothing.
+        Ok(guilds) if guilds.is_empty() => Decoded::Ignored,
+        Ok(guilds) => Decoded::One(Event::GuildsInZone { guilds }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+fn new_guild_in_zone(bytes: &[u8]) -> Decoded {
+    match crate::guild_in_zone::parse_new_guild_in_zone(bytes) {
+        Ok(g) => Decoded::One(Event::GuildsInZone { guilds: vec![g] }),
         Err(_) => Decoded::Malformed,
     }
 }

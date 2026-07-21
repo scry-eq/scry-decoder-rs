@@ -58,6 +58,9 @@ fn spawn(bytes: &[u8]) -> Decoded {
             cur_hp: u32::from(s.cur_hp),
             max_hp: None, // Live spawn carries no max HP; arrives via HP opcodes.
             guild_id: s.guild_id,
+            // Live has no guild-in-zone name feed wired, so the pair is unused
+            // here; 0 keeps the key inert rather than colliding on server 0.
+            guild_server_id: 0,
             pos: None, // Live position arrives via OP_MobUpdate.
         })),
         Err(_) => Decoded::Malformed,

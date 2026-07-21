@@ -46,6 +46,10 @@ pub struct SpawnInfo {
     /// via HP opcodes); `Some` for backends that ship it inline (eql).
     pub max_hp: Option<u32>,
     pub guild_id: u32,
+    /// Guild ids are only unique within a guild server, so the pair is the key
+    /// into the guild map built from [`Event::GuildsInZone`]. 0 on backends that
+    /// don't send it.
+    pub guild_server_id: u32,
     /// Present when the spawn packet carries position (eql); `None` when
     /// position arrives separately via movement opcodes (Live).
     pub pos: Option<Pos>,
@@ -102,6 +106,18 @@ pub struct LootItemInfo {
     pub name: String,
     pub icon: u32,
     pub item_id: u32,
+}
+
+/// One guild present in the zone, from the guild-in-zone opcodes. A spawn's
+/// guild is on the wire only as the (guild_id, server_id) pair — these records
+/// are the sole source of the NAME, so a consumer keys its guild map on the
+/// pair. `server_id` is part of the key, not decoration: ids are only unique
+/// within a guild server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuildInZone {
+    pub guild_id: u32,
+    pub server_id: u32,
+    pub name: String,
 }
 
 /// A single door / static object row from OP_SpawnDoor.
@@ -162,6 +178,14 @@ pub enum Event {
     /// merges the new race into the tracked spawn and re-renders it; the daemon
     /// ignores it for an unknown spawn (the spawn arrives already illusioned).
     SpawnIllusion { spawn_id: u32, race: u32, gender: u8 },
+    /// Guilds present in the current zone, resolving guild ids to names
+    /// (OP_GuildsInZoneList on zone-in, OP_NewGuildInZone as guilded players
+    /// arrive — the latter is just a one-element list, so both map here).
+    ///
+    /// The consumer accumulates these into a guild map and back-fills spawns:
+    /// a spawn can arrive before its guild is named, so tagging only on receipt
+    /// would permanently miss those.
+    GuildsInZone { guilds: Vec<GuildInZone> },
     /// Zone changed (OP_NewZone).
     ZoneChanged(ZoneInfo),
     /// The local player's profile (OP_PlayerProfile).
