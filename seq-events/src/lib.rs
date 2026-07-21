@@ -130,6 +130,32 @@ pub enum Event {
     /// A spawn's health changed (OP_HPUpdate). `max` is real HP for the self and
     /// a percentage base (100) for other spawns, mirroring the wire.
     SpawnHp { id: u32, cur: i32, max: i32 },
+    /// One packet of the multiplexed stat-sync channel (eql OP_HPUpdate), which
+    /// carries spawn HP plus the local player's mana/endurance together. Kept as
+    /// ONE event per packet on purpose: splitting it into per-stat events makes a
+    /// consumer emit several near-identical player snapshots for a single packet.
+    ///
+    /// The consumer owns the self/other split — it knows the player id and this
+    /// crate is stateless. Routing rules, mirroring the daemon:
+    ///   * HP is meaningful only when `has_hp && hp_max > 0`. For the self it is
+    ///     real cur/max; for other spawns the narrow form is a percentage.
+    ///   * mana/endurance are the local player's only, and only when `wide` —
+    ///     the narrow form is a u8 percent with a synthesized max of 100, which
+    ///     is useless as a max.
+    /// eql has no standalone endurance opcode, so this is its sole endurance feed.
+    StatSync {
+        spawn_id: u32,
+        wide: bool,
+        has_hp: bool,
+        hp_cur: i32,
+        hp_max: i32,
+        has_mana: bool,
+        mana_cur: i32,
+        mana_max: i32,
+        has_end: bool,
+        end_cur: i32,
+        end_max: i32,
+    },
     /// The local player moved (OP_ClientUpdate self position).
     SelfPos(Pos),
     /// A spawn changed race/model via an illusion (OP_Illusion). The consumer

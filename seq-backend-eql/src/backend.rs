@@ -163,17 +163,28 @@ fn death(bytes: &[u8]) -> Decoded {
 }
 
 // eql OP_HPUpdate is the multiplexed stat-sync channel: spawn HP (real for the
-// self, percent for others) plus player mana/endurance. We surface spawn HP as
-// SpawnHp — the caller's World treats the self as a spawn, so it needs no
-// player/spawn split. Player mana/endurance are deferred (Ignored for now).
+// self, percent for others) plus the player's mana/endurance, all in one packet.
+// Surface it whole as StatSync and let the consumer split self from other — it
+// knows the player id and this crate is stateless. Emitting one event per packet
+// (rather than one per stat) is deliberate: it keeps a single wire packet from
+// fanning out into several near-identical player snapshots downstream.
 fn hp_update(bytes: &[u8]) -> Decoded {
     match crate::parse_stat_sync(bytes) {
-        Ok(s) if s.has_hp && s.hp_max > 0 => Decoded::One(Event::SpawnHp {
-            id: s.spawn_id,
-            cur: s.hp_cur as i32,
-            max: s.hp_max as i32,
+        // The keepalive (flags 0x31, no stat bits) carries nothing to report.
+        Ok(s) if !s.has_hp && !s.has_mana && !s.has_end => Decoded::Ignored,
+        Ok(s) => Decoded::One(Event::StatSync {
+            spawn_id: s.spawn_id,
+            wide: s.wide,
+            has_hp: s.has_hp,
+            hp_cur: s.hp_cur as i32,
+            hp_max: s.hp_max as i32,
+            has_mana: s.has_mana,
+            mana_cur: s.mana_cur as i32,
+            mana_max: s.mana_max as i32,
+            has_end: s.has_end,
+            end_cur: s.end_cur as i32,
+            end_max: s.end_max as i32,
         }),
-        Ok(_) => Decoded::Ignored,
         Err(_) => Decoded::Malformed,
     }
 }
