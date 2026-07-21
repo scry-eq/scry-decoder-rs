@@ -257,6 +257,28 @@ mod ffi {
         name: String,
         size: u32,
     }
+    // One row of the eql guild roster (OP_GuildMemberList). Returned as a flat
+    // Vec (empty on decode failure); `guild_id` repeats per row so the C++ side
+    // needs no wrapper struct, mirroring BuffListEntry.
+    //
+    // `class_mask` is the eql MULTICLASS BITMASK (bit N = class N), not a class
+    // id — a character has three simultaneous classes. `primary_class` is its
+    // lowest set bit, for a consumer that can show only one.
+    // `zone_id` 0 = offline; `last_on` is unix seconds, 0 = never.
+    struct GuildRosterRow {
+        guild_id: u32,
+        name: String,
+        level: u32,
+        class_mask: u32,
+        primary_class: u8,
+        rank: u32,
+        last_on: u32,
+        banker: u8,
+        alt: u8,
+        full_member: u8,
+        public_note: String,
+        zone_id: u16,
+    }
     // One record of eql OP_BuffList (0x77ae). Returned as a flat Vec (empty on
     // decode failure); every entry repeats spawn_id so the C++ side can filter
     // to the player without a wrapper struct. remaining_ticks <= 0 = permanent.
@@ -575,6 +597,7 @@ mod ffi {
         fn decode_loot_transaction(bytes: &[u8]) -> LootTransaction;
         fn decode_loot_drops(bytes: &[u8]) -> LootDrops;
         fn decode_buff_list(bytes: &[u8]) -> Vec<BuffListEntry>;
+        fn decode_guild_roster(bytes: &[u8]) -> Vec<GuildRosterRow>;
         fn decode_self_pos_breadcrumb(bytes: &[u8]) -> Vec<SelfPosPoint>;
         fn decode_ucs_chat(bytes: &[u8]) -> Vec<UcsChatRecord>;
         fn decode_ucs_channels(bytes: &[u8]) -> Vec<String>;
@@ -991,6 +1014,41 @@ fn decode_loot_message(_bytes: &[u8]) -> ffi::SpecialMessage {
 #[cfg(not(feature = "backend-eql"))]
 fn decode_stat_sync(_bytes: &[u8]) -> ffi::StatSync {
     stat_sync_err()
+}
+
+// eql-only: OP_GuildMemberList — the full guild roster. Flattened to a Vec
+// (empty = decode failed / empty guild). live/test stub empty: the eql wire
+// diverges from the stock struct, so there is nothing shared to fall back to.
+#[cfg(feature = "backend-eql")]
+fn decode_guild_roster(bytes: &[u8]) -> Vec<ffi::GuildRosterRow> {
+    match seq_backend_eql::guild_roster::parse_guild_member_list(bytes) {
+        Ok(r) => r
+            .members
+            .into_iter()
+            .map(|m| ffi::GuildRosterRow {
+                guild_id: r.guild_id,
+                primary_class: seq_backend_eql::guild_roster::primary_class(m.class_mask),
+                name: m.name,
+                level: m.level,
+                class_mask: m.class_mask,
+                rank: m.rank,
+                last_on: m.last_on,
+                // The wire packs both flags into one field: 0 none, 1 banker,
+                // 2 alt, 3 alt banker.
+                banker: (m.banker_flag % 2) as u8,
+                alt: (m.banker_flag > 1) as u8,
+                full_member: m.full_member,
+                public_note: m.public_note,
+                zone_id: m.zone_id,
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn decode_guild_roster(_bytes: &[u8]) -> Vec<ffi::GuildRosterRow> {
+    Vec::new()
 }
 
 // eql-only: OP_BuffList (0x77ae) — the authoritative per-spawn active-buff list.

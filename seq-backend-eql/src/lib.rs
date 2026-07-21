@@ -61,6 +61,7 @@ pub mod group_disband;
 pub mod group_follow;
 pub mod group_member_list;
 pub mod guild_in_zone;
+pub mod guild_roster;
 pub mod group_roster;
 pub mod hp_update;
 pub mod illusion;
