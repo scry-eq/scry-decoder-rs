@@ -52,6 +52,8 @@ impl Backend for EqlBackend {
             "OP_ClickObject" => click_object(dir, bytes),
             "OP_SpawnAppearance2" => spawn_appearance2(bytes),
             "OP_TimeOfDay" => time_of_day(bytes),
+            "OP_Stance" => stance(bytes),
+            "OP_Invocation" => invocation(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_SelfPos" => self_pos_breadcrumb(bytes),
             "OP_Illusion" => illusion(bytes),
@@ -555,6 +557,54 @@ fn doors(bytes: &[u8]) -> Decoded {
 }
 
 // OP_Illusion: a spawn changed race/model (id + new race/gender).
+// OP_Stance / OP_Invocation are both 4B {u32 abilityId}; resolve the id to its
+// display name (stable eqgame.exe GetAbilityName enum), "#<id>" if unknown —
+// matching the daemon's stanceName/invocationName + fallback.
+fn stance_name(id: u32) -> Option<&'static str> {
+    Some(match id {
+        117 => "Offense",
+        118 => "Defense",
+        119 => "Evasive",
+        120 => "Balanced",
+        121 => "Mage Hunter",
+        122 => "Striker",
+        123 => "Berserker",
+        124 => "Ranged",
+        135 => "Channeler",
+        _ => return None,
+    })
+}
+fn invocation_name(id: u32) -> Option<&'static str> {
+    Some(match id {
+        125 => "Recover",
+        126 => "Empower",
+        127 => "Inversion",
+        128 => "Spell Blade",
+        129 => "Over Channel",
+        130 => "Inviolable",
+        131 => "Divine",
+        132 => "Chained",
+        133 => "Arcane Mastery",
+        134 => "Unyielding",
+        _ => return None,
+    })
+}
+fn resolve_ability(bytes: &[u8], name_of: fn(u32) -> Option<&'static str>) -> Option<String> {
+    let id = crate::parse_activate_ability(bytes).ok()?;
+    Some(name_of(id).map(str::to_owned).unwrap_or_else(|| format!("#{id}")))
+}
+fn stance(bytes: &[u8]) -> Decoded {
+    match resolve_ability(bytes, stance_name) {
+        Some(name) => Decoded::One(Event::Stance { name }),
+        None => Decoded::Malformed,
+    }
+}
+fn invocation(bytes: &[u8]) -> Decoded {
+    match resolve_ability(bytes, invocation_name) {
+        Some(name) => Decoded::One(Event::Invocation { name }),
+        None => Decoded::Malformed,
+    }
+}
 fn time_of_day(bytes: &[u8]) -> Decoded {
     // 8B timeOfDayStruct: hour@0 u8, minute@1 u8, day@2 u8, month@3 u8,
     // year@4 u16 (+ 2B pad). Read the 6 meaningful bytes; tolerate the pad.
@@ -704,6 +754,20 @@ mod tests {
         b[4..8].copy_from_slice(&22u32.to_le_bytes()); // type 22 = periodic tick
         let d = EqlBackend.decode("OP_SpawnAppearance2", Dir::ServerToClient, &b);
         assert_eq!(d, Decoded::Ignored);
+    }
+
+    #[test]
+    fn stance_resolves_known_and_unknown() {
+        let known = EqlBackend.decode("OP_Stance", Dir::ServerToClient, &118u32.to_le_bytes());
+        assert_eq!(known, Decoded::One(Event::Stance { name: "Defense".into() }));
+        let unknown = EqlBackend.decode("OP_Stance", Dir::ServerToClient, &999u32.to_le_bytes());
+        assert_eq!(unknown, Decoded::One(Event::Stance { name: "#999".into() }));
+    }
+
+    #[test]
+    fn invocation_resolves() {
+        let d = EqlBackend.decode("OP_Invocation", Dir::ServerToClient, &125u32.to_le_bytes());
+        assert_eq!(d, Decoded::One(Event::Invocation { name: "Recover".into() }));
     }
 
     #[test]

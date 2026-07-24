@@ -205,6 +205,13 @@ pub enum Event {
     ZoneChanged(ZoneInfo),
     /// The local player's profile (OP_PlayerProfile).
     PlayerProfile(ProfileInfo),
+    /// The player's active STANCE changed (eql OP_Stance echo). `name` is the
+    /// resolved display name (e.g. "Defense"), or "#<id>" for an unknown id —
+    /// ready to show. The consumer stores it on the player and re-emits stats.
+    Stance { name: String },
+    /// The player's active INVOCATION changed (eql OP_Invocation echo). `name`
+    /// is the resolved display name (e.g. "Recover"), or "#<id>" if unknown.
+    Invocation { name: String },
     /// A player switched multiclass loadouts (eql OP_LoadoutSwap), changing
     /// their class + level. eql sends no OP_PlayerProfile on a swap, so this is
     /// the sole source of the new identity. The consumer owns the self/other
