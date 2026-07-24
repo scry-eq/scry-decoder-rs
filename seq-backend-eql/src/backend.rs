@@ -49,6 +49,7 @@ impl Backend for EqlBackend {
             "OP_NewGuildInZone" => new_guild_in_zone(bytes),
             "OP_PlayerProfile" => player_profile(bytes),
             "OP_LoadoutSwap" => loadout_swap(bytes),
+            "OP_ClickObject" => click_object(dir, bytes),
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_SelfPos" => self_pos_breadcrumb(bytes),
             "OP_Illusion" => illusion(bytes),
@@ -552,6 +553,20 @@ fn doors(bytes: &[u8]) -> Decoded {
 }
 
 // OP_Illusion: a spawn changed race/model (id + new race/gender).
+fn click_object(dir: Dir, bytes: &[u8]) -> Decoded {
+    // Dual-direction: the C>S side is the client's click REQUEST (16B, layout
+    // unmapped) which nobody decodes — ignore it, like the daemon (S>C only).
+    // The S>C side is the 12B remDropStruct removal of a ground item.
+    if dir != Dir::ServerToClient {
+        return Decoded::Ignored;
+    }
+    match crate::click_object::parse_click_object(bytes) {
+        Ok(c) => Decoded::One(Event::GroundItemRemoved {
+            drop_id: c.drop_id as u32,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
 fn loadout_swap(bytes: &[u8]) -> Decoded {
     match crate::loadout_swap::parse_loadout_swap(bytes) {
         Ok(l) => Decoded::One(Event::LoadoutSwap {
@@ -617,6 +632,21 @@ mod tests {
         // opcode is wired — not fall through to Unhandled.
         let d = EqlBackend.decode("OP_LoadoutSwap", Dir::ServerToClient, &[0u8; 4]);
         assert_eq!(d, Decoded::Malformed);
+    }
+
+    #[test]
+    fn click_object_s2c_removes_a_ground_item() {
+        let mut buf = [0u8; 12]; // remDropStruct: dropId@0, spawnId@4
+        buf[0..2].copy_from_slice(&0x1234u16.to_le_bytes());
+        let d = EqlBackend.decode("OP_ClickObject", Dir::ServerToClient, &buf);
+        assert_eq!(d, Decoded::One(Event::GroundItemRemoved { drop_id: 0x1234 }));
+    }
+
+    #[test]
+    fn click_object_c2s_request_is_ignored() {
+        // The client's 16B click request carries nothing we surface.
+        let d = EqlBackend.decode("OP_ClickObject", Dir::ClientToServer, &[0u8; 16]);
+        assert_eq!(d, Decoded::Ignored);
     }
 
     #[test]

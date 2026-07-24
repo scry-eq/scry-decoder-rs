@@ -204,6 +204,10 @@ pub enum Event {
     },
     /// A batch of doors / static objects (OP_SpawnDoor).
     Doors(Vec<DoorInfo>),
+    /// A ground item was picked up / removed (OP_ClickObject, S>C removal side —
+    /// the C>S click request is ignored). `drop_id` matches the GroundItem's
+    /// drop_id; the consumer removes the drop it rendered for that id.
+    GroundItemRemoved { drop_id: u32 },
     /// A ground item / static placeable (OP_GroundSpawn). The daemon renders it
     /// as a DROP-type spawn (it keeps a separate drop map; a single-map consumer
     /// offsets the id like doors). `id_file` is the actorDef model string —
