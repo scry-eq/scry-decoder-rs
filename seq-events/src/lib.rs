@@ -120,6 +120,25 @@ pub struct GuildInZone {
     pub name: String,
 }
 
+/// One row of the guild roster (see [`Event::GuildRoster`]). `class` is the
+/// primary (lowest set bit of `class_mask`); `banker`/`alt` are the two flags
+/// split from the wire's packed field. `zone_id` 0 = offline; `last_on` is unix
+/// seconds (0 = never).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuildRosterMember {
+    pub name: String,
+    pub level: u32,
+    pub class: u32,
+    pub class_mask: u32,
+    pub rank: u32,
+    pub last_on: u32,
+    pub banker: bool,
+    pub alt: bool,
+    pub full_member: bool,
+    pub public_note: String,
+    pub zone_id: u32,
+}
+
 /// A single door / static object row from OP_SpawnDoor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DoorInfo {
@@ -212,6 +231,14 @@ pub enum Event {
     /// The player's active INVOCATION changed (eql OP_Invocation echo). `name`
     /// is the resolved display name (e.g. "Recover"), or "#<id>" if unknown.
     Invocation { name: String },
+    /// The full guild roster (OP_GuildMemberList), authoritative and replacing.
+    /// The consumer replaces the whole roster; an empty `members` means the
+    /// parse failed its canary (or the guild is empty) and should be ignored,
+    /// not wiped over.
+    GuildRoster {
+        guild_id: u32,
+        members: Vec<GuildRosterMember>,
+    },
     /// A player switched multiclass loadouts (eql OP_LoadoutSwap), changing
     /// their class + level. eql sends no OP_PlayerProfile on a swap, so this is
     /// the sole source of the new identity. The consumer owns the self/other

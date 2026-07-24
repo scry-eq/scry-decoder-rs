@@ -10,8 +10,8 @@
 //! output stays byte-for-byte identical across the migration.
 
 use seq_events::{
-    heading_deg, Backend, BuffEntry, Decoded, Dir, DoorInfo, Event, LootItemInfo, Pos, ProfileInfo,
-    SpawnInfo, ZoneInfo,
+    heading_deg, Backend, BuffEntry, Decoded, Dir, DoorInfo, Event, GuildRosterMember,
+    LootItemInfo, Pos, ProfileInfo, SpawnInfo, ZoneInfo,
 };
 
 /// The EverQuest Legends backend (this crate's own parsers).
@@ -54,6 +54,7 @@ impl Backend for EqlBackend {
             "OP_TimeOfDay" => time_of_day(bytes),
             "OP_Stance" => stance(bytes),
             "OP_Invocation" => invocation(bytes),
+            "OP_GuildMemberList" => guild_roster(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_SelfPos" => self_pos_breadcrumb(bytes),
             "OP_Illusion" => illusion(bytes),
@@ -593,6 +594,36 @@ fn resolve_ability(bytes: &[u8], name_of: fn(u32) -> Option<&'static str>) -> Op
     let id = crate::parse_activate_ability(bytes).ok()?;
     Some(name_of(id).map(str::to_owned).unwrap_or_else(|| format!("#{id}")))
 }
+fn guild_roster(bytes: &[u8]) -> Decoded {
+    // eql wire diverges from the stock struct (wider header, multiclass mask in
+    // the class slot, a rank field, a trailing zone id). The bridge's cxx path
+    // and this share the one parser; the flag/primary-class derivation mirrors
+    // decode_guild_roster in seq-bridge.
+    match crate::guild_roster::parse_guild_member_list(bytes) {
+        Ok(r) => {
+            let members = r
+                .members
+                .into_iter()
+                .map(|m| GuildRosterMember {
+                    class: crate::guild_roster::primary_class(m.class_mask) as u32,
+                    name: m.name,
+                    level: m.level,
+                    class_mask: m.class_mask,
+                    rank: m.rank,
+                    last_on: m.last_on,
+                    // Wire packs both flags into one field: 0 none, 1 banker, 2 alt, 3 both.
+                    banker: m.banker_flag % 2 != 0,
+                    alt: m.banker_flag > 1,
+                    full_member: m.full_member != 0,
+                    public_note: m.public_note,
+                    zone_id: m.zone_id as u32,
+                })
+                .collect();
+            Decoded::One(Event::GuildRoster { guild_id: r.guild_id, members })
+        }
+        Err(_) => Decoded::Malformed,
+    }
+}
 fn stance(bytes: &[u8]) -> Decoded {
     match resolve_ability(bytes, stance_name) {
         Some(name) => Decoded::One(Event::Stance { name }),
@@ -768,6 +799,14 @@ mod tests {
     fn invocation_resolves() {
         let d = EqlBackend.decode("OP_Invocation", Dir::ServerToClient, &125u32.to_le_bytes());
         assert_eq!(d, Decoded::One(Event::Invocation { name: "Recover".into() }));
+    }
+
+    #[test]
+    fn guild_roster_is_routed() {
+        // A truncated payload reaches the parser (Malformed), proving the arm is
+        // wired rather than falling through to Unhandled.
+        let d = EqlBackend.decode("OP_GuildMemberList", Dir::ServerToClient, &[0u8; 4]);
+        assert_eq!(d, Decoded::Malformed);
     }
 
     #[test]
