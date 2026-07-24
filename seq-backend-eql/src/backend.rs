@@ -51,6 +51,7 @@ impl Backend for EqlBackend {
             "OP_LoadoutSwap" => loadout_swap(bytes),
             "OP_ClickObject" => click_object(dir, bytes),
             "OP_SpawnAppearance2" => spawn_appearance2(bytes),
+            "OP_TimeOfDay" => time_of_day(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_SelfPos" => self_pos_breadcrumb(bytes),
             "OP_Illusion" => illusion(bytes),
@@ -554,6 +555,20 @@ fn doors(bytes: &[u8]) -> Decoded {
 }
 
 // OP_Illusion: a spawn changed race/model (id + new race/gender).
+fn time_of_day(bytes: &[u8]) -> Decoded {
+    // 8B timeOfDayStruct: hour@0 u8, minute@1 u8, day@2 u8, month@3 u8,
+    // year@4 u16 (+ 2B pad). Read the 6 meaningful bytes; tolerate the pad.
+    if bytes.len() < 6 {
+        return Decoded::Malformed;
+    }
+    Decoded::One(Event::TimeOfDay {
+        hour: bytes[0] as u32,
+        minute: bytes[1] as u32,
+        day: bytes[2] as u32,
+        month: bytes[3] as u32,
+        year: u16::from_le_bytes([bytes[4], bytes[5]]) as u32,
+    })
+}
 fn spawn_appearance2(bytes: &[u8]) -> Decoded {
     // 24B {u32 spawnId, u32 type, u32 value, u8[12]}. Only type 6 (pose:
     // 110=sit / 100=stand / 111=duck) carries a spawn field; every other type
@@ -689,6 +704,17 @@ mod tests {
         b[4..8].copy_from_slice(&22u32.to_le_bytes()); // type 22 = periodic tick
         let d = EqlBackend.decode("OP_SpawnAppearance2", Dir::ServerToClient, &b);
         assert_eq!(d, Decoded::Ignored);
+    }
+
+    #[test]
+    fn time_of_day_decodes() {
+        // hour=13, minute=45, day=7, month=3, year=3521
+        let b = [13u8, 45, 7, 3, 0xC1, 0x0D, 0, 0]; // 0x0DC1 = 3521
+        let d = EqlBackend.decode("OP_TimeOfDay", Dir::ServerToClient, &b);
+        assert_eq!(
+            d,
+            Decoded::One(Event::TimeOfDay { year: 3521, month: 3, day: 7, hour: 13, minute: 45 })
+        );
     }
 
     #[test]

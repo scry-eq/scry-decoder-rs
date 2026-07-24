@@ -191,6 +191,16 @@ pub enum Event {
     /// a spawn can arrive before its guild is named, so tagging only on receipt
     /// would permanently miss those.
     GuildsInZone { guilds: Vec<GuildInZone> },
+    /// A Norrath time sync (OP_TimeOfDay). The consumer surfaces it as a time
+    /// sync-point (standalone + in its snapshot) so the client can track the
+    /// game clock. `day` 1..28, `month` 1..12, `hour` 0..23, `minute` 0..59.
+    TimeOfDay {
+        year: u32,
+        month: u32,
+        day: u32,
+        hour: u32,
+        minute: u32,
+    },
     /// Zone changed (OP_NewZone).
     ZoneChanged(ZoneInfo),
     /// The local player's profile (OP_PlayerProfile).
