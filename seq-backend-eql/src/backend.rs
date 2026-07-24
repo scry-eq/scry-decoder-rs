@@ -48,6 +48,7 @@ impl Backend for EqlBackend {
             "OP_GuildsInZoneList" => guilds_in_zone_list(bytes),
             "OP_NewGuildInZone" => new_guild_in_zone(bytes),
             "OP_PlayerProfile" => player_profile(bytes),
+            "OP_LoadoutSwap" => loadout_swap(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_SelfPos" => self_pos_breadcrumb(bytes),
             "OP_Illusion" => illusion(bytes),
@@ -551,6 +552,17 @@ fn doors(bytes: &[u8]) -> Decoded {
 }
 
 // OP_Illusion: a spawn changed race/model (id + new race/gender).
+fn loadout_swap(bytes: &[u8]) -> Decoded {
+    match crate::loadout_swap::parse_loadout_swap(bytes) {
+        Ok(l) => Decoded::One(Event::LoadoutSwap {
+            spawn_id: l.spawn_id,
+            level: l.level as u32,
+            class: l.class_,
+            race: l.race,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
 fn illusion(bytes: &[u8]) -> Decoded {
     match crate::illusion::parse_illusion(bytes) {
         Ok(i) => Decoded::One(Event::SpawnIllusion {
@@ -597,6 +609,14 @@ mod tests {
     fn enter_world_has_no_payload() {
         let d = EqlBackend.decode("OP_EnterWorld", Dir::ServerToClient, &[]);
         assert_eq!(d, Decoded::One(Event::EnterWorld));
+    }
+
+    #[test]
+    fn loadout_swap_is_routed() {
+        // A truncated payload must reach the parser (Malformed), proving the
+        // opcode is wired — not fall through to Unhandled.
+        let d = EqlBackend.decode("OP_LoadoutSwap", Dir::ServerToClient, &[0u8; 4]);
+        assert_eq!(d, Decoded::Malformed);
     }
 
     #[test]

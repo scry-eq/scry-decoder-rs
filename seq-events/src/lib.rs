@@ -190,6 +190,18 @@ pub enum Event {
     ZoneChanged(ZoneInfo),
     /// The local player's profile (OP_PlayerProfile).
     PlayerProfile(ProfileInfo),
+    /// A player switched multiclass loadouts (eql OP_LoadoutSwap), changing
+    /// their class + level. eql sends no OP_PlayerProfile on a swap, so this is
+    /// the sole source of the new identity. The consumer owns the self/other
+    /// split (it knows the player id): the self → refresh identity + its player
+    /// snapshot; another spawn → update that spawn's class/level in place.
+    /// `class` is the single resolved class, not the multiclass mask.
+    LoadoutSwap {
+        spawn_id: u32,
+        level: u32,
+        class: u32,
+        race: u32,
+    },
     /// A batch of doors / static objects (OP_SpawnDoor).
     Doors(Vec<DoorInfo>),
     /// A ground item / static placeable (OP_GroundSpawn). The daemon renders it
