@@ -50,6 +50,7 @@ impl Backend for EqlBackend {
             "OP_PlayerProfile" => player_profile(bytes),
             "OP_LoadoutSwap" => loadout_swap(bytes),
             "OP_ClickObject" => click_object(dir, bytes),
+            "OP_SpawnAppearance2" => spawn_appearance2(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_SelfPos" => self_pos_breadcrumb(bytes),
             "OP_Illusion" => illusion(bytes),
@@ -553,6 +554,26 @@ fn doors(bytes: &[u8]) -> Decoded {
 }
 
 // OP_Illusion: a spawn changed race/model (id + new race/gender).
+fn spawn_appearance2(bytes: &[u8]) -> Decoded {
+    // 24B {u32 spawnId, u32 type, u32 value, u8[12]}. Only type 6 (pose:
+    // 110=sit / 100=stand / 111=duck) carries a spawn field; every other type
+    // (periodic ticks, timestamps, mob-lock 0x2c, …) is consumed silently,
+    // matching the daemon's EqlDispatch::spawnAppearance. Guard on >= 12 like
+    // the daemon (only the first 12 bytes are read).
+    if bytes.len() < 12 {
+        return Decoded::Malformed;
+    }
+    let spawn_id = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    let kind = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+    let value = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
+    if kind != 6 {
+        return Decoded::Ignored;
+    }
+    Decoded::One(Event::SpawnAnimation {
+        spawn_id,
+        animation: value,
+    })
+}
 fn click_object(dir: Dir, bytes: &[u8]) -> Decoded {
     // Dual-direction: the C>S side is the client's click REQUEST (16B, layout
     // unmapped) which nobody decodes — ignore it, like the daemon (S>C only).
@@ -646,6 +667,27 @@ mod tests {
     fn click_object_c2s_request_is_ignored() {
         // The client's 16B click request carries nothing we surface.
         let d = EqlBackend.decode("OP_ClickObject", Dir::ClientToServer, &[0u8; 16]);
+        assert_eq!(d, Decoded::Ignored);
+    }
+
+    #[test]
+    fn spawn_appearance2_type6_is_a_pose() {
+        let mut b = [0u8; 24];
+        b[0..4].copy_from_slice(&1234u32.to_le_bytes()); // spawnId
+        b[4..8].copy_from_slice(&6u32.to_le_bytes()); // type 6 = pose
+        b[8..12].copy_from_slice(&110u32.to_le_bytes()); // 110 = sit
+        let d = EqlBackend.decode("OP_SpawnAppearance2", Dir::ServerToClient, &b);
+        assert_eq!(
+            d,
+            Decoded::One(Event::SpawnAnimation { spawn_id: 1234, animation: 110 })
+        );
+    }
+
+    #[test]
+    fn spawn_appearance2_other_types_are_ignored() {
+        let mut b = [0u8; 24];
+        b[4..8].copy_from_slice(&22u32.to_le_bytes()); // type 22 = periodic tick
+        let d = EqlBackend.decode("OP_SpawnAppearance2", Dir::ServerToClient, &b);
         assert_eq!(d, Decoded::Ignored);
     }
 

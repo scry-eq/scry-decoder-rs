@@ -174,6 +174,11 @@ pub enum Event {
     },
     /// The local player moved (OP_ClientUpdate self position).
     SelfPos(Pos),
+    /// A spawn changed pose/animation (OP_SpawnAppearance2 type 6: 110=sit,
+    /// 100=stand, 111=duck). Only the pose subtype is surfaced — other
+    /// appearance types carry no spawn field. The consumer updates the tracked
+    /// spawn's animation and re-emits it (ignores an unknown spawn).
+    SpawnAnimation { spawn_id: u32, animation: u32 },
     /// A spawn changed race/model via an illusion (OP_Illusion). The consumer
     /// merges the new race into the tracked spawn and re-renders it; the daemon
     /// ignores it for an unknown spawn (the spawn arrives already illusioned).
