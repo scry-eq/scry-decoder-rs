@@ -7,11 +7,17 @@
 //! a trailing zone id, none of which Live has).
 //!
 //! ```text
-//! header  LPText requesterName, skip 4, skip 4, skip 1, u32 count
+//! header  LPText requesterName, skip 4, skip 4, skip 2, u32 count
 //! member  LPText name, u32 level, u32 banker, u32 class, u32 rank, u32 lastOn,
 //!         u8 tributeOn, u8 trophyOn, u32 tributeDonated, u32 tributeLastDonation,
 //!         u8 fullMember, LPText publicNote, skip 6
 //! ```
+//!
+//! The header's pre-count field is `skip 2` on current Live — one byte wider than
+//! legacy 6.4.25's `skip 1` (a byte was added in a later patch; verified against a
+//! 13338-byte / 232-member live capture, which lands exactly on the payload end).
+//! `count` is unreliable, so — like legacy — we IGNORE it and walk members until
+//! the payload is consumed, rather than looping `count` times.
 //!
 //! `class` is a single class id (Live has no multiclass). `banker` packs two
 //! flags: 0 none, 1 banker, 2 alt, 3 alt banker. Live does NOT carry a member's
@@ -45,62 +51,61 @@ pub struct GuildRoster {
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum GuildRosterError {
-    #[error("truncated: {0}")]
+    #[error("truncated header: {0}")]
     Truncated(#[from] CursorError),
-    #[error("declared {0} members but the walk did not consume the payload ({1} bytes left)")]
-    CountMismatch(usize, usize),
 }
 
 fn latin1(b: &[u8]) -> String {
     String::from_utf8_lossy(b).into_owned()
 }
 
+fn read_member(c: &mut Cursor) -> Result<GuildMemberRow, CursorError> {
+    let name = latin1(c.read_lp_text()?);
+    let level = c.read_u32_le()?;
+    let banker_flag = c.read_u32_le()?;
+    let primary_class = c.read_u32_le()?;
+    let rank = c.read_u32_le()?;
+    let last_on = c.read_u32_le()?;
+    let _tribute_on = c.read_u8()?;
+    let _trophy_on = c.read_u8()?;
+    let _tribute_donated = c.read_u32_le()?;
+    let _tribute_last_donation = c.read_u32_le()?;
+    let full_member = c.read_u8()? != 0;
+    let public_note = latin1(c.read_lp_text()?);
+    c.skip(6)?; // tail — legacy reads no zone/instance from it
+    Ok(GuildMemberRow {
+        name,
+        level,
+        primary_class,
+        rank,
+        last_on,
+        banker: banker_flag % 2 != 0,
+        alt: banker_flag > 1,
+        full_member,
+        public_note,
+    })
+}
+
 pub fn parse_guild_member_list(bytes: &[u8]) -> Result<GuildRoster, GuildRosterError> {
     let mut c = Cursor::new(bytes);
 
     // Header: the requester's own name, three skipped fields (patch-added over
-    // the years), then the member count.
+    // the years — the last is 2 bytes on current Live), then the member count.
     let _requester = c.read_lp_text()?;
     c.skip(4)?;
     c.skip(4)?;
-    c.skip(1)?;
-    let count = c.read_u32_le()? as usize;
+    c.skip(2)?;
+    let count = c.read_u32_le()? as usize; // unreliable — used only to pre-size
 
-    let mut members = Vec::with_capacity(count.min(2048));
-    for _ in 0..count {
-        let name = latin1(c.read_lp_text()?);
-        let level = c.read_u32_le()?;
-        let banker_flag = c.read_u32_le()?;
-        let primary_class = c.read_u32_le()?;
-        let rank = c.read_u32_le()?;
-        let last_on = c.read_u32_le()?;
-        let _tribute_on = c.read_u8()?;
-        let _trophy_on = c.read_u8()?;
-        let _tribute_donated = c.read_u32_le()?;
-        let _tribute_last_donation = c.read_u32_le()?;
-        let full_member = c.read_u8()? != 0;
-        let public_note = latin1(c.read_lp_text()?);
-        // 6-byte tail (legacy reads no zone/instance from it).
-        c.skip(6)?;
-
-        members.push(GuildMemberRow {
-            name,
-            level,
-            primary_class,
-            rank,
-            last_on,
-            banker: banker_flag % 2 != 0,
-            alt: banker_flag > 1,
-            full_member,
-            public_note,
-        });
-    }
-
-    // The walk should land exactly on the payload end — the canary that every
-    // variable field was read correctly (legacy loops until end, i.e. assumes no
-    // trailing bytes). A short landing means the layout drifted.
-    if !c.at_end() {
-        return Err(GuildRosterError::CountMismatch(count, c.remaining()));
+    // Walk members to the payload end (legacy ignores `count`). A member read
+    // that runs short (truncation / trailing pad) ends the walk with what we
+    // have, rather than failing the whole roster.
+    let mut members = Vec::with_capacity(count.min(4096));
+    while !c.at_end() {
+        match read_member(&mut c) {
+            Ok(m) => members.push(m),
+            Err(_) => break,
+        }
     }
 
     Ok(GuildRoster { guild_id: 0, members })
@@ -134,9 +139,9 @@ mod tests {
     fn roster(members: &[(&str, u32, u32, u32, &str)]) -> Vec<u8> {
         let mut b = Vec::new();
         lp(&mut b, "Self");
-        b.extend_from_slice(&[0u8; 4]);
-        b.extend_from_slice(&[0u8; 4]);
-        b.push(0);
+        b.extend_from_slice(&[0u8; 4]); // skip4
+        b.extend_from_slice(&[0u8; 4]); // skip4
+        b.extend_from_slice(&[0u8; 2]); // skip2 (current Live)
         b.extend_from_slice(&(members.len() as u32).to_le_bytes());
         for m in members {
             member(&mut b, m.0, m.1, m.2, m.3, m.4);
@@ -161,7 +166,7 @@ mod tests {
     fn banker_and_alt_flags() {
         let mut b = Vec::new();
         lp(&mut b, "Self");
-        b.extend_from_slice(&[0u8; 9]);
+        b.extend_from_slice(&[0u8; 10]); // skip4 + skip4 + skip2
         b.extend_from_slice(&1u32.to_le_bytes()); // count
         // banker_flag = 3 -> banker + alt
         lp(&mut b, "X");
@@ -188,19 +193,23 @@ mod tests {
     }
 
     #[test]
-    fn trailing_bytes_fail_the_canary() {
+    fn trailing_padding_is_tolerated() {
+        // A short trailing pad after the last member is ignored (the walk ends
+        // when a member read runs short), not treated as an error.
         let mut b = roster(&[("Aaaa", 60, 1, 0, "")]);
         b.extend_from_slice(&[0u8; 4]);
-        assert!(matches!(
-            parse_guild_member_list(&b),
-            Err(GuildRosterError::CountMismatch(..))
-        ));
+        assert_eq!(parse_guild_member_list(&b).unwrap().members.len(), 1);
     }
 
     #[test]
-    fn truncated_member_errors() {
-        let mut b = roster(&[("Aaaa", 60, 1, 0, "")]);
-        b.truncate(b.len() - 4);
-        assert!(parse_guild_member_list(&b).is_err());
+    fn truncated_member_is_dropped_not_fatal() {
+        // A truncated final member ends the walk with the members read so far,
+        // rather than failing the whole roster.
+        let b = roster(&[("Aaaa", 60, 1, 0, ""), ("Bbbb", 55, 2, 1, "")]);
+        let full = parse_guild_member_list(&b).unwrap().members.len();
+        assert_eq!(full, 2);
+        let mut cut = b.clone();
+        cut.truncate(cut.len() - 4); // chop the second member's tail
+        assert_eq!(parse_guild_member_list(&cut).unwrap().members.len(), 1);
     }
 }
