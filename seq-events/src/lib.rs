@@ -256,6 +256,16 @@ pub enum Event {
         message: String,
         sender: String,
     },
+    /// One entry of the guild's rank-name table (OP_ExpandedGuildInfo). Guilds
+    /// rename their ranks freely, so a `GuildRosterMember.rank` only means
+    /// something against this table. One arrives per rank (right after the
+    /// roster); the consumer accumulates them into a `rank -> name` map keyed by
+    /// `rank_index` (1-based, matching the member rank field).
+    GuildRankName {
+        guild_id: u32,
+        rank_index: u32,
+        rank_name: String,
+    },
     /// A player switched multiclass loadouts (eql OP_LoadoutSwap), changing
     /// their class + level. eql sends no OP_PlayerProfile on a swap, so this is
     /// the sole source of the new identity. The consumer owns the self/other

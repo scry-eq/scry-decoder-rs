@@ -56,6 +56,7 @@ impl Backend for EqlBackend {
             "OP_Invocation" => invocation(bytes),
             "OP_GuildMemberList" => guild_roster(bytes),
             "OP_GuildMOTD" => guild_motd(bytes),
+            "OP_ExpandedGuildInfo" => expanded_guild_info(bytes),
             "OP_InspectAnswer" => inspect_answer(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_SelfPos" => self_pos_breadcrumb(bytes),
@@ -656,6 +657,22 @@ fn guild_roster(bytes: &[u8]) -> Decoded {
         Err(_) => Decoded::Malformed,
     }
 }
+
+fn expanded_guild_info(bytes: &[u8]) -> Decoded {
+    // Tagged union; only the rank-name action carries a rank-table entry. eql's
+    // wire is byte-identical to Live's here (both dumped from captures). One
+    // entry per packet — the consumer accumulates the rank -> name table.
+    let i = crate::guild_expanded_info::parse_expanded_guild_info(bytes);
+    if i.rank_index == 0 || i.rank_name.is_empty() {
+        return Decoded::Ignored; // not the rank-name action (misc guild config)
+    }
+    Decoded::One(Event::GuildRankName {
+        guild_id: i.guild_id,
+        rank_index: i.rank_index,
+        rank_name: i.rank_name,
+    })
+}
+
 fn stance(bytes: &[u8]) -> Decoded {
     match resolve_ability(bytes, stance_name) {
         Some(name) => Decoded::One(Event::Stance { name }),
