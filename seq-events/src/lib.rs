@@ -231,6 +231,15 @@ pub enum Event {
     /// The player's active INVOCATION changed (eql OP_Invocation echo). `name`
     /// is the resolved display name (e.g. "Recover"), or "#<id>" if unknown.
     Invocation { name: String },
+    /// A spawn-inspect result (OP_InspectAnswer): the 23 worn-slot item names
+    /// (empty string = empty slot) + the inspected player's bio text. Icons on
+    /// the wire are dropped (no home). The consumer forwards it to whoever
+    /// requested the inspect.
+    InspectAnswer {
+        spawn_id: u32,
+        item_names: Vec<String>,
+        bio: String,
+    },
     /// The full guild roster (OP_GuildMemberList), authoritative and replacing.
     /// The consumer replaces the whole roster; an empty `members` means the
     /// parse failed its canary (or the guild is empty) and should be ignored,

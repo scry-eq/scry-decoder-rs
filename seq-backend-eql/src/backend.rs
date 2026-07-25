@@ -55,6 +55,7 @@ impl Backend for EqlBackend {
             "OP_Stance" => stance(bytes),
             "OP_Invocation" => invocation(bytes),
             "OP_GuildMemberList" => guild_roster(bytes),
+            "OP_InspectAnswer" => inspect_answer(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_SelfPos" => self_pos_breadcrumb(bytes),
             "OP_Illusion" => illusion(bytes),
@@ -594,6 +595,24 @@ fn resolve_ability(bytes: &[u8], name_of: fn(u32) -> Option<&'static str>) -> Op
     let id = crate::parse_activate_ability(bytes).ok()?;
     Some(name_of(id).map(str::to_owned).unwrap_or_else(|| format!("#{id}")))
 }
+fn inspect_answer(bytes: &[u8]) -> Decoded {
+    // 1956B inspectDataStruct: pad[4], spawnId@4, itemNames[23][64]@8,
+    // icons[23]@1480 (dropped — no proto home), mytext[200]@1572, pad[184].
+    // Read through mytext; each name/bio is NUL-terminated latin1 (like strnlen).
+    const NAMES_OFF: usize = 8;
+    const NAME_LEN: usize = 64;
+    const BIO_OFF: usize = 1572;
+    const BIO_LEN: usize = 200;
+    if bytes.len() < BIO_OFF + BIO_LEN {
+        return Decoded::Malformed;
+    }
+    let spawn_id = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+    let item_names = (0..23)
+        .map(|i| crate::cstr_latin1(&bytes[NAMES_OFF + i * NAME_LEN..NAMES_OFF + (i + 1) * NAME_LEN]))
+        .collect();
+    let bio = crate::cstr_latin1(&bytes[BIO_OFF..BIO_OFF + BIO_LEN]);
+    Decoded::One(Event::InspectAnswer { spawn_id, item_names, bio })
+}
 fn guild_roster(bytes: &[u8]) -> Decoded {
     // eql wire diverges from the stock struct (wider header, multiclass mask in
     // the class slot, a rank field, a trailing zone id). The bridge's cxx path
@@ -799,6 +818,33 @@ mod tests {
     fn invocation_resolves() {
         let d = EqlBackend.decode("OP_Invocation", Dir::ServerToClient, &125u32.to_le_bytes());
         assert_eq!(d, Decoded::One(Event::Invocation { name: "Recover".into() }));
+    }
+
+    #[test]
+    fn inspect_answer_decodes_names_and_bio() {
+        let mut b = vec![0u8; 1956];
+        b[4..8].copy_from_slice(&77u32.to_le_bytes()); // spawnId
+        b[8..8 + 5].copy_from_slice(b"Sword"); // itemNames[0]
+        b[1572..1572 + 3].copy_from_slice(b"Hi!"); // mytext (bio)
+        let d = EqlBackend.decode("OP_InspectAnswer", Dir::ServerToClient, &b);
+        match d {
+            Decoded::One(Event::InspectAnswer { spawn_id, item_names, bio }) => {
+                assert_eq!(spawn_id, 77);
+                assert_eq!(item_names.len(), 23);
+                assert_eq!(item_names[0], "Sword");
+                assert_eq!(item_names[1], "");
+                assert_eq!(bio, "Hi!");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn inspect_answer_truncated_is_malformed() {
+        assert_eq!(
+            EqlBackend.decode("OP_InspectAnswer", Dir::ServerToClient, &[0u8; 100]),
+            Decoded::Malformed
+        );
     }
 
     #[test]
