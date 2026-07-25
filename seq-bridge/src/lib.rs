@@ -1076,10 +1076,11 @@ fn decode_new_guild_in_zone(_bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
     Vec::new()
 }
 
-// eql-only: OP_GuildMOTD — the guild message of the day. live/test stub `ok:false`.
-#[cfg(feature = "backend-eql")]
+// OP_GuildMOTD — the guild message of the day. Each backend owns its parser
+// (`backend` = seq_decode for live/test, seq_backend_eql for eql); the wire is
+// the stock struct on both today.
 fn decode_guild_motd(bytes: &[u8]) -> ffi::GuildMotd {
-    match seq_backend_eql::guild_motd::parse_guild_motd(bytes) {
+    match backend::guild_motd::parse_guild_motd(bytes) {
         Ok(m) => ffi::GuildMotd {
             message: m.message,
             sender: m.sender,
@@ -1090,15 +1091,6 @@ fn decode_guild_motd(bytes: &[u8]) -> ffi::GuildMotd {
             sender: String::new(),
             ok: false,
         },
-    }
-}
-
-#[cfg(not(feature = "backend-eql"))]
-fn decode_guild_motd(_bytes: &[u8]) -> ffi::GuildMotd {
-    ffi::GuildMotd {
-        message: String::new(),
-        sender: String::new(),
-        ok: false,
     }
 }
 
