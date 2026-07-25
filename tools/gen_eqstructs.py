@@ -49,6 +49,7 @@ ALLOWLIST = [
     "groupDisbandStruct",
     "corpseLocStruct",
     "guildMOTDStruct",
+    "GuildMemberUpdate",
     # Stage A+7 — variable-length / array opcodes.
     "doorStruct",
     "zonePointStruct",

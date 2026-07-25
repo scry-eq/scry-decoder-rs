@@ -696,6 +696,32 @@ impl Default for guildMOTDStruct {
 
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
+pub struct GuildMemberUpdate {
+    /// uint32_t guildId
+    pub guildId: u32,
+    /// uint8_t unknown004[4]
+    pub unknown004: [u8; 4],
+    /// char name[64]
+    pub name: [u8; 64],
+    /// uint16_t zoneId
+    pub zoneId: u16,
+    /// uint16_t zoneInstance
+    pub zoneInstance: u16,
+    /// uint32_t lastOn
+    pub lastOn: u32,
+    /// uint8_t unknown080[8]
+    pub unknown080: [u8; 8],
+}
+
+impl Default for GuildMemberUpdate {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
 pub struct doorStruct {
     /// char name[32]
     pub name: [u8; 32],
@@ -877,6 +903,7 @@ mod __layout_tests {
     #[test] fn groupDisbandStruct_size() { assert_eq!(core::mem::size_of::<groupDisbandStruct>(), 152); }
     #[test] fn corpseLocStruct_size() { assert_eq!(core::mem::size_of::<corpseLocStruct>(), 16); }
     #[test] fn guildMOTDStruct_size() { assert_eq!(core::mem::size_of::<guildMOTDStruct>(), 140); }
+    #[test] fn GuildMemberUpdate_size() { assert_eq!(core::mem::size_of::<GuildMemberUpdate>(), 88); }
     #[test] fn doorStruct_size() { assert_eq!(core::mem::size_of::<doorStruct>(), 136); }
     #[test] fn zonePointStruct_size() { assert_eq!(core::mem::size_of::<zonePointStruct>(), 24); }
     #[test] fn simpleMessageStruct_size() { assert_eq!(core::mem::size_of::<simpleMessageStruct>(), 12); }

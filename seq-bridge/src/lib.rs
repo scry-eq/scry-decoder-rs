@@ -265,6 +265,16 @@ mod ffi {
         sender: String,
         ok: bool,
     }
+    // OP_GuildMemberUpdate (Live) — one member's zone/last-on update (NOT rank).
+    // `ok` false = decode failed. Identified by `name`; the consumer updates that
+    // roster member's online state. zone_id 0 = offline.
+    struct GuildMemberUpdateInfo {
+        name: String,
+        zone_id: u16,
+        zone_instance: u16,
+        last_on: u32,
+        ok: bool,
+    }
     // One guild present in the zone (eql OP_GuildsInZoneList / OP_NewGuildInZone).
     // Returned as a flat Vec — the list opcode yields N, the single opcode yields
     // one — so the daemon feeds both through the same GuildMgr primitive.
@@ -616,6 +626,7 @@ mod ffi {
         fn decode_guilds_in_zone_list(bytes: &[u8]) -> Vec<GuildInZoneRow>;
         fn decode_new_guild_in_zone(bytes: &[u8]) -> Vec<GuildInZoneRow>;
         fn decode_guild_motd(bytes: &[u8]) -> GuildMotd;
+        fn decode_guild_member_update(bytes: &[u8]) -> GuildMemberUpdateInfo;
         fn decode_guild_roster(bytes: &[u8]) -> Vec<GuildRosterRow>;
         fn decode_self_pos_breadcrumb(bytes: &[u8]) -> Vec<SelfPosPoint>;
         fn decode_ucs_chat(bytes: &[u8]) -> Vec<UcsChatRecord>;
@@ -1091,6 +1102,39 @@ fn decode_guild_motd(bytes: &[u8]) -> ffi::GuildMotd {
             sender: String::new(),
             ok: false,
         },
+    }
+}
+
+// OP_GuildMemberUpdate (Live/Test) — one member's zone/last-on. eql's variant
+// diverges and isn't wired there, so it stubs `ok:false`.
+#[cfg(not(feature = "backend-eql"))]
+fn decode_guild_member_update(bytes: &[u8]) -> ffi::GuildMemberUpdateInfo {
+    match seq_decode::guild_member_update::parse_guild_member_update(bytes) {
+        Ok(u) => ffi::GuildMemberUpdateInfo {
+            name: u.name,
+            zone_id: u.zone_id,
+            zone_instance: u.zone_instance,
+            last_on: u.last_on,
+            ok: true,
+        },
+        Err(_) => ffi::GuildMemberUpdateInfo {
+            name: String::new(),
+            zone_id: 0,
+            zone_instance: 0,
+            last_on: 0,
+            ok: false,
+        },
+    }
+}
+
+#[cfg(feature = "backend-eql")]
+fn decode_guild_member_update(_bytes: &[u8]) -> ffi::GuildMemberUpdateInfo {
+    ffi::GuildMemberUpdateInfo {
+        name: String::new(),
+        zone_id: 0,
+        zone_instance: 0,
+        last_on: 0,
+        ok: false,
     }
 }
 
