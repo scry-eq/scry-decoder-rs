@@ -257,6 +257,14 @@ mod ffi {
         name: String,
         size: u32,
     }
+    // One guild present in the zone (eql OP_GuildsInZoneList / OP_NewGuildInZone).
+    // Returned as a flat Vec — the list opcode yields N, the single opcode yields
+    // one — so the daemon feeds both through the same GuildMgr primitive.
+    struct GuildInZoneRow {
+        guild_id: u32,
+        server_id: u32,
+        name: String,
+    }
     // One row of the eql guild roster (OP_GuildMemberList). Returned as a flat
     // Vec (empty on decode failure); `guild_id` repeats per row so the C++ side
     // needs no wrapper struct, mirroring BuffListEntry.
@@ -597,6 +605,8 @@ mod ffi {
         fn decode_loot_transaction(bytes: &[u8]) -> LootTransaction;
         fn decode_loot_drops(bytes: &[u8]) -> LootDrops;
         fn decode_buff_list(bytes: &[u8]) -> Vec<BuffListEntry>;
+        fn decode_guilds_in_zone_list(bytes: &[u8]) -> Vec<GuildInZoneRow>;
+        fn decode_new_guild_in_zone(bytes: &[u8]) -> Vec<GuildInZoneRow>;
         fn decode_guild_roster(bytes: &[u8]) -> Vec<GuildRosterRow>;
         fn decode_self_pos_breadcrumb(bytes: &[u8]) -> Vec<SelfPosPoint>;
         fn decode_ucs_chat(bytes: &[u8]) -> Vec<UcsChatRecord>;
@@ -1014,6 +1024,47 @@ fn decode_loot_message(_bytes: &[u8]) -> ffi::SpecialMessage {
 #[cfg(not(feature = "backend-eql"))]
 fn decode_stat_sync(_bytes: &[u8]) -> ffi::StatSync {
     stat_sync_err()
+}
+
+// eql-only: OP_GuildsInZoneList / OP_NewGuildInZone — the guilds present in the
+// zone, the only source of guild NAMES. eql owns this parser like every other;
+// the daemon and scry both consume it rather than each re-decoding the wire.
+// live/test stub empty.
+#[cfg(feature = "backend-eql")]
+fn decode_guilds_in_zone_list(bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
+    match seq_backend_eql::guild_in_zone::parse_guilds_in_zone_list(bytes) {
+        Ok(list) => list
+            .into_iter()
+            .map(|g| ffi::GuildInZoneRow {
+                guild_id: g.guild_id,
+                server_id: g.server_id,
+                name: g.name,
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn decode_guilds_in_zone_list(_bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
+    Vec::new()
+}
+
+#[cfg(feature = "backend-eql")]
+fn decode_new_guild_in_zone(bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
+    match seq_backend_eql::guild_in_zone::parse_new_guild_in_zone(bytes) {
+        Ok(g) => vec![ffi::GuildInZoneRow {
+            guild_id: g.guild_id,
+            server_id: g.server_id,
+            name: g.name,
+        }],
+        Err(_) => Vec::new(),
+    }
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn decode_new_guild_in_zone(_bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
+    Vec::new()
 }
 
 // eql-only: OP_GuildMemberList — the full guild roster. Flattened to a Vec
