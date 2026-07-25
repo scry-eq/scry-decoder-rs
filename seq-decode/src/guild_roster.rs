@@ -43,8 +43,10 @@ pub struct GuildMemberRow {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GuildRoster {
-    /// Live's roster header does not expose a guild id (legacy skips it), so it
-    /// is 0; the consumer associates the roster with the player's own guild.
+    /// The player's own guild id, from the roster header's first u32 (legacy
+    /// skips it as a patch-added field, but a live capture confirms it against
+    /// the guild-in-zone list: roster header 15/180 == the OP_GuildsInZoneList
+    /// entry for this guild).
     pub guild_id: u32,
     pub members: Vec<GuildMemberRow>,
 }
@@ -92,8 +94,8 @@ pub fn parse_guild_member_list(bytes: &[u8]) -> Result<GuildRoster, GuildRosterE
     // Header: the requester's own name, three skipped fields (patch-added over
     // the years — the last is 2 bytes on current Live), then the member count.
     let _requester = c.read_lp_text()?;
-    c.skip(4)?;
-    c.skip(4)?;
+    let guild_id = c.read_u32_le()?; // player's own guild id (legacy skips this)
+    c.skip(4)?; // server id
     c.skip(2)?;
     let count = c.read_u32_le()? as usize; // unreliable — used only to pre-size
 
@@ -108,7 +110,7 @@ pub fn parse_guild_member_list(bytes: &[u8]) -> Result<GuildRoster, GuildRosterE
         }
     }
 
-    Ok(GuildRoster { guild_id: 0, members })
+    Ok(GuildRoster { guild_id, members })
 }
 
 #[cfg(test)]
@@ -139,8 +141,8 @@ mod tests {
     fn roster(members: &[(&str, u32, u32, u32, &str)]) -> Vec<u8> {
         let mut b = Vec::new();
         lp(&mut b, "Self");
-        b.extend_from_slice(&[0u8; 4]); // skip4
-        b.extend_from_slice(&[0u8; 4]); // skip4
+        b.extend_from_slice(&15u32.to_le_bytes()); // guild id
+        b.extend_from_slice(&180u32.to_le_bytes()); // server id
         b.extend_from_slice(&[0u8; 2]); // skip2 (current Live)
         b.extend_from_slice(&(members.len() as u32).to_le_bytes());
         for m in members {
@@ -153,6 +155,7 @@ mod tests {
     fn two_member_roster() {
         let b = roster(&[("Aaaa", 60, 1, 2, ""), ("Bbbbbb", 55, 3, 0, "alt of Aaaa")]);
         let r = parse_guild_member_list(&b).unwrap();
+        assert_eq!(r.guild_id, 15);
         assert_eq!(r.members.len(), 2);
         assert_eq!(r.members[0].level, 60);
         assert_eq!(r.members[0].primary_class, 1);

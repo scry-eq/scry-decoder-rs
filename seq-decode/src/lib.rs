@@ -57,6 +57,7 @@ pub mod ground_spawn;
 pub mod group_disband;
 pub mod group_follow;
 pub mod group_member_list;
+pub mod guild_in_zone;
 pub mod guild_member_update;
 pub mod guild_motd;
 pub mod guild_roster;

@@ -1066,8 +1066,18 @@ fn decode_guilds_in_zone_list(bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
 }
 
 #[cfg(not(feature = "backend-eql"))]
-fn decode_guilds_in_zone_list(_bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
-    Vec::new()
+fn decode_guilds_in_zone_list(bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
+    match seq_decode::guild_in_zone::parse_guilds_in_zone_list(bytes) {
+        Ok(list) => list
+            .into_iter()
+            .map(|g| ffi::GuildInZoneRow {
+                guild_id: g.guild_id,
+                server_id: g.server_id,
+                name: g.name,
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    }
 }
 
 #[cfg(feature = "backend-eql")]
@@ -1083,8 +1093,15 @@ fn decode_new_guild_in_zone(bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
 }
 
 #[cfg(not(feature = "backend-eql"))]
-fn decode_new_guild_in_zone(_bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
-    Vec::new()
+fn decode_new_guild_in_zone(bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
+    match seq_decode::guild_in_zone::parse_new_guild_in_zone(bytes) {
+        Ok(g) => vec![ffi::GuildInZoneRow {
+            guild_id: g.guild_id,
+            server_id: g.server_id,
+            name: g.name,
+        }],
+        Err(_) => Vec::new(),
+    }
 }
 
 // OP_GuildMOTD — the guild message of the day. Each backend owns its parser
