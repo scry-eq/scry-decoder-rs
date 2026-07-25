@@ -257,6 +257,14 @@ mod ffi {
         name: String,
         size: u32,
     }
+    // eql OP_GuildMOTD — the guild message of the day. Single struct (not a list);
+    // `ok` false = decode failed / too short. The packet carries no guild id (the
+    // MOTD is implicitly the local player's guild), so none is returned.
+    struct GuildMotd {
+        message: String,
+        sender: String,
+        ok: bool,
+    }
     // One guild present in the zone (eql OP_GuildsInZoneList / OP_NewGuildInZone).
     // Returned as a flat Vec — the list opcode yields N, the single opcode yields
     // one — so the daemon feeds both through the same GuildMgr primitive.
@@ -607,6 +615,7 @@ mod ffi {
         fn decode_buff_list(bytes: &[u8]) -> Vec<BuffListEntry>;
         fn decode_guilds_in_zone_list(bytes: &[u8]) -> Vec<GuildInZoneRow>;
         fn decode_new_guild_in_zone(bytes: &[u8]) -> Vec<GuildInZoneRow>;
+        fn decode_guild_motd(bytes: &[u8]) -> GuildMotd;
         fn decode_guild_roster(bytes: &[u8]) -> Vec<GuildRosterRow>;
         fn decode_self_pos_breadcrumb(bytes: &[u8]) -> Vec<SelfPosPoint>;
         fn decode_ucs_chat(bytes: &[u8]) -> Vec<UcsChatRecord>;
@@ -1065,6 +1074,32 @@ fn decode_new_guild_in_zone(bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
 #[cfg(not(feature = "backend-eql"))]
 fn decode_new_guild_in_zone(_bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
     Vec::new()
+}
+
+// eql-only: OP_GuildMOTD — the guild message of the day. live/test stub `ok:false`.
+#[cfg(feature = "backend-eql")]
+fn decode_guild_motd(bytes: &[u8]) -> ffi::GuildMotd {
+    match seq_backend_eql::guild_motd::parse_guild_motd(bytes) {
+        Ok(m) => ffi::GuildMotd {
+            message: m.message,
+            sender: m.sender,
+            ok: true,
+        },
+        Err(_) => ffi::GuildMotd {
+            message: String::new(),
+            sender: String::new(),
+            ok: false,
+        },
+    }
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn decode_guild_motd(_bytes: &[u8]) -> ffi::GuildMotd {
+    ffi::GuildMotd {
+        message: String::new(),
+        sender: String::new(),
+        ok: false,
+    }
 }
 
 // eql-only: OP_GuildMemberList — the full guild roster. Flattened to a Vec
