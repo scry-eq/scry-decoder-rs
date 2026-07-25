@@ -55,6 +55,7 @@ impl Backend for EqlBackend {
             "OP_Stance" => stance(bytes),
             "OP_Invocation" => invocation(bytes),
             "OP_GuildMemberList" => guild_roster(bytes),
+            "OP_GuildMOTD" => guild_motd(bytes),
             "OP_InspectAnswer" => inspect_answer(bytes),
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_SelfPos" => self_pos_breadcrumb(bytes),
@@ -613,6 +614,18 @@ fn inspect_answer(bytes: &[u8]) -> Decoded {
     let bio = crate::cstr_latin1(&bytes[BIO_OFF..BIO_OFF + BIO_LEN]);
     Decoded::One(Event::InspectAnswer { spawn_id, item_names, bio })
 }
+fn guild_motd(bytes: &[u8]) -> Decoded {
+    // Fixed layout; the parser is shared with the bridge's decode_guild_motd.
+    // No guild id on the wire — the consumer stamps it from the roster.
+    match crate::guild_motd::parse_guild_motd(bytes) {
+        Ok(m) => Decoded::One(Event::GuildMotd {
+            message: m.message,
+            sender: m.sender,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
 fn guild_roster(bytes: &[u8]) -> Decoded {
     // eql wire diverges from the stock struct (wider header, multiclass mask in
     // the class slot, a rank field, a trailing zone id). The bridge's cxx path
@@ -853,6 +866,24 @@ mod tests {
         // wired rather than falling through to Unhandled.
         let d = EqlBackend.decode("OP_GuildMemberList", Dir::ServerToClient, &[0u8; 4]);
         assert_eq!(d, Decoded::Malformed);
+    }
+
+    #[test]
+    fn guild_motd_is_routed() {
+        // A full-size empty MOTD routes to GuildMotd with empty fields; a short
+        // one is Malformed — either way it reached the parser, not Unhandled.
+        let d = EqlBackend.decode("OP_GuildMOTD", Dir::ServerToClient, &[0u8; 656]);
+        assert_eq!(
+            d,
+            Decoded::One(Event::GuildMotd {
+                message: String::new(),
+                sender: String::new(),
+            })
+        );
+        assert_eq!(
+            EqlBackend.decode("OP_GuildMOTD", Dir::ServerToClient, &[0u8; 4]),
+            Decoded::Malformed
+        );
     }
 
     #[test]

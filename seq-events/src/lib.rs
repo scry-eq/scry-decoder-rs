@@ -248,6 +248,14 @@ pub enum Event {
         guild_id: u32,
         members: Vec<GuildRosterMember>,
     },
+    /// The guild message of the day (OP_GuildMOTD). `message`/`sender` are empty
+    /// when the guild has none set. The wire carries no guild id — the MOTD is
+    /// implicitly the local player's guild — so the consumer stamps it from the
+    /// roster it tracks (0 if none has arrived).
+    GuildMotd {
+        message: String,
+        sender: String,
+    },
     /// A player switched multiclass loadouts (eql OP_LoadoutSwap), changing
     /// their class + level. eql sends no OP_PlayerProfile on a swap, so this is
     /// the sole source of the new identity. The consumer owns the self/other
