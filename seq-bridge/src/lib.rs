@@ -265,6 +265,17 @@ mod ffi {
         sender: String,
         ok: bool,
     }
+    // OP_ExpandedGuildInfo (Live) — one entry of the guild rank-name table.
+    // The opcode is a tagged union; `action` selects the shape. Only the
+    // rank-name action (3) fills rank_index (1-based, matches the roster member
+    // rank field) + rank_name; other actions leave them 0/empty. The consumer
+    // gates on `action == 3` and builds a rank -> name table for the guild.
+    struct GuildExpandedInfo {
+        action: u32,
+        guild_id: u32,
+        rank_index: u32,
+        rank_name: String,
+    }
     // OP_GuildMemberUpdate (Live) — one member's zone/last-on update (NOT rank).
     // `ok` false = decode failed. Identified by `name`; the consumer updates that
     // roster member's online state. zone_id 0 = offline.
@@ -626,6 +637,7 @@ mod ffi {
         fn decode_guilds_in_zone_list(bytes: &[u8]) -> Vec<GuildInZoneRow>;
         fn decode_new_guild_in_zone(bytes: &[u8]) -> Vec<GuildInZoneRow>;
         fn decode_guild_motd(bytes: &[u8]) -> GuildMotd;
+        fn decode_guild_expanded_info(bytes: &[u8]) -> GuildExpandedInfo;
         fn decode_guild_member_update(bytes: &[u8]) -> GuildMemberUpdateInfo;
         fn decode_guild_roster(bytes: &[u8]) -> Vec<GuildRosterRow>;
         fn decode_self_pos_breadcrumb(bytes: &[u8]) -> Vec<SelfPosPoint>;
@@ -1119,6 +1131,29 @@ fn decode_guild_motd(bytes: &[u8]) -> ffi::GuildMotd {
             sender: String::new(),
             ok: false,
         },
+    }
+}
+
+// OP_ExpandedGuildInfo (Live/Test) — one rank-name-table entry. eql's guild
+// wire diverges and it has no parser for this yet, so it stubs action 0.
+#[cfg(not(feature = "backend-eql"))]
+fn decode_guild_expanded_info(bytes: &[u8]) -> ffi::GuildExpandedInfo {
+    let i = seq_decode::guild_expanded_info::parse_expanded_guild_info(bytes);
+    ffi::GuildExpandedInfo {
+        action: i.action,
+        guild_id: i.guild_id,
+        rank_index: i.rank_index,
+        rank_name: i.rank_name,
+    }
+}
+
+#[cfg(feature = "backend-eql")]
+fn decode_guild_expanded_info(_bytes: &[u8]) -> ffi::GuildExpandedInfo {
+    ffi::GuildExpandedInfo {
+        action: 0,
+        guild_id: 0,
+        rank_index: 0,
+        rank_name: String::new(),
     }
 }
 
