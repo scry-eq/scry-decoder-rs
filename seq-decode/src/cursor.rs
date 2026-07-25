@@ -95,6 +95,16 @@ impl<'a> Cursor<'a> {
         }
         Ok(slice)
     }
+
+    /// Length-prefixed text: a `u32` byte count followed by that many bytes (no
+    /// terminator). Mirrors `NetStream::readLPText()`.
+    pub fn read_lp_text(&mut self) -> Result<&'a [u8], CursorError> {
+        let len = self.read_u32_le()? as usize;
+        self.need(len)?;
+        let s = &self.buf[self.pos..self.pos + len];
+        self.pos += len;
+        Ok(s)
+    }
 }
 
 #[cfg(test)]

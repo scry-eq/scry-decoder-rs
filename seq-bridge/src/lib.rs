@@ -1124,9 +1124,32 @@ fn decode_guild_roster(bytes: &[u8]) -> Vec<ffi::GuildRosterRow> {
     }
 }
 
+// Live/Test: the stock roster. Single class (no multiclass mask -> class_mask 0)
+// and no per-member zone (Live doesn't carry it -> zone_id 0). Its own parser
+// in seq-decode, kept separate from eql's because the wire genuinely differs.
 #[cfg(not(feature = "backend-eql"))]
-fn decode_guild_roster(_bytes: &[u8]) -> Vec<ffi::GuildRosterRow> {
-    Vec::new()
+fn decode_guild_roster(bytes: &[u8]) -> Vec<ffi::GuildRosterRow> {
+    match seq_decode::guild_roster::parse_guild_member_list(bytes) {
+        Ok(r) => r
+            .members
+            .into_iter()
+            .map(|m| ffi::GuildRosterRow {
+                guild_id: r.guild_id,
+                primary_class: m.primary_class as u8,
+                name: m.name,
+                level: m.level,
+                class_mask: 0,
+                rank: m.rank,
+                last_on: m.last_on,
+                banker: m.banker as u8,
+                alt: m.alt as u8,
+                full_member: m.full_member as u8,
+                public_note: m.public_note,
+                zone_id: 0,
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    }
 }
 
 // eql-only: OP_BuffList (0x77ae) — the authoritative per-spawn active-buff list.
