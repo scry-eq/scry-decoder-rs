@@ -93,12 +93,10 @@ impl Default for mobHealthStruct {
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 pub struct spawnAppearanceStruct {
-    /// uint16_t spawnId
-    pub spawnId: u16,
-    /// uint16_t type
-    pub type_: u16,
-    /// uint32_t parameter
-    pub parameter: u32,
+    /// uint32_t spawnId
+    pub spawnId: u32,
+    /// uint32_t type
+    pub type_: u32,
 }
 
 impl Default for spawnAppearanceStruct {

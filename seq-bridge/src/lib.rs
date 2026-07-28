@@ -211,9 +211,12 @@ mod ffi {
         hp_percent: i32,
         ok: bool,
     }
+    // Widened to u32 for Live's re-derived 8-byte `{u32 spawnId, u32 type}`
+    // layout (2026-07-28); eql's own struct is still u16/u16/u32 and converts
+    // losslessly. `parameter` survives for eql — Live's wire has no value field.
     struct SpawnAppearance {
-        spawn_id: u16,
-        kind: u16,
+        spawn_id: u32,
+        kind: u32,
         parameter: u32,
         ok: bool,
     }
@@ -1334,7 +1337,14 @@ fn decode_mob_health(bytes: &[u8]) -> ffi::MobHealth {
 fn decode_spawn_appearance(bytes: &[u8]) -> ffi::SpawnAppearance {
     match backend::parse_spawn_appearance(bytes) {
         Ok(a) => ffi::SpawnAppearance {
-            spawn_id: a.spawn_id, kind: a.kind, parameter: a.parameter, ok: true,
+            spawn_id: u32::from(a.spawn_id),
+            kind: u32::from(a.kind),
+            // Live's current wire carries no value field; eql's still does.
+            #[cfg(feature = "backend-eql")]
+            parameter: a.parameter,
+            #[cfg(not(feature = "backend-eql"))]
+            parameter: 0,
+            ok: true,
         },
         Err(_) => ffi::SpawnAppearance {
             spawn_id: 0, kind: 0, parameter: 0, ok: false,
