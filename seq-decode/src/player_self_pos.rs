@@ -7,16 +7,19 @@
 //!
 //! ```text
 //!   /*0002*/ uint16_t spawnId;
-//!   /*0006*/ float    y;
-//!   /*0010*/ pitch:12, heading:12, padding:8
-//!   /*0014*/ float    deltaY;
-//!   /*0018*/ animation:10, padding:22
-//!   /*0022*/ float    z;
-//!   /*0026*/ float    x;
+//!   /*0006*/ float    z;
+//!   /*0010*/ float    y;
+//!   /*0014*/ heading:12, padding:20
+//!   /*0018*/ float    x;
+//!   /*0022*/ float    deltaZ;
+//!   /*0026*/ pitch:12, padding:20
 //!   /*0030*/ float    deltaX;
-//!   /*0034*/ deltaHeading:10, padding:22
-//!   /*0038*/ float    deltaZ;
+//!   /*0034*/ float    deltaY;
+//!   /*0038*/ animation:10, deltaHeading:10, padding:12
 //! ```
+//!
+//! Layout re-synced to legacy 6.4.25 (07/15 patch) 2026-07-28. Same 42B size as
+//! the previous order, so no size check catches a mismatch here.
 //!
 //! With `#pragma pack(1)`, bitfields within a storage unit pack LSB-first, so
 //! the first-declared field occupies the low bits.
@@ -70,28 +73,27 @@ pub fn parse_player_self_pos(bytes: &[u8]) -> Result<PlayerSelfPos, PlayerSelfPo
 
     let spawn_id = read_u16_le(bytes, 2);
 
-    let y = read_f32_le(bytes, 6);
+    let z = read_f32_le(bytes, 6);
+    let y = read_f32_le(bytes, 10);
 
-    // offset 10: pitch:12, heading:12, padding:8
-    let w10 = read_u32_le(bytes, 10);
-    let pitch = (w10 & 0xFFF) as u16;
-    let heading = ((w10 >> 12) & 0xFFF) as u16;
+    // offset 14: heading:12, padding:20
+    let w14 = read_u32_le(bytes, 14);
+    let heading = (w14 & 0xFFF) as u16;
 
-    let delta_y = read_f32_le(bytes, 14);
+    let x = read_f32_le(bytes, 18);
+    let delta_z = read_f32_le(bytes, 22);
 
-    // offset 18: animation:10, padding:22
-    let w18 = read_u32_le(bytes, 18);
-    let animation = sign_extend(w18 & 0x3FF, 10) as i16;
+    // offset 26: pitch:12, padding:20
+    let w26 = read_u32_le(bytes, 26);
+    let pitch = (w26 & 0xFFF) as u16;
 
-    let z = read_f32_le(bytes, 22);
-    let x = read_f32_le(bytes, 26);
     let delta_x = read_f32_le(bytes, 30);
+    let delta_y = read_f32_le(bytes, 34);
 
-    // offset 34: deltaHeading:10, padding:22
-    let w34 = read_u32_le(bytes, 34);
-    let delta_heading = sign_extend(w34 & 0x3FF, 10) as i16;
-
-    let delta_z = read_f32_le(bytes, 38);
+    // offset 38: animation:10, deltaHeading:10, padding:12
+    let w38 = read_u32_le(bytes, 38);
+    let animation = sign_extend(w38 & 0x3FF, 10) as i16;
+    let delta_heading = sign_extend((w38 >> 10) & 0x3FF, 10) as i16;
 
     Ok(PlayerSelfPos {
         spawn_id,
@@ -122,50 +124,50 @@ mod tests {
     fn parses_floats_and_spawn_id() {
         let mut buf = [0u8; PAYLOAD_LEN];
         buf[2..4].copy_from_slice(&0x1234u16.to_le_bytes());
-        buf[6..10].copy_from_slice(&3.0f32.to_le_bytes()); // y
-        buf[14..18].copy_from_slice(&5.0f32.to_le_bytes()); // deltaY
-        buf[22..26].copy_from_slice(&2.0f32.to_le_bytes()); // z
-        buf[26..30].copy_from_slice(&6.0f32.to_le_bytes()); // x
+        buf[6..10].copy_from_slice(&2.0f32.to_le_bytes()); // z
+        buf[10..14].copy_from_slice(&3.0f32.to_le_bytes()); // y
+        buf[18..22].copy_from_slice(&6.0f32.to_le_bytes()); // x
+        buf[22..26].copy_from_slice(&4.0f32.to_le_bytes()); // deltaZ
         buf[30..34].copy_from_slice(&1.0f32.to_le_bytes()); // deltaX
-        buf[38..42].copy_from_slice(&4.0f32.to_le_bytes()); // deltaZ
+        buf[34..38].copy_from_slice(&5.0f32.to_le_bytes()); // deltaY
         let p = parse_player_self_pos(&buf).unwrap();
         assert_eq!(p.spawn_id, 0x1234);
-        assert_eq!(p.y, 3.0);
-        assert_eq!(p.delta_y, 5.0);
         assert_eq!(p.z, 2.0);
+        assert_eq!(p.y, 3.0);
         assert_eq!(p.x, 6.0);
-        assert_eq!(p.delta_x, 1.0);
         assert_eq!(p.delta_z, 4.0);
+        assert_eq!(p.delta_x, 1.0);
+        assert_eq!(p.delta_y, 5.0);
     }
 
     #[test]
-    fn pitch_heading_pack_offset10() {
+    fn heading_offset14() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        // pitch=0xFFF (12-bit), heading=0xABC (12-bit).
-        let w: u32 = 0xFFF | (0xABCu32 << 12);
-        buf[10..14].copy_from_slice(&w.to_le_bytes());
+        // heading=0xABC (12-bit), rest of the word is padding.
+        let w: u32 = 0xABC;
+        buf[14..18].copy_from_slice(&w.to_le_bytes());
         let p = parse_player_self_pos(&buf).unwrap();
-        assert_eq!(p.pitch, 0xFFF);
         assert_eq!(p.heading, 0xABC);
     }
 
     #[test]
-    fn animation_offset18() {
+    fn pitch_offset26() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        // animation = -3 (0x3FD in 10-bit two's complement).
-        let w: u32 = 0x3FD;
-        buf[18..22].copy_from_slice(&w.to_le_bytes());
+        // pitch=0xFFF (12-bit), rest of the word is padding.
+        let w: u32 = 0xFFF;
+        buf[26..30].copy_from_slice(&w.to_le_bytes());
         let p = parse_player_self_pos(&buf).unwrap();
-        assert_eq!(p.animation, -3);
+        assert_eq!(p.pitch, 0xFFF);
     }
 
     #[test]
-    fn delta_heading_offset34() {
+    fn animation_delta_heading_pack_offset38() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        // deltaHeading = -1 (0x3FF in 10-bit).
-        let w: u32 = 0x3FF;
-        buf[34..38].copy_from_slice(&w.to_le_bytes());
+        // animation=-3 (0x3FD, 10-bit), deltaHeading=-1 (0x3FF, 10-bit).
+        let w: u32 = 0x3FD | (0x3FFu32 << 10);
+        buf[38..42].copy_from_slice(&w.to_le_bytes());
         let p = parse_player_self_pos(&buf).unwrap();
+        assert_eq!(p.animation, -3);
         assert_eq!(p.delta_heading, -1);
     }
 }

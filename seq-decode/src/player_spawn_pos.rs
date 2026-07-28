@@ -8,13 +8,16 @@
 //! ```text
 //!   /*0000*/ uint16_t spawnId;
 //!   /*0002*/ uint16_t spawnId2;
-//!   /*0004*/ animation:10, pitch:12, padding:10
-//!   /*0008*/ deltaZ:13,    deltaHeading:10, padding:9
-//!   /*0012*/ z:19,         heading:12,      padding:1
-//!   /*0016*/ deltaX:13,    y:19
-//!   /*0020*/ deltaY:13,    x:19
+//!   /*0004*/ heading:12, animation:10,    padding:10
+//!   /*0008*/ deltaZ:13,  deltaX:13,       padding:6
+//!   /*0012*/ x:19,       pitch:12,        padding:1
+//!   /*0016*/ y:19,       deltaHeading:10, padding:3
+//!   /*0020*/ z:19,       deltaY:13
 //!   /*0024*/
 //! ```
+//!
+//! Layout re-synced to legacy 6.4.25 (07/15 patch) 2026-07-28 — the previous
+//! order decoded x's value into z. Same 24B size, so no size check catches it.
 //!
 //! The C++ daemon shifts the y/x/z fields right by 3 (1/8-unit fixed point) and
 //! the deltas right by 2. This parser surfaces the *raw* sign-extended values;
@@ -68,30 +71,30 @@ pub fn parse_player_spawn_pos(
     let spawn_id = read_u16_le(bytes, 0);
     let spawn_id2 = read_u16_le(bytes, 2);
 
-    // offset 4: animation:10, pitch:12, padding:10
+    // offset 4: heading:12, animation:10, padding:10
     let w0 = read_u32_le(bytes, 4);
-    let animation = sign_extend(w0 & 0x3FF, 10) as i16;
-    let pitch = ((w0 >> 10) & 0xFFF) as u16;
+    let heading = (w0 & 0xFFF) as u16;
+    let animation = sign_extend((w0 >> 12) & 0x3FF, 10) as i16;
 
-    // offset 8: deltaZ:13, deltaHeading:10, padding:9
+    // offset 8: deltaZ:13, deltaX:13, padding:6
     let w1 = read_u32_le(bytes, 8);
     let delta_z = sign_extend(w1 & 0x1FFF, 13);
-    let delta_heading = sign_extend((w1 >> 13) & 0x3FF, 10) as i16;
+    let delta_x = sign_extend((w1 >> 13) & 0x1FFF, 13);
 
-    // offset 12: z:19, heading:12, padding:1
+    // offset 12: x:19, pitch:12, padding:1
     let w2 = read_u32_le(bytes, 12);
-    let z = sign_extend(w2 & 0x7_FFFF, 19);
-    let heading = ((w2 >> 19) & 0xFFF) as u16;
+    let x = sign_extend(w2 & 0x7_FFFF, 19);
+    let pitch = ((w2 >> 19) & 0xFFF) as u16;
 
-    // offset 16: deltaX:13, y:19
+    // offset 16: y:19, deltaHeading:10, padding:3
     let w3 = read_u32_le(bytes, 16);
-    let delta_x = sign_extend(w3 & 0x1FFF, 13);
-    let y = sign_extend((w3 >> 13) & 0x7_FFFF, 19);
+    let y = sign_extend(w3 & 0x7_FFFF, 19);
+    let delta_heading = sign_extend((w3 >> 19) & 0x3FF, 10) as i16;
 
-    // offset 20: deltaY:13, x:19
+    // offset 20: z:19, deltaY:13
     let w4 = read_u32_le(bytes, 20);
-    let delta_y = sign_extend(w4 & 0x1FFF, 13);
-    let x = sign_extend((w4 >> 13) & 0x7_FFFF, 19);
+    let z = sign_extend(w4 & 0x7_FFFF, 19);
+    let delta_y = sign_extend((w4 >> 19) & 0x1FFF, 13);
 
     Ok(PlayerSpawnPos {
         spawn_id,
@@ -131,46 +134,57 @@ mod tests {
     }
 
     #[test]
-    fn animation_pitch_pack_offset4() {
+    fn heading_animation_pack_offset4() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        // animation=-1 (0x3FF, 10-bit), pitch=0xABC (12-bit).
-        let w: u32 = 0x3FF | (0xABCu32 << 10);
+        // heading=0xABC (12-bit), animation=-1 (0x3FF, 10-bit).
+        let w: u32 = 0xABC | (0x3FFu32 << 12);
         buf[4..8].copy_from_slice(&w.to_le_bytes());
         let p = parse_player_spawn_pos(&buf).unwrap();
+        assert_eq!(p.heading, 0xABC);
         assert_eq!(p.animation, -1);
-        assert_eq!(p.pitch, 0xABC);
     }
 
     #[test]
-    fn z_heading_pack_offset12() {
+    fn deltaz_deltax_pack_offset8() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        // z=-1 (0x7_FFFF, 19-bit), heading=0xFFF (12-bit).
+        // deltaZ=7 (13-bit), deltaX=-2 (0x1FFE, 13-bit).
+        let w: u32 = 7 | (0x1FFEu32 << 13);
+        buf[8..12].copy_from_slice(&w.to_le_bytes());
+        let p = parse_player_spawn_pos(&buf).unwrap();
+        assert_eq!(p.delta_z, 7);
+        assert_eq!(p.delta_x, -2);
+    }
+
+    #[test]
+    fn x_pitch_pack_offset12() {
+        let mut buf = [0u8; PAYLOAD_LEN];
+        // x=-1 (0x7_FFFF, 19-bit), pitch=0xFFF (12-bit).
         let w: u32 = 0x7_FFFF | (0xFFFu32 << 19);
         buf[12..16].copy_from_slice(&w.to_le_bytes());
         let p = parse_player_spawn_pos(&buf).unwrap();
-        assert_eq!(p.z, -1);
-        assert_eq!(p.heading, 0xFFF);
+        assert_eq!(p.x, -1);
+        assert_eq!(p.pitch, 0xFFF);
     }
 
     #[test]
-    fn deltax_y_pack_offset16() {
+    fn y_deltaheading_pack_offset16() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        // deltaX=-2 (0x1FFE, 13-bit), y=42 (19-bit).
-        let w: u32 = 0x1FFE | (42u32 << 13);
+        // y=42 (19-bit), deltaHeading=-1 (0x3FF, 10-bit).
+        let w: u32 = 42 | (0x3FFu32 << 19);
         buf[16..20].copy_from_slice(&w.to_le_bytes());
         let p = parse_player_spawn_pos(&buf).unwrap();
-        assert_eq!(p.delta_x, -2);
         assert_eq!(p.y, 42);
+        assert_eq!(p.delta_heading, -1);
     }
 
     #[test]
-    fn deltay_x_pack_offset20() {
+    fn z_deltay_pack_offset20() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        // deltaY=7 (13-bit), x=-1 (0x7_FFFF, 19-bit).
-        let w: u32 = 7 | (0x7_FFFFu32 << 13);
+        // z=-1 (0x7_FFFF, 19-bit), deltaY=7 (13-bit).
+        let w: u32 = 0x7_FFFF | (7u32 << 19);
         buf[20..24].copy_from_slice(&w.to_le_bytes());
         let p = parse_player_spawn_pos(&buf).unwrap();
+        assert_eq!(p.z, -1);
         assert_eq!(p.delta_y, 7);
-        assert_eq!(p.x, -1);
     }
 }
