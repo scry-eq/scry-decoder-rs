@@ -42,7 +42,7 @@ pub fn parse_group_roster(bytes: &[u8]) -> Result<GroupRoster, GroupRosterError>
         return Ok(GroupRoster { group_id, members: vec![] });
     }
 
-    let mut members = Vec::with_capacity(count);
+    let mut members = Vec::with_capacity(count.min(bytes.len() / REC_STRIDE + 1));
     for r in 0..count {
         let mut off = REC_OFF + r * REC_STRIDE;
         if off >= bytes.len() {
@@ -82,5 +82,19 @@ mod tests {
         let s2 = REC_OFF + REC_STRIDE;
         b[s2..s2 + 5].copy_from_slice(b"Alice");
         assert_eq!(parse_group_roster(&b).unwrap().members, vec!["Hero", "Alice"]);
+    }
+}
+
+#[cfg(test)]
+mod alloc_bounds_tests {
+    use super::*;
+
+    #[test]
+    fn an_absurd_member_count_does_not_allocate() {
+        let mut b = vec![0u8; 64];
+        b[4..8].copy_from_slice(&0xFFFF_FFFFu32.to_le_bytes()); // member count
+        let r = parse_group_roster(&b).unwrap();
+        // The payload holds nowhere near 4e9 members; the walk stops at its end.
+        assert!(r.members.len() < 64);
     }
 }

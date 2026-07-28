@@ -267,8 +267,16 @@ pub fn parse_player_profile(bytes: &[u8]) -> Result<PlayerProfile, PlayerProfile
     let intoxication = r.u32_le()?;
 
     // Spell slot refresh (first pass — overwritten later)
+    //
+    // Every count below is read off the wire, so it is attacker/patch
+    // controlled: after an opcode rotation a stale id feeds this parser a
+    // FOREIGN payload, and an unbounded reservation then tries to allocate
+    // gigabytes and aborts the process. An element occupies at least one byte,
+    // so the payload length is always a valid ceiling. This caps the
+    // reservation only — each walk still errors on truncation, so valid
+    // payloads decode exactly as before.
     let refresh_count = r.u32_le()?;
-    let mut spell_slot_refresh = Vec::with_capacity(refresh_count as usize);
+    let mut spell_slot_refresh = Vec::with_capacity((refresh_count as usize).min(r.bytes.len()));
     for _ in 0..refresh_count {
         spell_slot_refresh.push(r.u32_le()?);
     }
@@ -303,8 +311,8 @@ pub fn parse_player_profile(bytes: &[u8]) -> Result<PlayerProfile, PlayerProfile
 
     // AAs: u32 count, then count * {u32 AA, u32 value, u32 unknown008}.
     let aa_count = r.u32_le()?;
-    let mut aa_ids = Vec::with_capacity(aa_count as usize);
-    let mut aa_values = Vec::with_capacity(aa_count as usize);
+    let mut aa_ids = Vec::with_capacity((aa_count as usize).min(r.bytes.len()));
+    let mut aa_values = Vec::with_capacity((aa_count as usize).min(r.bytes.len()));
     for _ in 0..aa_count {
         aa_ids.push(r.u32_le()?);
         aa_values.push(r.u32_le()?);
@@ -321,7 +329,7 @@ pub fn parse_player_profile(bytes: &[u8]) -> Result<PlayerProfile, PlayerProfile
     r.skip(sc3 as usize * 4)?;
 
     let discipline_count = r.u32_le()?;
-    let mut disciplines = Vec::with_capacity(discipline_count as usize);
+    let mut disciplines = Vec::with_capacity((discipline_count as usize).min(r.bytes.len()));
     for _ in 0..discipline_count {
         disciplines.push(r.u32_le()?);
     }
@@ -332,7 +340,7 @@ pub fn parse_player_profile(bytes: &[u8]) -> Result<PlayerProfile, PlayerProfile
     r.skip(4)?;
 
     let recast_count = r.u32_le()?;
-    let mut recast_timers = Vec::with_capacity(recast_count as usize);
+    let mut recast_timers = Vec::with_capacity((recast_count as usize).min(r.bytes.len()));
     for _ in 0..recast_count {
         recast_timers.push(r.u32_le()?);
     }
@@ -342,14 +350,14 @@ pub fn parse_player_profile(bytes: &[u8]) -> Result<PlayerProfile, PlayerProfile
 
     // Spellbook (legacy uses readInt32 = BE).
     let book_count = r.u32_le()?;
-    let mut spell_book = Vec::with_capacity(book_count as usize);
+    let mut spell_book = Vec::with_capacity((book_count as usize).min(r.bytes.len()));
     for _ in 0..book_count {
         spell_book.push(r.i32_be()?);
     }
 
     // Memorized spell slots (BE).
     let mem_count = r.u32_le()?;
-    let mut mem_spells = Vec::with_capacity(mem_count as usize);
+    let mut mem_spells = Vec::with_capacity((mem_count as usize).min(r.bytes.len()));
     for _ in 0..mem_count {
         mem_spells.push(r.i32_be()?);
     }
@@ -358,7 +366,7 @@ pub fn parse_player_profile(bytes: &[u8]) -> Result<PlayerProfile, PlayerProfile
     // reads these BE (`readInt32`) and writes them into the same
     // `spellSlotRefresh` u32 slots.
     let refresh2_count = r.u32_le()?;
-    let mut spell_slot_refresh2 = Vec::with_capacity(refresh2_count as usize);
+    let mut spell_slot_refresh2 = Vec::with_capacity((refresh2_count as usize).min(r.bytes.len()));
     for _ in 0..refresh2_count {
         spell_slot_refresh2.push(r.i32_be()? as u32);
     }
@@ -374,8 +382,8 @@ pub fn parse_player_profile(bytes: &[u8]) -> Result<PlayerProfile, PlayerProfile
     // 12, i32 LE). The rest of the slot is left for the C++ side to
     // memcpy if it ever needs more.
     let buff_count = r.u32_le()?;
-    let mut buff_spell_ids = Vec::with_capacity(buff_count as usize);
-    let mut buff_durations = Vec::with_capacity(buff_count as usize);
+    let mut buff_spell_ids = Vec::with_capacity((buff_count as usize).min(r.bytes.len()));
+    let mut buff_durations = Vec::with_capacity((buff_count as usize).min(r.bytes.len()));
     for _ in 0..buff_count {
         r.need(SPELL_BUFF_SIZE)?;
         let buff = &r.bytes[r.p..r.p + SPELL_BUFF_SIZE];
@@ -436,7 +444,7 @@ pub fn parse_player_profile(bytes: &[u8]) -> Result<PlayerProfile, PlayerProfile
     r.skip(4)?;
 
     let lang_count = r.u32_le()?;
-    let mut languages = Vec::with_capacity(lang_count as usize);
+    let mut languages = Vec::with_capacity((lang_count as usize).min(r.bytes.len()));
     for _ in 0..lang_count {
         languages.push(r.u8()?);
     }

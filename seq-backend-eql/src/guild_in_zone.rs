@@ -76,7 +76,7 @@ pub fn parse_guilds_in_zone_list(b: &[u8]) -> Result<Vec<GuildInZone>, GuildInZo
     }
     let count = u32_at(b, count_off).unwrap() as usize;
 
-    let mut guilds = Vec::with_capacity(count);
+    let mut guilds = Vec::with_capacity(count.min(b.len() / 9 + 1));
     let mut off = count_off + 4;
     for _ in 0..count {
         match entry_at(b, off) {
@@ -176,5 +176,26 @@ mod tests {
             parse_guilds_in_zone_list(&b),
             Err(GuildInZoneError::BadNameLen(..))
         ));
+    }
+}
+
+#[cfg(test)]
+mod alloc_bounds_tests {
+    use super::*;
+
+    // After an opcode rotation a stale id hands this parser a foreign payload.
+    // A wire count of 4 billion must not become a 4-billion-element
+    // reservation — that aborts the process rather than failing the parse.
+    #[test]
+    fn an_absurd_count_does_not_allocate() {
+        let mut b = Vec::new();
+        b.extend_from_slice(&4u32.to_le_bytes());
+        b.extend_from_slice(b"Name");
+        b.extend_from_slice(&0xFFFF_FFFFu32.to_le_bytes()); // count
+        b.extend_from_slice(&1u32.to_le_bytes());
+        b.extend_from_slice(&13u32.to_le_bytes());
+        b.extend_from_slice(b"Guild\0");
+        // Fails cleanly (the payload cannot hold 4e9 entries), no abort.
+        assert!(parse_guilds_in_zone_list(&b).is_err());
     }
 }

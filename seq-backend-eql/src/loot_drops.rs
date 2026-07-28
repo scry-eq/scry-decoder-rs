@@ -45,7 +45,7 @@ pub fn parse_loot_drops(bytes: &[u8]) -> Result<LootDrops, LootDropsError> {
         + 14;
     let corpse_name = String::from_utf8_lossy(&bytes[14..nul]).into_owned();
 
-    let mut items = Vec::with_capacity(count);
+    let mut items = Vec::with_capacity(count.min(bytes.len() / 12 + 1));
     let mut pos = nul + 1;
     while items.len() < count && pos + 12 <= bytes.len() {
         let icon = u32le(bytes, pos + 8); // item entry field[2]
@@ -98,5 +98,22 @@ mod tests {
         assert_eq!(l.items.len(), 2);
         assert_eq!(l.items[0], LootItem { name: "McVaxius` Horn of War".into(), icon: 593, item_id: 11607 });
         assert_eq!(l.items[1], LootItem { name: "White Dragon Hide".into(), icon: 552, item_id: 9240 });
+    }
+}
+
+#[cfg(test)]
+mod alloc_bounds_tests {
+    use super::*;
+
+    #[test]
+    fn an_absurd_item_count_does_not_allocate() {
+        let mut b = vec![0u8; 14];
+        b[6..10].copy_from_slice(&42u32.to_le_bytes()); // corpse id
+        b[10..14].copy_from_slice(&0xFFFF_FFFFu32.to_le_bytes()); // count
+        b.extend_from_slice(b"A corpse\0");
+        // Returns what the payload actually holds (no items) without trying to
+        // reserve 4e9 of them.
+        let d = parse_loot_drops(&b).unwrap();
+        assert!(d.items.is_empty());
     }
 }
