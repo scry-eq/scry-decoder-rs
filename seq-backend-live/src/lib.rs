@@ -6,7 +6,8 @@
 //! output stays byte-for-byte identical across the migration.
 
 use seq_events::{
-    heading_deg, Backend, Decoded, Dir, DoorInfo, Event, Pos, ProfileInfo, SpawnInfo, ZoneInfo,
+    heading_deg, Backend, Decoded, Dir, DoorInfo, Event, GuildInZone, GuildRosterMember, Pos,
+    ProfileInfo, SpawnInfo, ZoneInfo,
 };
 
 /// The Live/Test backend (shared `seq-decode` parsers).
@@ -36,8 +37,23 @@ impl Backend for LiveBackend {
             "OP_TargetMouse" => target(bytes),
             "OP_Consider" => consider(bytes),
             "OP_CommonMessage" => chat(bytes, dir),
+            "OP_SimpleMessage" => simple_message(bytes),
+            "OP_FormattedMessage" => formatted_message(bytes),
+            "OP_SpecialMesg" => special_message(bytes),
             "OP_GroundSpawn" => ground_item(bytes),
+            "OP_ClickObject" => click_object(dir, bytes),
             "OP_SpawnDoor" => doors(bytes),
+            "OP_SpawnAppearance" => spawn_appearance(bytes),
+            "OP_GuildsInZoneList" => guilds_in_zone_list(bytes),
+            "OP_NewGuildInZone" => new_guild_in_zone(bytes),
+            "OP_GuildMemberList" => guild_roster(bytes),
+            "OP_GuildMOTD" => guild_motd(bytes),
+            "OP_ExpandedGuildInfo" => expanded_guild_info(bytes),
+            "OP_ExpUpdate" => exp(bytes),
+            "OP_AAExpUpdate" => aa_exp(bytes),
+            "OP_TimeOfDay" => time_of_day(bytes),
+            "OP_GroupFollow" => group_follow(bytes),
+            "OP_GroupDisband" | "OP_GroupDisband2" => group_disband(bytes),
             "OP_EnterWorld" => Decoded::One(Event::EnterWorld),
             _ => Decoded::Unhandled,
         }
@@ -304,6 +320,205 @@ fn ground_item(bytes: &[u8]) -> Decoded {
     }
 }
 
+// OP_ClickObject: dual-direction. The C>S side is the client's click request
+// (nobody decodes it); the S>C side is the remDropStruct removal of a ground
+// item, matching the daemon's server-only wiring.
+fn click_object(dir: Dir, bytes: &[u8]) -> Decoded {
+    if dir != Dir::ServerToClient {
+        return Decoded::Ignored;
+    }
+    match seq_decode::click_object::parse_click_object(bytes) {
+        Ok(c) => Decoded::One(Event::GroundItemRemoved {
+            drop_id: u32::from(c.drop_id),
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_SpawnAppearance is a subcommand carrier and the current-patch wire carries
+// no value field, so a subcommand is a bare signal. Its numbering is NOT the
+// legacy one (that assumed `type` at offset 2; see the struct's re-derivation)
+// and no current type has confirmed semantics — 4 / 32 / 64 are all that two
+// live captures show. Parsed for length-validation, mapped to nothing until a
+// type is pinned in-game: a wrong guess here writes wrong spawn state.
+fn spawn_appearance(bytes: &[u8]) -> Decoded {
+    match seq_decode::spawn_appearance::parse_spawn_appearance(bytes) {
+        Ok(_) => Decoded::Ignored,
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+fn guilds_in_zone_list(bytes: &[u8]) -> Decoded {
+    match seq_decode::guild_in_zone::parse_guilds_in_zone_list(bytes) {
+        // An empty list is normal (an unguilded zone) and carries nothing.
+        Ok(guilds) if guilds.is_empty() => Decoded::Ignored,
+        Ok(guilds) => Decoded::One(Event::GuildsInZone {
+            guilds: guilds.into_iter().map(guild_in_zone).collect(),
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+fn new_guild_in_zone(bytes: &[u8]) -> Decoded {
+    match seq_decode::guild_in_zone::parse_new_guild_in_zone(bytes) {
+        Ok(g) => Decoded::One(Event::GuildsInZone {
+            guilds: vec![guild_in_zone(g)],
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+fn guild_in_zone(g: seq_decode::guild_in_zone::GuildInZone) -> GuildInZone {
+    GuildInZone {
+        guild_id: g.guild_id,
+        server_id: g.server_id,
+        name: g.name,
+    }
+}
+
+// OP_GuildMemberList: the full roster, authoritative and replacing. Live is
+// single-class, so `class_mask` stays 0; the roster carries no member zone
+// (`zone_id` 0) — that arrives separately via OP_GuildMemberUpdate.
+fn guild_roster(bytes: &[u8]) -> Decoded {
+    match seq_decode::guild_roster::parse_guild_member_list(bytes) {
+        Ok(r) => {
+            let members = r
+                .members
+                .into_iter()
+                .map(|m| GuildRosterMember {
+                    name: m.name,
+                    level: m.level,
+                    class: m.primary_class,
+                    class_mask: 0,
+                    rank: m.rank,
+                    last_on: m.last_on,
+                    banker: m.banker,
+                    alt: m.alt,
+                    full_member: m.full_member,
+                    public_note: m.public_note,
+                    zone_id: 0,
+                })
+                .collect();
+            Decoded::One(Event::GuildRoster {
+                guild_id: r.guild_id,
+                members,
+            })
+        }
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+fn guild_motd(bytes: &[u8]) -> Decoded {
+    match seq_decode::guild_motd::parse_guild_motd(bytes) {
+        Ok(m) => Decoded::One(Event::GuildMotd {
+            message: m.message,
+            sender: m.sender,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_ExpandedGuildInfo is a tagged union; only the rank-name action carries a
+// rank-table entry (one per packet — the consumer accumulates the table).
+fn expanded_guild_info(bytes: &[u8]) -> Decoded {
+    let i = seq_decode::guild_expanded_info::parse_expanded_guild_info(bytes);
+    if i.rank_index == 0 || i.rank_name.is_empty() {
+        return Decoded::Ignored; // misc guild config, not the rank table
+    }
+    Decoded::One(Event::GuildRankName {
+        guild_id: i.guild_id,
+        rank_index: i.rank_index,
+        rank_name: i.rank_name,
+    })
+}
+
+fn simple_message(bytes: &[u8]) -> Decoded {
+    match seq_decode::simple_message::parse_simple_message(bytes) {
+        Ok(m) => Decoded::One(Event::SimpleMessage {
+            format_id: m.message_format,
+            color: m.message_color,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+// OP_FormattedMessage: header + the `{u32 len, bytes}` substitution blob the
+// consumer interpolates into the eqstr template.
+fn formatted_message(bytes: &[u8]) -> Decoded {
+    match seq_decode::formatted_message::parse_formatted_message(bytes) {
+        Ok(m) => Decoded::One(Event::FormattedMessage {
+            format_id: m.message_format,
+            color: m.message_color,
+            args: seq_decode::formatted_message::parse_formatted_message_args(bytes),
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+fn special_message(bytes: &[u8]) -> Decoded {
+    match seq_decode::special_message::parse_special_message(bytes) {
+        Ok(m) => Decoded::One(Event::SpecialMessage {
+            color: m.message_color,
+            target: u32::from(m.target),
+            source: m.source,
+            message: m.message,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+fn exp(bytes: &[u8]) -> Decoded {
+    match seq_decode::exp_update::parse_exp_update(bytes) {
+        Ok(e) => Decoded::One(Event::Exp { exp: e.exp }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+fn aa_exp(bytes: &[u8]) -> Decoded {
+    match seq_decode::alt_exp_update::parse_alt_exp_update(bytes) {
+        Ok(a) => Decoded::One(Event::AaExp {
+            alt_exp: a.alt_exp,
+            aa_points: a.aa_points,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+fn time_of_day(bytes: &[u8]) -> Decoded {
+    match seq_decode::time_of_day::parse_time_of_day(bytes) {
+        Ok(t) => Decoded::One(Event::TimeOfDay {
+            year: u32::from(t.year),
+            month: u32::from(t.month),
+            day: u32::from(t.day),
+            hour: u32::from(t.hour),
+            minute: u32::from(t.minute),
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+fn group_follow(bytes: &[u8]) -> Decoded {
+    match seq_decode::group_follow::parse_group_follow(bytes) {
+        // Live's groupFollowStruct carries no level (an eql addition) — 0 is
+        // the contract's "absent".
+        Ok(g) => Decoded::One(Event::GroupFollow {
+            name: g.name,
+            level: 0,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
+fn group_disband(bytes: &[u8]) -> Decoded {
+    match seq_decode::group_disband::parse_group_disband(bytes) {
+        Ok(g) => Decoded::One(Event::GroupDisband {
+            yourname: g.yourname,
+            membername: g.membername,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,5 +545,130 @@ mod tests {
     fn empty_door_batch_is_empty_vec() {
         let d = LiveBackend.decode("OP_SpawnDoor", Dir::ServerToClient, &[]);
         assert_eq!(d, Decoded::One(Event::Doors(vec![])));
+    }
+
+    // Every current-patch subcommand parses and maps to nothing (semantics
+    // unpinned); a wrong length is still reported.
+    #[test]
+    fn spawn_appearance_parses_but_surfaces_no_event_yet() {
+        let mut b = [0u8; 8];
+        b[0..4].copy_from_slice(&25_049u32.to_le_bytes());
+        b[4..8].copy_from_slice(&4u32.to_le_bytes());
+        assert_eq!(
+            LiveBackend.decode("OP_SpawnAppearance", Dir::ServerToClient, &b),
+            Decoded::Ignored
+        );
+        assert_eq!(
+            LiveBackend.decode("OP_SpawnAppearance", Dir::ServerToClient, &[0u8; 7]),
+            Decoded::Malformed
+        );
+    }
+
+    #[test]
+    fn formatted_message_carries_its_interpolation_args() {
+        let header = seq_decode::formatted_message::HEADER_LEN;
+        let mut b = vec![0u8; header];
+        b[5..9].copy_from_slice(&11_355u32.to_le_bytes()); // messageFormat
+        b[9..13].copy_from_slice(&335u32.to_le_bytes()); // messageColor
+        b.extend_from_slice(&2u32.to_le_bytes());
+        b.extend_from_slice(b"15");
+
+        assert_eq!(
+            LiveBackend.decode("OP_FormattedMessage", Dir::ServerToClient, &b),
+            Decoded::One(Event::FormattedMessage {
+                format_id: 11_355,
+                color: 335,
+                args: vec!["15".to_string()],
+            })
+        );
+    }
+
+    // The rank-name action is one entry per packet; every other action is misc
+    // guild config with no rank table in it.
+    #[test]
+    fn expanded_guild_info_surfaces_only_the_rank_name_action() {
+        let mut b = vec![0u8; 192];
+        b[0..4].copy_from_slice(&3u32.to_le_bytes()); // action == rank name
+        b[8..12].copy_from_slice(&15u32.to_le_bytes()); // guild id
+        b[88..92].copy_from_slice(&1u32.to_le_bytes()); // rank index
+        b[92..98].copy_from_slice(b"Leader");
+
+        assert_eq!(
+            LiveBackend.decode("OP_ExpandedGuildInfo", Dir::ServerToClient, &b),
+            Decoded::One(Event::GuildRankName {
+                guild_id: 15,
+                rank_index: 1,
+                rank_name: "Leader".to_string(),
+            })
+        );
+
+        b[0..4].copy_from_slice(&1u32.to_le_bytes());
+        b[88..92].copy_from_slice(&0u32.to_le_bytes());
+        assert_eq!(
+            LiveBackend.decode("OP_ExpandedGuildInfo", Dir::ServerToClient, &b),
+            Decoded::Ignored
+        );
+    }
+
+    #[test]
+    fn guilds_in_zone_list_maps_into_the_neutral_rows() {
+        let mut b = Vec::new();
+        b.extend_from_slice(&4u32.to_le_bytes()); // requester name length
+        b.extend_from_slice(b"Name");
+        b.extend_from_slice(&1u32.to_le_bytes()); // count
+        b.extend_from_slice(&15u32.to_le_bytes());
+        b.extend_from_slice(&180u32.to_le_bytes());
+        b.extend_from_slice(b"A Guild\0");
+
+        assert_eq!(
+            LiveBackend.decode("OP_GuildsInZoneList", Dir::ServerToClient, &b),
+            Decoded::One(Event::GuildsInZone {
+                guilds: vec![GuildInZone {
+                    guild_id: 15,
+                    server_id: 180,
+                    name: "A Guild".to_string(),
+                }],
+            })
+        );
+    }
+
+    #[test]
+    fn time_of_day_and_aa_exp_map_their_fixed_structs() {
+        let mut t = [0u8; 8];
+        t[0] = 6; // hour
+        t[1] = 35; // minute
+        t[2] = 28; // day
+        t[3] = 6; // month
+        t[4..6].copy_from_slice(&3789u16.to_le_bytes());
+        assert_eq!(
+            LiveBackend.decode("OP_TimeOfDay", Dir::ServerToClient, &t),
+            Decoded::One(Event::TimeOfDay {
+                year: 3789,
+                month: 6,
+                day: 28,
+                hour: 6,
+                minute: 35
+            })
+        );
+
+        let mut a = [0u8; 12];
+        a[0..4].copy_from_slice(&91_234u32.to_le_bytes());
+        a[4..8].copy_from_slice(&317u32.to_le_bytes());
+        assert_eq!(
+            LiveBackend.decode("OP_AAExpUpdate", Dir::ServerToClient, &a),
+            Decoded::One(Event::AaExp {
+                alt_exp: 91_234,
+                aa_points: 317
+            })
+        );
+    }
+
+    // The client's click request is not the removal; only S>C removes a drop.
+    #[test]
+    fn click_object_ignores_the_client_request() {
+        assert_eq!(
+            LiveBackend.decode("OP_ClickObject", Dir::ClientToServer, &[0u8; 16]),
+            Decoded::Ignored
+        );
     }
 }

@@ -37,6 +37,36 @@ pub fn parse_formatted_message(
     })
 }
 
+/// The interpolation arguments in the trailing `messages` blob: a run of
+/// `{u32 len, len bytes}` substitutions, exactly what the daemon's
+/// `EQStr::formatMessage` walks. Split out from the header parse because the
+/// daemon slices the blob itself; a consumer with no eqstr table (scry) needs
+/// the args as strings.
+///
+/// A zero or overrunning length ends the walk — the blob is trailing wire data
+/// and the last entry is routinely padded, so a short tail is normal, not an
+/// error.
+pub fn parse_formatted_message_args(bytes: &[u8]) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut off = HEADER_LEN;
+
+    while off + 4 <= bytes.len() {
+        let len = u32::from_le_bytes([
+            bytes[off],
+            bytes[off + 1],
+            bytes[off + 2],
+            bytes[off + 3],
+        ]) as usize;
+        off += 4;
+        if len == 0 || off + len > bytes.len() {
+            break;
+        }
+        args.push(String::from_utf8_lossy(&bytes[off..off + len]).into_owned());
+        off += len;
+    }
+    args
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -44,6 +74,35 @@ mod tests {
     #[test]
     fn rejects_short_payload() {
         assert!(parse_formatted_message(&[0; 12]).is_err());
+    }
+
+    #[test]
+    fn walks_length_prefixed_args() {
+        let mut buf = vec![0u8; HEADER_LEN];
+        for a in ["Sand Giant", "12"] {
+            buf.extend_from_slice(&(a.len() as u32).to_le_bytes());
+            buf.extend_from_slice(a.as_bytes());
+        }
+        assert_eq!(parse_formatted_message_args(&buf), ["Sand Giant", "12"]);
+    }
+
+    #[test]
+    fn stops_on_a_truncated_or_zero_length_arg() {
+        let mut buf = vec![0u8; HEADER_LEN];
+        buf.extend_from_slice(&4u32.to_le_bytes());
+        buf.extend_from_slice(b"Fine");
+        buf.extend_from_slice(&99u32.to_le_bytes()); // overruns
+        buf.extend_from_slice(b"xx");
+        assert_eq!(parse_formatted_message_args(&buf), ["Fine"]);
+
+        let mut zero = vec![0u8; HEADER_LEN];
+        zero.extend_from_slice(&0u32.to_le_bytes());
+        assert!(parse_formatted_message_args(&zero).is_empty());
+    }
+
+    #[test]
+    fn no_blob_is_no_args() {
+        assert!(parse_formatted_message_args(&vec![0u8; HEADER_LEN]).is_empty());
     }
 
     #[test]
