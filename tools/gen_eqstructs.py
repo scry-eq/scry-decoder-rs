@@ -56,6 +56,9 @@ ALLOWLIST = [
     # Message opcodes — fixed header + variable-length text follow.
     "simpleMessageStruct",
     "formattedMessageStruct",
+    # Clock + AA experience.
+    "timeOfDayStruct",
+    "altExpUpdateStruct",
 ]
 
 CTYPE_TO_RUST = {

@@ -830,6 +830,50 @@ impl Default for formattedMessageStruct {
     }
 }
 
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct timeOfDayStruct {
+    /// uint8_t hour
+    pub hour: u8,
+    /// uint8_t minute
+    pub minute: u8,
+    /// uint8_t day
+    pub day: u8,
+    /// uint8_t month
+    pub month: u8,
+    /// uint16_t year
+    pub year: u16,
+    /// uint16_t unknown0006
+    pub unknown0006: u16,
+}
+
+impl Default for timeOfDayStruct {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct altExpUpdateStruct {
+    /// uint32_t altexp
+    pub altexp: u32,
+    /// uint32_t aapoints
+    pub aapoints: u32,
+    /// uint8_t percent
+    pub percent: u8,
+    /// uint8_t unknown0009[3]
+    pub unknown0009: [u8; 3],
+}
+
+impl Default for altExpUpdateStruct {
+    fn default() -> Self {
+        // SAFETY: all fields are POD and zero-bit-pattern is valid.
+        unsafe { core::mem::zeroed() }
+    }
+}
+
 impl spawnPositionUpdate {
     #[inline]
     fn pack(&self) -> [u8; 10] {
@@ -908,4 +952,6 @@ mod __layout_tests {
     #[test] fn zonePointStruct_size() { assert_eq!(core::mem::size_of::<zonePointStruct>(), 24); }
     #[test] fn simpleMessageStruct_size() { assert_eq!(core::mem::size_of::<simpleMessageStruct>(), 12); }
     #[test] fn formattedMessageStruct_size() { assert_eq!(core::mem::size_of::<formattedMessageStruct>(), 13); }
+    #[test] fn timeOfDayStruct_size() { assert_eq!(core::mem::size_of::<timeOfDayStruct>(), 8); }
+    #[test] fn altExpUpdateStruct_size() { assert_eq!(core::mem::size_of::<altExpUpdateStruct>(), 12); }
 }
