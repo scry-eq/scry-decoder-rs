@@ -1,6 +1,26 @@
 //! Parser for the 38-byte `playerSelfPosStruct` (`OP_ClientUpdate`, C>S — the
 //! local player's own position report).
 //!
+//! **Positions re-derived 2026-07-28** (07/28 rotation) against the OP_SelfPos
+//! breadcrumb as ground truth — the breadcrumb reports the player's real path,
+//! so the self-report's fields are SOLVED against it rather than guessed:
+//!
+//! ```text
+//!   /*0006*/ f32 y      (was deltaY)
+//!   /*0010*/ f32 z      (unchanged)
+//!   /*0034*/ f32 x      (was at 14)
+//! ```
+//!
+//! Scored over 8000 self-reports by whether the decoded triple lands on a
+//! position the player actually occupied: the pre-patch layout (x@14, y@26,
+//! z@10) hits 0%, this one hits 100%. The struct SIZE is unchanged at 38B, so
+//! no size check could have caught this — the symptom was a self position stuck
+//! at {0,0,4} while every other spawn decoded correctly.
+//!
+//! Heading and the velocities are NOT re-derived and read 0 (see the parser
+//! body); they need a spin / straight-run capture, which the breadcrumb cannot
+//! substitute for since it carries position only.
+//!
 //! **Re-cracked 2026-07-14** against a `/loc` ground-truth capture
 //! (`eql-locref.vpk`, 3 known points, exact match). The 2026-07-14 patch rotated
 //! the opcode id (0x7171 -> 0x5188) and shrank this report 42B -> 38B with a
@@ -92,25 +112,27 @@ pub fn parse_player_self_pos(bytes: &[u8]) -> Result<PlayerSelfPos, PlayerSelfPo
         return Err(PlayerSelfPosError::BadLength(bytes.len()));
     }
 
+    // Position offsets re-derived 2026-07-28 against the breadcrumb (see the
+    // module doc). z held its offset; y and x moved.
+    let y = read_f32_le(bytes, 6);
     let z = read_f32_le(bytes, 10);
-    let x = read_f32_le(bytes, 14);
-    // offset 18 packs `lowfrac:8 | heading:13 @bit8 | hi:11`. The facing is the
-    // 13-bit field at bit 8 (8192 per circle) — reliable on every packet, moving
-    // or stationary. The low 8 bits are a separate sub-fraction that reads 0 when
-    // not translating; the 11 bits above are NOT a turn rate (they read 0 through
-    // a full spin). See the module doc: verified vs a stationary 360-spin capture.
-    let w = read_u32_le(bytes, 18);
-    let heading = ((w >> 8) & 0x1FFF) as u16;
-    let y = read_f32_le(bytes, 26);
-    // Velocity (units/tick, ±~2.26 = full run speed) — cracked 2026-07-17 vs a
-    // run-south-then-run-west /loc capture: deltaY@6 lit up (−2.27) only during
-    // the south leg, deltaX@22 (+2.26) only during the west leg, both ~0 while
-    // still; deltaZ@30 is small and nonzero only while translating (slope bob).
-    // deltaY@6 held its offset across the 07/14 rearrangement (the old 42B form
-    // also carried Y-velocity @6); only deltaX moved (@26 → @22).
-    let delta_y = read_f32_le(bytes, 6);
-    let delta_x = read_f32_le(bytes, 22);
-    let delta_z = read_f32_le(bytes, 30);
+    let x = read_f32_le(bytes, 34);
+
+    // Heading and the velocity components have NOT been re-derived for this
+    // patch and are deliberately surfaced as 0 rather than read from their
+    // pre-patch offsets. The old heading word at 18 now reads zero on 92% of
+    // self-reports, so that field moved; feeding its remains to the consumer
+    // would point the player marker in an arbitrary direction, which is worse
+    // than a marker that does not turn. Both need a capture with a known facing
+    // (a stationary full-circle spin) and a known velocity (a straight run on a
+    // cardinal) — the breadcrumb pins position only, so it cannot settle these.
+    // Candidates for the velocities are offsets 14 and 30: both read nonzero on
+    // ~49% of self-reports, which is the movement duty cycle of this capture,
+    // while 0/22/26 are nonzero on ~100%.
+    let heading = 0u16;
+    let delta_x = 0.0;
+    let delta_y = 0.0;
+    let delta_z = 0.0;
 
     Ok(PlayerSelfPos {
         spawn_id: 0,
@@ -139,11 +161,11 @@ mod tests {
     }
 
     #[test]
-    fn parses_floats_x14_y26_z10() {
+    fn parses_floats_y6_z10_x34() {
         let mut buf = [0u8; PAYLOAD_LEN];
+        buf[6..10].copy_from_slice(&941.50f32.to_le_bytes()); // y
         buf[10..14].copy_from_slice(&190.01f32.to_le_bytes()); // z
-        buf[14..18].copy_from_slice(&654.25f32.to_le_bytes()); // x
-        buf[26..30].copy_from_slice(&941.50f32.to_le_bytes()); // y
+        buf[34..38].copy_from_slice(&654.25f32.to_le_bytes()); // x
         let p = parse_player_self_pos(&buf).unwrap();
         assert_eq!(p.x, 654.25);
         assert_eq!(p.y, 941.50);
@@ -151,27 +173,34 @@ mod tests {
         assert_eq!(p.spawn_id, 0);
     }
 
+    // A real self-report off the wire, post-07/28. Ground truth for the same
+    // moment comes from the OP_SelfPos breadcrumb: the player stood at
+    // x 2037, y -1889, z 1.
     #[test]
-    fn heading_is_13_bit_at_bit8() {
-        let mut buf = [0u8; PAYLOAD_LEN];
-        // heading = 0x1FFF (13-bit max) at bit 8; the low 8 bits (sub-fraction) and
-        // the high 11 bits above must not bleed into it.
-        buf[18..22].copy_from_slice(&(0xFFu32 | (0x1FFFu32 << 8) | (0x7FFu32 << 21)).to_le_bytes());
-        let p = parse_player_self_pos(&buf).unwrap();
-        assert_eq!(p.heading, 0x1FFF);
-        assert!(p.heading < HEADING_UNITS);
+    fn decodes_a_captured_self_report() {
+        let bytes: [u8; PAYLOAD_LEN] = [
+            0xB8, 0x4E, 0xBD, 0x3A, 0x00, 0x00, 0x00, 0x20, 0xEC, 0xC4, 0x00, 0x00, 0x80, 0x3F,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x9D, 0xC7,
+            0xF7, 0x7F, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA0, 0xFE, 0x44,
+        ];
+        let p = parse_player_self_pos(&bytes).unwrap();
+        assert_eq!(p.x, 2037.0);
+        assert_eq!(p.y, -1889.0);
+        assert_eq!(p.z, 1.0);
     }
 
+    // Heading and the velocities are not decoded for this patch — surfacing a
+    // stale field would point the player marker somewhere arbitrary. Pinned so
+    // that re-deriving them is a deliberate change, not an accident.
     #[test]
-    fn turning_packet_still_decodes_heading() {
-        // A real turning packet has nonzero high bits (24..31); the heading is
-        // still valid — nothing to reject. idx-72 of the spin capture: w=0xebcef000
-        // -> heading = (0xebcef000 >> 8) & 0x1FFF = 0x1cef0 & 0x1FFF ... exercised
-        // here with a crafted value so the field is unambiguous.
+    fn heading_and_velocity_are_not_decoded_this_patch() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        buf[18..22].copy_from_slice(&(0x1234u32 << 8 | 0xdd_u32 << 24).to_le_bytes());
+        buf[18..22].copy_from_slice(&0xDEAD_BEEFu32.to_le_bytes());
+        buf[14..18].copy_from_slice(&2.26f32.to_le_bytes());
+        buf[30..34].copy_from_slice(&2.26f32.to_le_bytes());
         let p = parse_player_self_pos(&buf).unwrap();
-        assert_eq!(p.heading, 0x1234 & 0x1FFF);
+        assert_eq!(p.heading, 0);
+        assert_eq!((p.delta_x, p.delta_y, p.delta_z), (0.0, 0.0, 0.0));
     }
 
     #[test]
