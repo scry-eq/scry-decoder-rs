@@ -19,6 +19,12 @@
 use crate::{parse_spawn, DecodeError};
 
 pub struct LoadoutSwap {
+    /// The whole embedded ZoneEntry-format record. Legends does
+    /// delete-then-readd on a swap — a paired OP_DeleteSpawn removes the id
+    /// moments before — so this record IS the re-add, and a consumer that only
+    /// applies the changed fields silently drops the spawn. Surfaced so the
+    /// consumer can re-create it.
+    pub record: crate::ZoneSpawn,
     /// Header spawnId — the id of the player who swapped (matches the tracked
     /// spawn, or the local player's own id for a self swap).
     pub spawn_id: u32,
@@ -52,6 +58,7 @@ pub fn parse_loadout_swap(data: &[u8]) -> Result<LoadoutSwap, LoadoutSwapError> 
     Ok(LoadoutSwap {
         spawn_id,
         level: record.level,
+        record: record.clone(),
         class_: record.class_,
         race: record.race,
     })

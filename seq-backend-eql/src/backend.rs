@@ -93,29 +93,35 @@ impl Backend for EqlBackend {
 
 fn spawn(bytes: &[u8]) -> Decoded {
     match crate::parse_spawn(bytes) {
-        Ok(s) => Decoded::One(Event::SpawnAdded(SpawnInfo {
-            id: u32::from(s.id),
-            name: s.name,
-            last_name: s.last_name,
-            race: s.race,
-            class_: s.class_,
-            deity: s.deity,
-            level: s.level,
-            npc: s.npc,
-            cur_hp: u32::from(s.cur_hp),
-            max_hp: Some(u32::from(s.max_hp)),
-            guild_id: s.guild_id,
-            guild_server_id: s.guild_server_id,
-            // eql spawn carries position inline; heading is h2048 (11-bit).
-            pos: Some(Pos {
-                x: i32::from(s.x),
-                y: i32::from(s.y),
-                z: i32::from(s.z),
-                heading_deg: heading_deg(s.heading, 11),
-            }),
-        })),
+        Ok(s) => Decoded::One(spawn_event(&s)),
         Err(_) => Decoded::Malformed,
     }
+}
+
+/// One decoded eql spawn record -> the neutral SpawnAdded event. Shared by
+/// OP_ZoneEntry and OP_LoadoutSwap, whose embedded record is byte-identical.
+fn spawn_event(s: &crate::ZoneSpawn) -> Event {
+    Event::SpawnAdded(SpawnInfo {
+        id: u32::from(s.id),
+        name: s.name.clone(),
+        last_name: s.last_name.clone(),
+        race: s.race,
+        class_: s.class_,
+        deity: s.deity,
+        level: s.level,
+        npc: s.npc,
+        cur_hp: u32::from(s.cur_hp),
+        max_hp: Some(u32::from(s.max_hp)),
+        guild_id: s.guild_id,
+        guild_server_id: s.guild_server_id,
+        // eql spawn carries position inline; heading is h2048 (11-bit).
+        pos: Some(Pos {
+            x: i32::from(s.x),
+            y: i32::from(s.y),
+            z: i32::from(s.z),
+            heading_deg: heading_deg(s.heading, 11),
+        }),
+    })
 }
 
 fn mob_update(bytes: &[u8]) -> Decoded {
@@ -489,12 +495,16 @@ fn buff_list(bytes: &[u8]) -> Decoded {
 // eql reuses Live's action2Struct byte-identically (OP_Action2 = damage).
 fn action2(bytes: &[u8]) -> Decoded {
     match crate::action2::parse_action2(bytes) {
+        // The wire marks "no spell" (a melee swing) as -1, which the parser
+        // faithfully keeps as i32 — but casting that to u32 turns it into
+        // 4294967295 and the neutral contract says 0 = melee, so a consumer
+        // then looks up a spell that cannot exist. Normalise here.
         Ok(a) => Decoded::One(Event::Combat {
             source: u32::from(a.source),
             target: u32::from(a.target),
             kind: u32::from(a.kind),
             damage: a.damage,
-            spell_id: a.spell as u32,
+            spell_id: if a.spell < 0 { 0 } else { a.spell as u32 },
         }),
         Err(_) => Decoded::Malformed,
     }
@@ -739,12 +749,22 @@ fn click_object(dir: Dir, bytes: &[u8]) -> Decoded {
 }
 fn loadout_swap(bytes: &[u8]) -> Decoded {
     match crate::loadout_swap::parse_loadout_swap(bytes) {
-        Ok(l) => Decoded::One(Event::LoadoutSwap {
-            spawn_id: l.spawn_id,
-            level: l.level as u32,
-            class: l.class_,
-            race: l.race,
-        }),
+        // Legends does delete-then-readd on a loadout/appearance change: a
+        // paired OP_DeleteSpawn removes the id moments before this arrives, so
+        // the embedded record IS the re-add. Emit it as a spawn FIRST so the
+        // consumer re-creates a spawn it may have just dropped — otherwise the
+        // next position update resurrects the id as an "Unknown" placeholder.
+        // Consumers upsert on SpawnAdded, so this is idempotent when the spawn
+        // is still tracked. Matches upstream's fix (legends 7612d72).
+        Ok(l) => Decoded::Many(vec![
+            spawn_event(&l.record),
+            Event::LoadoutSwap {
+                spawn_id: l.spawn_id,
+                level: l.level as u32,
+                class: l.class_,
+                race: l.race,
+            },
+        ]),
         Err(_) => Decoded::Malformed,
     }
 }
