@@ -327,6 +327,9 @@ mod ffi {
         spell_id: u32,
         remaining_ticks: i32,
         slot: u32,
+        // Who cast it. A non-self owner's list mixes the spawn's own buffs
+        // with the ones the player put on it; only this tells them apart.
+        caster: String,
     }
     // One point in the EQL self-position breadcrumb (OP_SelfPosEQL 0x4fb6). Game
     // coords (not screen-negated); `ts` is a per-sample monotonic timer. Ordered
@@ -1264,6 +1267,7 @@ fn decode_buff_list(bytes: &[u8]) -> Vec<ffi::BuffListEntry> {
                 spell_id: e.spell_id,
                 remaining_ticks: e.remaining_ticks,
                 slot: e.slot,
+                caster: e.caster,
             })
             .collect(),
         Err(_) => Vec::new(),

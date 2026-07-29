@@ -97,6 +97,10 @@ pub struct BuffEntry {
     pub remaining_ticks: i32,
     /// Buff-window slot index.
     pub slot: u32,
+    /// Who cast it, as spelled on the wire (empty when the wire's is). The
+    /// owner's list mixes their own buffs with the ones the player cast on
+    /// them; only the caster separates the two.
+    pub caster: String,
 }
 
 /// One lootable item on a corpse (OP_LootDrops). `item_id` is parsed from the

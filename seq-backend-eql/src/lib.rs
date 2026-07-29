@@ -1131,6 +1131,11 @@ pub struct BuffListEntry {
     pub spell_id: u32,
     pub remaining_ticks: i32,
     pub slot: u32,
+    /// Who cast it, as spelled on the wire (empty when the name field is).
+    /// Consumers key ownership off this: a non-self owner's list mixes the
+    /// spawn's own buffs with the ones the player put on it, and only the
+    /// caster tells them apart.
+    pub caster: String,
 }
 
 /// A decoded `OP_BuffList` (0x77ae): the authoritative active-buff list for one
@@ -1167,11 +1172,15 @@ pub fn parse_buff_list(b: &[u8]) -> Result<BuffList, DecodeError> {
         let spell_id = rd_u32(b, pos);
         let remaining_ticks = rd_u32(b, pos + 8) as i32;
         pos += 16;
-        // NUL-terminated caster name (skip past it; the name isn't surfaced).
-        match b[pos..].iter().position(|&c| c == 0) {
-            Some(off) => pos += off + 1,
+        // NUL-terminated caster name.
+        let caster = match b[pos..].iter().position(|&c| c == 0) {
+            Some(off) => {
+                let s = String::from_utf8_lossy(&b[pos..pos + off]).into_owned();
+                pos += off + 1;
+                s
+            }
             None => return Err(DecodeError::BadLength(b.len())),
-        }
+        };
         // slot: u32 between records, u16 on the final record.
         let slot = if i + 1 == count {
             if pos + 2 > b.len() {
@@ -1188,7 +1197,7 @@ pub fn parse_buff_list(b: &[u8]) -> Result<BuffList, DecodeError> {
             pos += 4;
             s
         };
-        entries.push(BuffListEntry { spell_id, remaining_ticks, slot });
+        entries.push(BuffListEntry { spell_id, remaining_ticks, slot, caster });
     }
     // Structural canary: the parse must consume the packet exactly.
     if pos != b.len() {
@@ -1610,8 +1619,14 @@ mod tests {
         let list = parse_buff_list(&b).unwrap();
         assert_eq!(list.spawn_id, 100);
         assert_eq!(list.entries.len(), 2);
-        assert_eq!(list.entries[0], BuffListEntry { spell_id: 278, remaining_ticks: 5, slot: 1 });
-        assert_eq!(list.entries[1], BuffListEntry { spell_id: 515, remaining_ticks: -1, slot: 7 });
+        assert_eq!(
+            list.entries[0],
+            BuffListEntry { spell_id: 278, remaining_ticks: 5, slot: 1, caster: String::new() }
+        );
+        assert_eq!(
+            list.entries[1],
+            BuffListEntry { spell_id: 515, remaining_ticks: -1, slot: 7, caster: "X".into() }
+        );
         // Truncation / trailing-garbage both fail the cursor-lands-on-end canary.
         assert!(parse_buff_list(&b[..b.len() - 1]).is_err());
         let mut extra = b.clone();

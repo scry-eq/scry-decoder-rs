@@ -490,6 +490,7 @@ fn buff_list(bytes: &[u8]) -> Decoded {
                     spell_id: e.spell_id,
                     remaining_ticks: e.remaining_ticks,
                     slot: e.slot,
+                    caster: e.caster,
                 })
                 .collect(),
         }),
