@@ -83,8 +83,16 @@ use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = 38;
 
-/// Full circle in wire heading units (13-bit field → 8192 steps).
-pub const HEADING_UNITS: u16 = 8192;
+/// Full circle in wire heading units (15-bit field → 32768 steps).
+///
+/// Calibrated 2026-07-28 against travel direction: a running player faces where
+/// they go, so each breadcrumb leg's bearing IS the facing. Fitting 695
+/// (bearing, field) samples picks 32768 decisively over 8192/16384/65536, with
+/// the zero-point landing on exactly north. Compass degrees are therefore
+/// `field * 360 / 32768` with NO inversion — field 0 = N, 8192 = E, 16384 = S,
+/// 24576 = W. Residual fit error ~19 degrees is the capture's own noise (the
+/// player was being chased and strafing while running), not scale error.
+pub const HEADING_UNITS: u16 = 32768;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PlayerSelfPos {
@@ -133,18 +141,13 @@ pub fn parse_player_self_pos(bytes: &[u8]) -> Result<PlayerSelfPos, PlayerSelfPo
     let z = read_f32_le(bytes, 10);
     let x = read_f32_le(bytes, 34);
 
-    // Heading and the velocity components have NOT been re-derived for this
-    // patch and are deliberately surfaced as 0 rather than read from their
-    // pre-patch offsets. The old heading word at 18 now reads zero on 92% of
-    // self-reports, so that field moved; feeding its remains to the consumer
-    // would point the player marker in an arbitrary direction, which is worse
-    // than a marker that does not turn. Both need a capture with a known facing
-    // (a stationary full-circle spin) and a known velocity (a straight run on a
-    // cardinal) — the breadcrumb pins position only, so it cannot settle these.
-    // Candidates for the velocities are offsets 14 and 30: both read nonzero on
-    // ~49% of self-reports, which is the movement duty cycle of this capture,
-    // while 0/22/26 are nonzero on ~100%.
-    let heading = 0u16;
+    // The velocity components have NOT been re-derived for this patch and are
+    // deliberately surfaced as 0 rather than read from their pre-patch offsets:
+    // a wrong velocity would smear the player marker between updates. Candidates
+    // are offsets 14 and 30, both nonzero on ~49% of self-reports (this
+    // capture's movement duty cycle) while 0/22/26 are nonzero on ~100%.
+    // Facing: u16 at 24..25 (see HEADING_UNITS for the calibration).
+    let heading = u16::from_le_bytes([bytes[24], bytes[25]]);
     let delta_x = 0.0;
     let delta_y = 0.0;
     let delta_z = 0.0;
@@ -204,17 +207,25 @@ mod tests {
         assert_eq!(p.z, 1.0);
     }
 
-    // Heading and the velocities are not decoded for this patch — surfacing a
-    // stale field would point the player marker somewhere arbitrary. Pinned so
-    // that re-deriving them is a deliberate change, not an accident.
+    // Facing is a 15-bit compass value at 24..25: 0 = N, a quarter circle = E.
     #[test]
-    fn heading_and_velocity_are_not_decoded_this_patch() {
+    fn decodes_the_facing_as_a_compass_value() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        buf[18..22].copy_from_slice(&0xDEAD_BEEFu32.to_le_bytes());
+        buf[24..26].copy_from_slice(&(HEADING_UNITS / 4).to_le_bytes());
+        let p = parse_player_self_pos(&buf).unwrap();
+        assert_eq!(p.heading, HEADING_UNITS / 4);
+        assert!(p.heading < HEADING_UNITS);
+    }
+
+    // The velocities are still unmapped for this patch; surfacing a stale field
+    // would smear the marker between updates. Pinned so re-deriving them is a
+    // deliberate change.
+    #[test]
+    fn velocity_is_not_decoded_this_patch() {
+        let mut buf = [0u8; PAYLOAD_LEN];
         buf[14..18].copy_from_slice(&2.26f32.to_le_bytes());
         buf[30..34].copy_from_slice(&2.26f32.to_le_bytes());
         let p = parse_player_self_pos(&buf).unwrap();
-        assert_eq!(p.heading, 0);
         assert_eq!((p.delta_x, p.delta_y, p.delta_z), (0.0, 0.0, 0.0));
     }
 
