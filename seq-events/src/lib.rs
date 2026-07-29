@@ -405,6 +405,10 @@ pub enum Event {
     /// A group departure (OP_GroupDisband / OP_GroupDisband2): `membername`
     /// leaves; `membername == yourname` means the whole group disbanded.
     GroupDisband { yourname: String, membername: String },
+    /// The player levelled (OP_LevelUpdate). `level` is absolute, not a delta —
+    /// consumers should assign it rather than increment. `exp` is the post-ding
+    /// exp value, which cross-references the next Exp event.
+    LevelUpdate { level: u32, level_old: u32, exp: u32 },
     /// Zone-in boundary marker (OP_EnterWorld) — no payload; the daemon uses it
     /// to reset per-zone state.
     EnterWorld,

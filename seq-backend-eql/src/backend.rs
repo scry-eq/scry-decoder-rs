@@ -76,6 +76,7 @@ impl Backend for EqlBackend {
             "OP_SpecialMesg" => special_message(bytes),
             "OP_LootMessage" => loot_message(bytes),
             "OP_ExpUpdate" => exp(bytes),
+            "OP_LevelUpdate" => level_update(bytes),
             "OP_AAExpUpdate" => aa_exp(bytes),
             "OP_ManaChange" => mana_change(bytes),
             "OP_SkillUpdate" => skill_update(bytes),
@@ -374,6 +375,24 @@ fn is_player_channel(c: u32) -> bool {
 // them except Say (8), which is not echoed.
 fn is_echoed_channel(c: u32) -> bool {
     matches!(c, 0 | 2 | 3 | 4 | 5 | 7 | 15)
+}
+
+// OP_LevelUpdate: the eql packet is an 80B widened container whose HEAD is the
+// stock levelUpUpdateStruct, so feed the parser exactly that head — it length-
+// checks exactly and would otherwise reject the whole packet.
+fn level_update(bytes: &[u8]) -> Decoded {
+    let n = crate::level_update::PAYLOAD_LEN;
+    if bytes.len() < n {
+        return Decoded::Malformed;
+    }
+    match crate::level_update::parse_level_update(&bytes[..n]) {
+        Ok(l) => Decoded::One(Event::LevelUpdate {
+            level: l.level,
+            level_old: l.level_old,
+            exp: l.exp,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
 }
 
 // OP_ExpUpdate = the regular exp bar (0..100000). Shared expUpdateStruct.
@@ -956,5 +975,33 @@ mod tests {
     fn empty_door_batch_is_empty_vec() {
         let d = EqlBackend.decode("OP_SpawnDoor", Dir::ServerToClient, &[]);
         assert_eq!(d, Decoded::One(Event::Doors(vec![])));
+    }
+}
+
+#[cfg(test)]
+mod level_update_tests {
+    use super::*;
+
+    // The eql packet is far wider than levelUpUpdateStruct. Reading the whole
+    // thing rejects it on the exact-length check, which is how these went
+    // undecoded: no error surfaced, the packet simply vanished.
+    #[test]
+    fn decodes_the_wide_container_by_slicing_its_head() {
+        let n = crate::level_update::PAYLOAD_LEN;
+        let mut b = vec![0u8; 80];
+        b[0..4].copy_from_slice(&6u32.to_le_bytes());
+        b[4..8].copy_from_slice(&5u32.to_le_bytes());
+        b[8..12].copy_from_slice(&1530u32.to_le_bytes());
+        assert!(b.len() > n, "fixture must be wider than the struct");
+        assert!(crate::level_update::parse_level_update(&b).is_err());
+        assert_eq!(
+            level_update(&b),
+            Decoded::One(Event::LevelUpdate { level: 6, level_old: 5, exp: 1530 })
+        );
+    }
+
+    #[test]
+    fn rejects_a_runt() {
+        assert_eq!(level_update(&[0u8; 4]), Decoded::Malformed);
     }
 }
