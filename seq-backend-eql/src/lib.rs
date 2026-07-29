@@ -786,7 +786,13 @@ pub fn parse_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     // breadcrumb (OP_SelfPos) gives verified coordinates, and their own spawn
     // arrives as a ZoneEntry record, so the record's words can be matched
     // straight to known values — 30 own-records agreeing on
-    //     X @(len-95)   Z @(len-91)   pad @(len-87)   Y @(len-83)
+    //     Y @(len-95)   Z @(len-91)   pad @(len-87)   X @(len-83)
+    //
+    // The x/y assignment is MobUpdate's, established by tail-scanning 3216 NPC
+    // records against their MobUpdate position (id-verified at 100%, fixed
+    // layout). An earlier revision had these swapped because it was pinned to
+    // the breadcrumb, which reports in /loc order (y first) — self-consistent
+    // with the breadcrumb and transposed against every other position source.
     // i.e. in packet order: one lead word, then X, Z, pad, Y, one trailing
     // word. Read sequentially rather than from the tail — the record's tail
     // length varies with the title/suffix string block.
@@ -796,11 +802,11 @@ pub fn parse_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     // pinned to the same frame the breadcrumb and heading were verified in, so
     // it stays consistent with the self-position path.
     let _lead = w.u32()?;
-    let x = pos19_word(w.u32()?);
+    let y = pos19_word(w.u32()?);
     let z = pos19_word(w.u32()?);
     let _pad = w.u32()?; // always 0 on the wire — reading it as a coordinate is
                          // what produced the pre-patch wall of spawns at y=0
-    let y = pos19_word(w.u32()?);
+    let x = pos19_word(w.u32()?);
     let _trail = w.u32()?;
     // The spawn record's facing did not survive the rearrangement: the word it
     // used to ride is now the Y coordinate. Upstream reports the remaining
@@ -1426,10 +1432,10 @@ mod tests {
         // end: X @(len-95), Z @(len-91), pad @(len-87), Y @(len-83).
         let _ = heading; // spawn facing did not survive the rearrangement
         b.extend_from_slice(&[0u8; 4]); // leading word
-        b.extend_from_slice(&pos_word(x)); // len-95
+        b.extend_from_slice(&pos_word(y)); // len-95
         b.extend_from_slice(&pos_word(z)); // len-91
         u32le(&mut b, 0); // len-87: pad (always 0 on the wire)
-        b.extend_from_slice(&pos_word(y)); // len-83
+        b.extend_from_slice(&pos_word(x)); // len-83
         u32le(&mut b, 0); // trailing word (heading; unmapped)
         text(&mut b, title);
         text(&mut b, suffix);

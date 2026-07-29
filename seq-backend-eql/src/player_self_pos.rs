@@ -6,9 +6,9 @@
 //! so the self-report's fields are SOLVED against it rather than guessed:
 //!
 //! ```text
-//!   /*0006*/ f32 y      (was deltaY)
+//!   /*0006*/ f32 x      (map frame; was deltaY)
 //!   /*0010*/ f32 z      (unchanged)
-//!   /*0034*/ f32 x      (was at 14)
+//!   /*0034*/ f32 y      (map frame; was at 14)
 //! ```
 //!
 //! Scored over 8000 self-reports by whether the decoded triple lands on a
@@ -143,9 +143,13 @@ pub fn parse_player_self_pos(bytes: &[u8]) -> Result<PlayerSelfPos, PlayerSelfPo
 
     // Position offsets re-derived 2026-07-28 against the breadcrumb (see the
     // module doc). z held its offset; y and x moved.
-    let y = read_f32_le(bytes, 6);
+    // Axis labels are MobUpdate's / the spawn record's — the map frame. The
+    // breadcrumb this was originally pinned against reports in /loc order (y
+    // first), so a read pinned to IT comes out transposed against every other
+    // position source; the two agree once this matches the spawn record.
+    let x = read_f32_le(bytes, 6);
     let z = read_f32_le(bytes, 10);
-    let x = read_f32_le(bytes, 34);
+    let y = read_f32_le(bytes, 34);
 
     // The velocity components have NOT been re-derived for this patch and are
     // deliberately surfaced as 0 rather than read from their pre-patch offsets:
@@ -187,9 +191,9 @@ mod tests {
     #[test]
     fn parses_floats_y6_z10_x34() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        buf[6..10].copy_from_slice(&941.50f32.to_le_bytes()); // y
+        buf[6..10].copy_from_slice(&654.25f32.to_le_bytes()); // x
         buf[10..14].copy_from_slice(&190.01f32.to_le_bytes()); // z
-        buf[34..38].copy_from_slice(&654.25f32.to_le_bytes()); // x
+        buf[34..38].copy_from_slice(&941.50f32.to_le_bytes()); // y
         let p = parse_player_self_pos(&buf).unwrap();
         assert_eq!(p.x, 654.25);
         assert_eq!(p.y, 941.50);
@@ -208,8 +212,8 @@ mod tests {
             0xF7, 0x7F, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA0, 0xFE, 0x44,
         ];
         let p = parse_player_self_pos(&bytes).unwrap();
-        assert_eq!(p.x, 2037.0);
-        assert_eq!(p.y, -1889.0);
+        assert_eq!(p.x, -1889.0);
+        assert_eq!(p.y, 2037.0);
         assert_eq!(p.z, 1.0);
     }
 
