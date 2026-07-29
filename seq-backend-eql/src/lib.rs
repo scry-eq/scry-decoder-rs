@@ -777,14 +777,36 @@ pub fn parse_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     //   word5            delta / animation
     // Re-derived 2026-07-14 by matching ZoneEntry Z to the OP_MobUpdate Z of the
     // same spawns (35/36 exact, worst 1 unit).
-    let _vel = w.u32()?;
-    let z = pos19_word(w.u32()? >> 13); // Z rides bits 13..31 of this word
-    let _flag = w.u32()?;
-    let mid = w.u32()?;
-    let y = pos19_word(mid);
+    // ---- 2026-07-28 patch: the position block was rearranged. ----
+    // The words are still six and still tail-anchored, but the coordinates
+    // moved and one of them is now a PAD that always reads 0 — which is why
+    // the pre-patch read produced a wall of spawns sitting at y=0.
+    //
+    // Located against the only position we can trust: the player's own. Their
+    // breadcrumb (OP_SelfPos) gives verified coordinates, and their own spawn
+    // arrives as a ZoneEntry record, so the record's words can be matched
+    // straight to known values — 30 own-records agreeing on
+    //     X @(len-95)   Z @(len-91)   pad @(len-87)   Y @(len-83)
+    // i.e. in packet order: one lead word, then X, Z, pad, Y, one trailing
+    // word. Read sequentially rather than from the tail — the record's tail
+    // length varies with the title/suffix string block.
+    // Upstream's struct (legends 7612d72) independently describes the same
+    // 5-word shape including the pad; it labels the two horizontal words the
+    // other way round, which is the transpose it flags as ambiguous. Ours is
+    // pinned to the same frame the breadcrumb and heading were verified in, so
+    // it stays consistent with the self-position path.
+    let _lead = w.u32()?;
     let x = pos19_word(w.u32()?);
-    let _delta = w.u32()?;
-    let heading = ((mid >> 19) & 0x1FFF) as u16;
+    let z = pos19_word(w.u32()?);
+    let _pad = w.u32()?; // always 0 on the wire — reading it as a coordinate is
+                         // what produced the pre-patch wall of spawns at y=0
+    let y = pos19_word(w.u32()?);
+    let _trail = w.u32()?;
+    // The spawn record's facing did not survive the rearrangement: the word it
+    // used to ride is now the Y coordinate. Upstream reports the remaining
+    // heading word as unmapped and zeroes it at consumption; do the same rather
+    // than point every spawn in a direction taken from the wrong bits.
+    let heading = 0u16;
 
     // Title/suffix string block: 4 strings on ordinary spawns, 6 (title, suffix,
     // then the 4) on titled ones — no reliable presence flag. Anchor on the
@@ -1399,16 +1421,16 @@ mod tests {
         u32le(&mut b, 0); // petOwnerId
         b.extend_from_slice(&[0u8; 49]); // npc==1 extra
         b.extend_from_slice(&[0u8; 60]); // equipment (else branch: 20 + 2*5*4)
-        // position block: word0 vel, word1 z-word (Z in bits 13..31), word2 flag,
-        // word3 y-word (Y low19 + heading), word4 x-word, word5 delta.
-        b.extend_from_slice(&[0u8; 4]); // word0: velocity/flags
-        b.extend_from_slice(&((((z * 8) as u32) & 0x7FFFF) << 13).to_le_bytes()); // word1: Z @bit13
-        b.extend_from_slice(&[0u8; 4]); // word2: flag
-        // middle word: y in low 19 bits, h2048 heading in high 13 bits
-        let mid = ((((y * 8) as u32) & 0x7FFFF) | ((heading as u32) << 19)).to_le_bytes();
-        b.extend_from_slice(&mid);
-        b.extend_from_slice(&pos_word(x));
-        u32le(&mut b, 0x6000); // delta/animation word (unmapped)
+        // 2026-07-28 position block: one leading word, then X, Z, PAD, Y, and a
+        // trailing word. Tail-anchored, so what matters is the distance from the
+        // end: X @(len-95), Z @(len-91), pad @(len-87), Y @(len-83).
+        let _ = heading; // spawn facing did not survive the rearrangement
+        b.extend_from_slice(&[0u8; 4]); // leading word
+        b.extend_from_slice(&pos_word(x)); // len-95
+        b.extend_from_slice(&pos_word(z)); // len-91
+        u32le(&mut b, 0); // len-87: pad (always 0 on the wire)
+        b.extend_from_slice(&pos_word(y)); // len-83
+        u32le(&mut b, 0); // trailing word (heading; unmapped)
         text(&mut b, title);
         text(&mut b, suffix);
         text(&mut b, ""); // string 3
@@ -1439,8 +1461,9 @@ mod tests {
         assert_eq!(s.x, 10);
         assert_eq!(s.y, -15);
         assert_eq!(s.z, 80);
-        // h2048 heading out of the middle coord word's high 13 bits
-        assert_eq!(s.heading, 1234);
+        // The facing no longer survives the 07/28 position block; it is
+        // reported as 0 rather than read from the bits that now hold Y.
+        assert_eq!(s.heading, 0);
         // titled spawn: title then suffix out of the tail-anchored string block
         assert_eq!(s.title, "Protector");
         assert_eq!(s.suffix, "of Qeynos");
