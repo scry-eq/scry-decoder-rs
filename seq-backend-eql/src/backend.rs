@@ -50,7 +50,12 @@ impl Backend for EqlBackend {
             "OP_PlayerProfile" => player_profile(bytes),
             "OP_LoadoutSwap" => loadout_swap(bytes),
             "OP_ClickObject" => click_object(dir, bytes),
-            "OP_SpawnAppearance2" => spawn_appearance2(bytes),
+            // eql's appearance event is the stock opcode carrying the WIDENED
+            // 24-byte struct (upstream calls it spawnEventEQLStruct), so both
+            // names reach the same decoder. Only OP_SpawnAppearance is mapped on
+            // the current patch; before this, 26530 packets a capture arrived
+            // under a name with no arm and were dropped outright.
+            "OP_SpawnAppearance" | "OP_SpawnAppearance2" => spawn_appearance2(bytes),
             "OP_TimeOfDay" => time_of_day(bytes),
             "OP_Stance" => stance(bytes),
             "OP_Invocation" => invocation(bytes),
