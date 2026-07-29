@@ -83,16 +83,22 @@ use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = 38;
 
-/// Full circle in wire heading units (15-bit field → 32768 steps).
+/// Full circle in wire heading units (11-bit field → 2048 steps).
 ///
-/// Calibrated 2026-07-28 against travel direction: a running player faces where
-/// they go, so each breadcrumb leg's bearing IS the facing. Fitting 695
-/// (bearing, field) samples picks 32768 decisively over 8192/16384/65536, with
-/// the zero-point landing on exactly north. Compass degrees are therefore
-/// `field * 360 / 32768` with NO inversion — field 0 = N, 8192 = E, 16384 = S,
-/// 24576 = W. Residual fit error ~19 degrees is the capture's own noise (the
-/// player was being chased and strafing while running), not scale error.
-pub const HEADING_UNITS: u16 = 32768;
+/// Field boundaries per upstream's `eqlClientSelfPosStruct` (legends branch,
+/// 2026-07-28): the facing is bits 20..30 of the dword at offset 22. Deriving
+/// it locally could only bound it as "the u16 at 24..25, top bit never set",
+/// i.e. 15 bits — the low 4 bits of that window are a separate sub-field, not
+/// facing precision, which the capture cannot reveal but the struct does. Same
+/// bits, same angle to within 0.18 degrees; upstream's split is the right one.
+///
+/// The SENSE is ours and is measured, not assumed: calibrated against travel
+/// direction (a running player faces where they go, so each breadcrumb leg's
+/// bearing IS the facing). Compass degrees are `field * 360 / 2048` with NO
+/// inversion — 0 = N, 512 = E, 1024 = S, 1536 = W — verified end to end at a
+/// median error of 4.5 degrees over 278 run legs. Note this is the opposite
+/// sense to the spawn headings, which DO invert via `heading_deg`.
+pub const HEADING_UNITS: u16 = 2048;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PlayerSelfPos {
@@ -146,8 +152,8 @@ pub fn parse_player_self_pos(bytes: &[u8]) -> Result<PlayerSelfPos, PlayerSelfPo
     // a wrong velocity would smear the player marker between updates. Candidates
     // are offsets 14 and 30, both nonzero on ~49% of self-reports (this
     // capture's movement duty cycle) while 0/22/26 are nonzero on ~100%.
-    // Facing: u16 at 24..25 (see HEADING_UNITS for the calibration).
-    let heading = u16::from_le_bytes([bytes[24], bytes[25]]);
+    // Facing: bits 20..30 of the dword at 22 (see HEADING_UNITS).
+    let heading = ((read_u32_le(bytes, 22) >> 20) & 0x7FF) as u16;
     let delta_x = 0.0;
     let delta_y = 0.0;
     let delta_z = 0.0;
@@ -211,7 +217,7 @@ mod tests {
     #[test]
     fn decodes_the_facing_as_a_compass_value() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        buf[24..26].copy_from_slice(&(HEADING_UNITS / 4).to_le_bytes());
+        buf[22..26].copy_from_slice(&((u32::from(HEADING_UNITS) / 4) << 20).to_le_bytes());
         let p = parse_player_self_pos(&buf).unwrap();
         assert_eq!(p.heading, HEADING_UNITS / 4);
         assert!(p.heading < HEADING_UNITS);

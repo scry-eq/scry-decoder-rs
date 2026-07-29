@@ -222,15 +222,16 @@ fn new_guild_in_zone(bytes: &[u8]) -> Decoded {
 
 fn self_pos(bytes: &[u8]) -> Decoded {
     match crate::player_self_pos::parse_player_self_pos(bytes) {
-        // eql self heading is a 15-bit COMPASS value (32768 per circle, 0 = N,
+        // eql self heading is an 11-bit COMPASS value (2048 per circle, 0 = N,
         // increasing clockwise), so it converts straight to degrees — unlike the
-        // spawn headings above it is NOT inverted. Calibrated against travel
-        // direction; see player_self_pos::HEADING_UNITS.
+        // spawn headings above it is NOT inverted. Field boundaries from
+        // upstream's struct, sense calibrated against travel direction; see
+        // player_self_pos::HEADING_UNITS.
         Ok(s) => Decoded::One(Event::SelfPos(Pos {
             x: s.x.round() as i32,
             y: s.y.round() as i32,
             z: s.z.round() as i32,
-            heading_deg: ((u32::from(s.heading) * 360) >> 15) as u16,
+            heading_deg: ((u32::from(s.heading) * 360) >> 11) as u16,
         })),
         Err(_) => Decoded::Malformed,
     }
