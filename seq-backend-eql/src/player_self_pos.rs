@@ -18,8 +18,23 @@
 //! at {0,0,4} while every other spawn decoded correctly.
 //!
 //! Heading and the velocities are NOT re-derived and read 0 (see the parser
-//! body); they need a spin / straight-run capture, which the breadcrumb cannot
-//! substitute for since it carries position only.
+//! body).
+//!
+//! **The facing field is LOCATED but not calibrated (2026-07-28).** A stationary
+//! spin capture (112 consecutive self-reports at one position, player rotating)
+//! puts it at **bytes 24..25, u16 LE**: over that window it steps monotonically
+//! 80 times in one direction with a single reversal, wrapping cleanly — the only
+//! field in the packet that behaves like a rotation. Observed range 189..32576
+//! and bit 15 is never set across the capture, so the field is 15-bit or the top
+//! bit lives elsewhere.
+//!
+//! What is still missing is the SCALE and zero-point: the swept total works out
+//! to ~3.8 revolutions if a circle is 32768 units, or ~1.9 if it is 65536, and
+//! the capture has no known facing to break the tie (the player span but never
+//! ran, and the server does not echo the local player's own heading back). To
+//! finish it, capture a straight run on a cardinal — travel direction from the
+//! breadcrumb then gives the facing in degrees for free, and one leg fixes both
+//! scale and offset. Until then this reads 0 rather than guessing a convention.
 //!
 //! **Re-cracked 2026-07-14** against a `/loc` ground-truth capture
 //! (`eql-locref.vpk`, 3 known points, exact match). The 2026-07-14 patch rotated
