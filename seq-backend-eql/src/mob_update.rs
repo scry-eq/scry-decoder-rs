@@ -33,15 +33,25 @@ pub fn parse_mob_update(bytes: &[u8]) -> Result<MobUpdate, ParseError> {
         return Err(ParseError::BadLength(bytes.len()));
     }
 
-    // SAFETY: spawnPositionUpdate is #[repr(C, packed)] POD, length checked above.
-    let raw: spawnPositionUpdate =
-        unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const spawnPositionUpdate) };
-
-    let spawn_id = unsafe { std::ptr::addr_of!(raw.spawnId).read_unaligned() } as u16;
-    let y = sign_extend(raw.y() as u32, 19) >> 3;
-    let z = sign_extend(raw.z() as u32, 19) >> 3;
-    let x = sign_extend(raw.x() as u32, 19) >> 3;
-    let heading = raw.heading() as u16;
+    // 2026-07-28: read the packed coordinates explicitly rather than through the
+    // generated binding, whose bitfield positions are the PRE-patch ones — they
+    // put x where y now lives and account for no gap, so the fields landed
+    // misaligned and produced trajectories that jumped by thousands of units.
+    // Layout per upstream's spawnPositionUpdateEQL (legends 7612d72), a 64-bit
+    // packed unit at byte 4:
+    //     x  bits  0..18
+    //     z  bits 19..37
+    //     -  bits 38..44   (7-bit gap — omitting it is what shifted y)
+    //     y  bits 45..63
+    let spawn_id = u16::from_le_bytes([bytes[0], bytes[1]]);
+    let mut w = [0u8; 8];
+    w.copy_from_slice(&bytes[4..12]);
+    let packed = u64::from_le_bytes(w);
+    let field = |shift: u32| sign_extend(((packed >> shift) & 0x7FFFF) as u32, 19) >> 3;
+    let x = field(0);
+    let z = field(19);
+    let y = field(45);
+    let heading = u16::from_le_bytes([bytes[12], bytes[13]]) & 0x0FFF;
 
     Ok(MobUpdate { spawn_id, x, y, z, heading })
 }
@@ -67,28 +77,28 @@ mod tests {
 
     #[test]
     fn sign_extension_negative_x() {
-        // x bitfield occupies bits 45..64 of the 80-bit packed unit
-        // starting at byte offset 4. Set x = 0x4_0000 (the 19-bit signed
-        // minimum, == -262144 before the >>3) and everything else to 0.
+        // x is bits 0..18 of the 64-bit packed unit at byte 4. Set it to
+        // 0x4_0000 (the 19-bit signed minimum, -262144 before the >>3).
         let mut bytes = [0u8; 14];
-        // Word at offset 4..12: x in bits 45..64.
-        let bf: u64 = 0x4_0000u64 << 45;
+        let bf: u64 = 0x4_0000u64;
         bytes[4..12].copy_from_slice(&bf.to_le_bytes());
-        let parsed = parse_mob_update(&bytes).unwrap();
-        assert_eq!(parsed.x, -262_144 >> 3);
-        assert_eq!(parsed.y, 0);
-        assert_eq!(parsed.z, 0);
+        let m = parse_mob_update(&bytes).unwrap();
+        assert_eq!(m.x, -32768);
+        assert_eq!(m.y, 0);
+        assert_eq!(m.z, 0);
     }
 
+    // The gap between z and y is what the pre-patch binding omitted; pin each
+    // coordinate at its own offset so a future regeneration cannot re-shift them.
     #[test]
-    fn heading_mask_is_12_bit() {
-        // heading occupies bits 64..76 of the same 80-bit unit (= bits 0..12
-        // of the 16-bit word at byte offset 12). All-ones in those bits
-        // should yield 0x0FFF; the 4 high bits (unused2) are discarded.
+    fn each_coordinate_reads_from_its_own_field() {
         let mut bytes = [0u8; 14];
-        bytes[12] = 0xFF;
-        bytes[13] = 0xFF;
-        let parsed = parse_mob_update(&bytes).unwrap();
-        assert_eq!(parsed.heading, 0x0FFF);
+        let bf: u64 = (800u64 << 0) | (16u64 << 19) | (2400u64 << 45);
+        bytes[4..12].copy_from_slice(&bf.to_le_bytes());
+        let m = parse_mob_update(&bytes).unwrap();
+        assert_eq!(m.x, 100); // 800 >> 3
+        assert_eq!(m.z, 2); //  16 >> 3
+        assert_eq!(m.y, 300); // 2400 >> 3
     }
+
 }
