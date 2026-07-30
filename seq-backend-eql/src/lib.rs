@@ -1025,6 +1025,13 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         ("timeOfDayStruct", 8),        // OP_TimeOfDay
         ("zoneServerInfoStruct", 130), // OP_ZoneServerInfo (world)
         ("spawnAppearance2Struct", 24),// OP_SpawnAppearance2
+        // OP_SpawnAppearance. eql's payload is the WIDE 24B record ({u32 spawnId,
+        // u32 type, u32 value} + 12B of zeros), not Live's 8B struct — eql has one
+        // appearance opcode where Live has two. This entry was missing, so a
+        // mapped SZC_Match opcode silently inherited the compiled Live sizeof of 8
+        // and the gate dropped every packet; --strict-gate-sizes flags exactly
+        // this class. The size comes from eql's own parser, never from Live.
+        ("spawnAppearanceStruct", spawn_appearance::PAYLOAD_LEN as u32),
         ("inspectDataStruct", 1956),   // OP_InspectAnswer
         // Stock-struct reuse (eql size == Live's today, stock layout): declared
         // so the gate is eql-owned, not silently inherited from everquest.h.
