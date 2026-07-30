@@ -576,14 +576,17 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
     }
 }
 
-/// `OP_ClientUpdate` (Legends) C>S, 42B: IEEE-float position + velocity + heading.
-/// **post-2026-07-07 layout** (fully cracked 2026-07-08): spawnId u16 @2;
-/// position gameY@10 / gameX@18 / z@30 on the wire (EQ /loc prints Y,X,Z) —
-/// bound below as x=gameX=@18, y=gameY=@10, z@30; velocity gameY-vel f32@6 /
-/// gameX-vel f32@26 (±2 = full run speed) → deltaX=@26, deltaY=@6; **heading =
-/// u16 @14, 11-bit (0–2047 = full circle), North≈0** — confirmed against a Sense
-/// Heading capture (N=2043, E=1542, S=1036, W=492, i.e. value falls ~256 per 45°).
-/// deltaZ candidate @22 (0 on flat ground, unconfirmed).
+/// `OP_ClientUpdate` (Legends) C>S: IEEE-float position + heading.
+/// **post-2026-07-29 layout** (42B; see `player_self_pos.rs` for the derivation
+/// and its evidence): spawnId u16 @2, gameY@10, gameX@22, gameZ@34, heading the
+/// low 11 bits at @26. The velocities are not located this patch and read 0.
+///
+/// Worth knowing when a future patch rotates this again: the 07/29 body is close
+/// to the **pre-07/14** 42B form, which also carried spawnId@2 and gameY@10 (it
+/// had gameX@18 / z@30, i.e. those two sit 4 bytes later now). The 38B bodies
+/// that ran between 07/14 and 07/29 were the outlier — they dropped the spawnId
+/// entirely. So on the next rotation, check the older 42B layout before assuming
+/// a from-scratch rearrangement.
 // `parse_player_self_pos` lives in `player_self_pos.rs` (re-exported above) — one
 // parser that validates against its own `PAYLOAD_LEN`, the SAME const the
 // `playerSelfPosStruct` size override reads, so the SZC gate and the parser can
@@ -965,11 +968,11 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         // (packed) + 1 trailing byte; the shared decoder reads slot@0/spellId@4/
         // targetId@18, all within the first 39B, so only the size gate needs 40.
         ("startCastStruct", 40),
-        // eql OP_ClientUpdate (0x5188) S>C other-spawn position broadcast: 19-bit ×8
-        // packed, coord in the low bits. The 2026-07-14 patch shrank it 28B -> 24B
-        // (and rotated the id) — now coincidentally the same size as Live's stock
-        // playerSpawnPosStruct, but a DIFFERENT packing. Decoded by this crate's own
-        // parse_player_spawn_pos; re-cracked 2026-07-14, see OPCODES_LEGENDS.md.
+        // eql OP_ClientUpdate S>C other-spawn position broadcast: 19-bit ×8 packed,
+        // coord in the LOW bits of the @4/@8/@12 words. The 2026-07-29 rotation grew
+        // it 24B -> 28B and rearranged the body; decoded by this crate's own
+        // parse_player_spawn_pos, re-derived against the untouched OP_MobUpdate /
+        // OP_NpcMoveUpdate streams — see that module and OPCODES_LEGENDS.md.
         ("playerSpawnPosStruct", player_spawn_pos::PAYLOAD_LEN as u32),
 
         // --- De-piggyback (2026-07-10): eql OWNS every mapped SZC_Match gate size ---
@@ -1014,7 +1017,7 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         // color, u32 0}; pinned binding so the gate tracks eql's own copy.
         ("simpleMessageStruct", core::mem::size_of::<eqstructs::simpleMessageStruct>() as u32),
         // No pinned eql binding (eql reuses the shared decode) — capture-confirmed size:
-        ("playerSelfPosStruct", player_self_pos::PAYLOAD_LEN as u32), // OP_ClientUpdate C>S self-pos: 38B post-07/14 (was 42B); floats X@14/Y@26/Z@10, heading@18
+        ("playerSelfPosStruct", player_self_pos::PAYLOAD_LEN as u32), // OP_ClientUpdate C>S self-pos: 42B post-07/29 (was 38B); floats Y@10/X@22/Z@34, spawnId@2, heading@26
         ("altExpUpdateStruct", 12),    // OP_AAExpUpdate (0x42d1): u32 altexp, u32 aaUnspent, u32 tail
         // eql door rows are 132B (Live doorStruct is 136B); OP_SpawnDoor gates
         // SZC_Modulus on this and newDoorSpawns strides via door_stride().
