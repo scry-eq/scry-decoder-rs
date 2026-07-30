@@ -633,13 +633,15 @@ pub fn parse_new_zone(b: &[u8]) -> Result<NewZone, DecodeError> {
 /// block. Header fields stay at the front: spawnId u32 @0, level u8 @4,
 /// curHpPct u8 @44, maxHpPct u8 @45. **post-2026-07-07 layout**: position sits
 /// at a FIXED offset from the END of the block (block grew 326→330 NPC / 486
-/// rich, but the position triple stays anchored to the tail): three u32 words
-/// Z @(len-95), Y @(len-91), X @(len-87), each a **signed 19-bit fixed-point
-/// (×8) coordinate in the word's low bits** (same packing as Live's
-/// `spawnStruct` position words; the upper 13 bits carry other subfields).
-/// /loc-confirmed on two stationary guards across both block sizes; the
-/// 19-bit width (not i16) confirmed by sign-fill analysis 2026-07-08 —
-/// an i16 read wraps coordinates past ±4095 by 8192 game units.
+/// rich, but the position triple stays anchored to the tail). **post-2026-07-29
+/// layout**: three consecutive u32 words in packet order Z @(len-103),
+/// X @(len-99), Y @(len-95), each a **signed 19-bit fixed-point (×8) coordinate
+/// in the word's low bits** (same packing as Live's `spawnStruct` position
+/// words; the upper 13 bits carry other subfields). The 19-bit width (not i16)
+/// was confirmed by sign-fill analysis 2026-07-08 — an i16 read wraps
+/// coordinates past ±4095 by 8192 game units. The walk below reaches these
+/// sequentially rather than from the tail, because the record's tail length
+/// varies with the title/suffix string block.
 /// Sequential reader mirroring the daemon's `NetStream` (LE `readUInt*NC`,
 /// NUL-terminated `readText`), bounds-checked: any overrun ends the walk with
 /// `BadLength` rather than panicking (a dropped spawn, not a crash).
@@ -804,12 +806,31 @@ pub fn parse_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     // other way round, which is the transpose it flags as ambiguous. Ours is
     // pinned to the same frame the breadcrumb and heading were verified in, so
     // it stays consistent with the self-position path.
-    let _lead = w.u32()?;
-    let y = pos19_word(w.u32()?);
+    //
+    // ---- 2026-07-30: the 07/29 rotation moved the block again. ----
+    // The coordinates are now the FIRST three words of the six, in packet order
+    // Z, X, Y — the word this used to skip as `_lead` is Z, and the two the old
+    // read took as Y and Z are really X and Y. The remaining three read 0.
+    //
+    // Re-derived against the untouched OP_MobUpdate / OP_NpcMoveUpdate streams
+    // plus the newly-decoded OP_ClientUpdate broadcast, matched per record
+    // within the same zone visit (the capture crosses three, and EQ reuses spawn
+    // ids per zone — merging them fabricates matches). Scanning every offset and
+    // all six axis orderings, the located records agree unanimously on the
+    // ordering (67/67 ZXY) and on a tail offset of len-103 (63/67); the
+    // block-relative offset scatters, confirming it is the tail the block tracks
+    // even though this walk reaches it sequentially.
+    //
+    // The symptom this fixes: the old read reported coordinates shifted one word
+    // to the right, so a spawn's decoded Y was its real X and its decoded Z its
+    // real Y, with X taken from a word that reads ~0. Worst-axis error against
+    // ground truth had a median of 14766 units — spawns scattered tens of
+    // thousands of units from where they stood.
     let z = pos19_word(w.u32()?);
-    let _pad = w.u32()?; // always 0 on the wire — reading it as a coordinate is
-                         // what produced the pre-patch wall of spawns at y=0
     let x = pos19_word(w.u32()?);
+    let y = pos19_word(w.u32()?);
+    let _w3 = w.u32()?;
+    let _w4 = w.u32()?;
     let _trail = w.u32()?;
     // The spawn record's facing did not survive the rearrangement: the word it
     // used to ride is now the Y coordinate. Upstream reports the remaining
@@ -1446,16 +1467,17 @@ mod tests {
         u32le(&mut b, 0); // petOwnerId
         b.extend_from_slice(&[0u8; 49]); // npc==1 extra
         b.extend_from_slice(&[0u8; 60]); // equipment (else branch: 20 + 2*5*4)
-        // 2026-07-28 position block: one leading word, then X, Z, PAD, Y, and a
-        // trailing word. Tail-anchored, so what matters is the distance from the
-        // end: X @(len-95), Z @(len-91), pad @(len-87), Y @(len-83).
+        // 2026-07-29 position block: the coordinates are the FIRST three of the
+        // six words, in packet order Z, X, Y; the remaining three read 0.
+        // Tail-anchored, so what matters is the distance from the end:
+        // Z @(len-103), X @(len-99), Y @(len-95).
         let _ = heading; // spawn facing did not survive the rearrangement
-        b.extend_from_slice(&[0u8; 4]); // leading word
+        b.extend_from_slice(&pos_word(z)); // len-103
+        b.extend_from_slice(&pos_word(x)); // len-99
         b.extend_from_slice(&pos_word(y)); // len-95
-        b.extend_from_slice(&pos_word(z)); // len-91
-        u32le(&mut b, 0); // len-87: pad (always 0 on the wire)
-        b.extend_from_slice(&pos_word(x)); // len-83
-        u32le(&mut b, 0); // trailing word (heading; unmapped)
+        u32le(&mut b, 0); // len-91
+        u32le(&mut b, 0); // len-87
+        u32le(&mut b, 0); // len-83 (trailing word; unmapped)
         text(&mut b, title);
         text(&mut b, suffix);
         text(&mut b, ""); // string 3
