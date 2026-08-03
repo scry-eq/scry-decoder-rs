@@ -38,9 +38,10 @@ pub fn parse_mob_update(bytes: &[u8]) -> Result<MobUpdate, ParseError> {
     // Read explicitly, not through the generated binding: its bitfield
     // positions are pre-patch and account for no gap.
     //
-    // X/Y corrected 2026-08-03 — the 07/28 rewrite had them reversed, taken
-    // from upstream's spawnPositionUpdateEQL, which contradicts its own Live
-    // struct. eql follows the Live order. See OPCODES_LEGENDS.md.
+    // X/Y corrected 2026-08-03. Upstream's spawnPositionUpdateEQL names these
+    // in the wire frame and swaps x/y at the call site; the 07/28 rewrite took
+    // its labels without that swap. We name fields in the map frame, so no
+    // swap here. See OPCODES_LEGENDS.md.
     let spawn_id = u16::from_le_bytes([bytes[0], bytes[1]]);
     let mut w = [0u8; 8];
     w.copy_from_slice(&bytes[4..12]);
