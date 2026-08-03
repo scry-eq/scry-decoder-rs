@@ -20,11 +20,21 @@
 //!   /*nul+17*/u32  0
 //!   /*nul+21*/u32  0
 //!   /*nul+25*/f32  1.0           (const)
-//!   /*nul+29*/f32  x
-//!   /*nul+33*/f32  y
+//!   /*nul+29*/f32  y
+//!   /*nul+33*/f32  x
 //!   /*nul+37*/f32  z             (matches the OP_MobUpdate Z range for the zone)
 //!   /*nul+41*/u32  tail
 //! ```
+//!
+//! X/Y corrected 2026-08-03: the first float is Y, not X. Read as x-first, two
+//! ground drops sat 1113 and 1478 units from the nearest map line in a zone
+//! where 95% of random points fall within 292 (and doors in the same zone/frame
+//! read correct); swapped, both land in ordinary territory. Same class as the
+//! OP_MobUpdate transpose, and consistent with the other eql position records
+//! (self-pos, breadcrumb, NpcMoveUpdate, MobUpdate all order Y before X).
+//! EVIDENCE IS n=2 — worth reconfirming on a zone-in capture with known drop
+//! /locs; the erudnext fixture drops land far off the map under BOTH readings
+//! and cannot settle it.
 //! `id_file` now carries the actorDef model string (e.g. `IT63_ACTORDEF`);
 //! resolving it to the real item name ("Pearl Earring") means correlating the
 //! itemId with the preceding ~1KB item-def (OP_ItemPacket 0x4d7e) — a future
@@ -84,8 +94,8 @@ pub fn parse_ground_spawn(bytes: &[u8]) -> Result<GroundSpawn, GroundSpawnError>
     let id_file = String::from_utf8_lossy(&name[..rel_nul]).into_owned();
     let nul = 4 + rel_nul;
     let px = nul + POS_AFTER_NUL;
-    let x = read_f32_le(bytes, px)?;
-    let y = read_f32_le(bytes, px + 4)?;
+    let y = read_f32_le(bytes, px)?;
+    let x = read_f32_le(bytes, px + 4)?;
     let z = read_f32_le(bytes, px + 8)?;
     Ok(GroundSpawn {
         drop_id,
@@ -103,20 +113,30 @@ mod tests {
     use super::*;
 
     /// Build a 0x7e02 record: dropId, NUL-term name, 28 bytes of fixed fields,
-    /// then x/y/z + a trailing u32.
-    fn pkt(drop: u32, name: &str, x: f32, y: f32, z: f32) -> Vec<u8> {
+    /// then the position floats IN WIRE ORDER (y, x, z) + a trailing u32.
+    fn pkt(drop: u32, name: &str, wire_y: f32, wire_x: f32, wire_z: f32) -> Vec<u8> {
         let mut b = Vec::new();
         b.extend_from_slice(&drop.to_le_bytes());
         b.extend_from_slice(name.as_bytes());
         b.push(0);
-        // fixed fields between the NUL and x: nul+1 .. nul+28 (POS_AFTER_NUL puts
-        // x at nul+29, and the NUL byte itself is at nul).
+        // fixed fields between the NUL and the first coord: nul+1 .. nul+28
+        // (POS_AFTER_NUL puts it at nul+29; the NUL byte itself is at nul).
         b.extend_from_slice(&[0u8; POS_AFTER_NUL - 1]);
-        b.extend_from_slice(&x.to_le_bytes());
-        b.extend_from_slice(&y.to_le_bytes());
-        b.extend_from_slice(&z.to_le_bytes());
+        b.extend_from_slice(&wire_y.to_le_bytes());
+        b.extend_from_slice(&wire_x.to_le_bytes());
+        b.extend_from_slice(&wire_z.to_le_bytes());
         b.extend_from_slice(&1u32.to_le_bytes()); // tail
         b
+    }
+
+    // Distinct values per axis so a transpose fails loudly.
+    #[test]
+    fn first_wire_float_is_y_second_is_x() {
+        let b = pkt(7, "IT1_ACTORDEF", 111.0, 222.0, 333.0);
+        let g = parse_ground_spawn(&b).unwrap();
+        assert_eq!(g.y, 111.0);
+        assert_eq!(g.x, 222.0);
+        assert_eq!(g.z, 333.0);
     }
 
     #[test]
@@ -136,14 +156,17 @@ mod tests {
 
     #[test]
     fn parses_earring_drop() {
-        // The contarget earring: dropId 4, IT63_ACTORDEF, pos 598/569/-685.
+        // The contarget earring: dropId 4, IT63_ACTORDEF, wire floats
+        // 598.35 / 569.14 / -685.65. This pins the record LAYOUT (name walk,
+        // offsets, length); which of the first two is x is settled by the
+        // map-frame check in the module doc, not here.
         let b = pkt(4, "IT63_ACTORDEF", 598.35, 569.14, -685.65);
         assert_eq!(b.len(), 62); // 4 + 13 + 1 + 29 + 12 + 4
         let g = parse_ground_spawn(&b).unwrap();
         assert_eq!(g.drop_id, 4);
         assert_eq!(g.id_file, "IT63_ACTORDEF");
-        assert_eq!(g.x, 598.35);
-        assert_eq!(g.y, 569.14);
+        assert_eq!(g.y, 598.35);
+        assert_eq!(g.x, 569.14);
         assert_eq!(g.z, -685.65);
         assert_eq!(g.bytes_consumed, 62);
     }
@@ -155,6 +178,6 @@ mod tests {
         assert_eq!(b.len(), 61);
         let g = parse_ground_spawn(&b).unwrap();
         assert_eq!(g.id_file, "IT2_ACTORDEF");
-        assert_eq!(g.x, -159.0);
+        assert_eq!(g.y, -159.0);
     }
 }
