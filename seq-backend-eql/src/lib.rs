@@ -985,10 +985,11 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
     vec![
         // eql /consider is 24B both ways; Live's considerStruct is 32B.
         ("considerStruct", core::mem::size_of::<eqstructs::considerStruct>() as u32),
-        // eql OP_CastSpell (0x10b5) is a fixed 40B — Live's startCastStruct is 39B
-        // (packed) + 1 trailing byte; the shared decoder reads slot@0/spellId@4/
-        // targetId@18, all within the first 39B, so only the size gate needs 40.
-        ("startCastStruct", 40),
+        // eql OP_CastSpell is a fixed 44B (validated locally 2026-08-03; the gate
+        // was pinned at 40 from the Live struct, so every packet was size-dropped).
+        // slot@0/spellId@4/targetId@18 kept their offsets — the record grew at the
+        // tail. Size comes from that parser, not from Live's 39B sizeof.
+        ("startCastStruct", start_cast::PAYLOAD_LEN as u32),
         // eql OP_ClientUpdate S>C other-spawn position broadcast: 19-bit ×8 packed,
         // coord in the LOW bits of the @4/@8/@12 words. The 2026-07-29 rotation grew
         // it 24B -> 28B and rearranged the body; decoded by this crate's own
