@@ -693,6 +693,9 @@ impl Default for corpseLocStruct {
 
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
+/// DIVERGED from Live 2026-07-13: eql's door row is 132 bytes, Live's is 136.
+/// The first 88 bytes are byte-identical; the trailing unknown region is 44
+/// instead of 48. Rows are iterated by the daemon at this stride.
 pub struct doorStruct {
     /// char name[32]
     pub name: [u8; 32],
@@ -722,10 +725,9 @@ pub struct doorStruct {
     pub invertstate: u8,
     /// uint32_t zonePoint
     pub zonePoint: u32,
-    /// uint8_t unknown068[28]
-    pub unknown068: [u8; 28],
-    /// uint8_t unknown096[20]
-    pub unknown096: [u8; 20],
+    /// uint8_t unknown068[44] — eql's trailing region is 44, not Live's 28+20.
+    /// Everything above is byte-identical to Live; only this tail differs.
+    pub unknown068: [u8; 44],
 }
 
 impl Default for doorStruct {
@@ -873,7 +875,7 @@ mod __layout_tests {
     #[test] fn actionAltStruct_size() { assert_eq!(core::mem::size_of::<actionAltStruct>(), 88); }
     #[test] fn groupDisbandStruct_size() { assert_eq!(core::mem::size_of::<groupDisbandStruct>(), 152); }
     #[test] fn corpseLocStruct_size() { assert_eq!(core::mem::size_of::<corpseLocStruct>(), 16); }
-    #[test] fn doorStruct_size() { assert_eq!(core::mem::size_of::<doorStruct>(), 136); }
+    #[test] fn doorStruct_size() { assert_eq!(core::mem::size_of::<doorStruct>(), 132); }  // eql-diverged; Live is 136
     #[test] fn zonePointStruct_size() { assert_eq!(core::mem::size_of::<zonePointStruct>(), 24); }
     #[test] fn simpleMessageStruct_size() { assert_eq!(core::mem::size_of::<simpleMessageStruct>(), 12); }
     #[test] fn formattedMessageStruct_size() { assert_eq!(core::mem::size_of::<formattedMessageStruct>(), 13); }

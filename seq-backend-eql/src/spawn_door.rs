@@ -9,15 +9,15 @@
 //! two 660B (5×132) door arrays: lever/block object names at 0, sane coord
 //! floats at 32..48, size 100, zonePoint 0xffffffff.
 //!
-//! Because every daemon-consumed field sits inside the first 88 bytes, this
-//! parses by explicit offsets — no 136-byte struct read that would overrun
-//! the 132-byte row. The C++ daemon iterates the array with the backend's
-//! `door_stride()` (this crate's `PAYLOAD_LEN`) and calls `decode_door` per
-//! row.
+//! The layout lives on `eqstructs::doorStruct`, which is eql-owned and
+//! hand-maintained at 132 bytes, so `PAYLOAD_LEN` derives from `size_of`. The
+//! C++ daemon iterates the array with the backend's `door_stride()` (this
+//! crate's `PAYLOAD_LEN`) and calls `decode_door` per row.
 
+use crate::eqstructs::doorStruct;
 use thiserror::Error;
 
-pub const PAYLOAD_LEN: usize = 132;
+pub const PAYLOAD_LEN: usize = std::mem::size_of::<doorStruct>();
 
 #[derive(Debug, Clone)]
 pub struct Door {
@@ -41,33 +41,27 @@ pub enum DoorError {
     BadLength(usize),
 }
 
-fn f32_at(bytes: &[u8], off: usize) -> f32 {
-    f32::from_le_bytes(bytes[off..off + 4].try_into().unwrap())
-}
-
-fn u32_at(bytes: &[u8], off: usize) -> u32 {
-    u32::from_le_bytes(bytes[off..off + 4].try_into().unwrap())
-}
-
 pub fn parse_door(bytes: &[u8]) -> Result<Door, DoorError> {
     if bytes.len() != PAYLOAD_LEN {
         return Err(DoorError::BadLength(bytes.len()));
     }
+    // `unknown0048` (a 20-byte copy of the five fields above — closed-state
+    // pose?) and `unknown0056` are skipped, same as Live's parser.
+    let raw: doorStruct =
+        unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const doorStruct) };
     Ok(Door {
         name: crate::cstr_field(&bytes[0..32]),
-        y: f32_at(bytes, 32),
-        x: f32_at(bytes, 36),
-        z: f32_at(bytes, 40),
-        heading: f32_at(bytes, 44),
-        incline: u32_at(bytes, 48),
-        // 52..72 is a 20-byte copy of the five fields above (closed-state
-        // pose?); 76..80 unknown — both skipped, same as Live's parser.
-        size: u32_at(bytes, 72),
-        door_id: bytes[80],
-        opentype: bytes[81],
-        spawnstate: bytes[82],
-        invertstate: bytes[83],
-        zone_point: u32_at(bytes, 84),
+        y: unsafe { std::ptr::addr_of!(raw.y).read_unaligned() },
+        x: unsafe { std::ptr::addr_of!(raw.x).read_unaligned() },
+        z: unsafe { std::ptr::addr_of!(raw.z).read_unaligned() },
+        heading: unsafe { std::ptr::addr_of!(raw.heading).read_unaligned() },
+        incline: unsafe { std::ptr::addr_of!(raw.incline).read_unaligned() },
+        size: unsafe { std::ptr::addr_of!(raw.size).read_unaligned() },
+        door_id: raw.doorId,
+        opentype: raw.opentype,
+        spawnstate: raw.spawnstate,
+        invertstate: raw.invertstate,
+        zone_point: unsafe { std::ptr::addr_of!(raw.zonePoint).read_unaligned() },
     })
 }
 
