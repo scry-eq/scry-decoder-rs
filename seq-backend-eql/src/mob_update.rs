@@ -33,24 +33,22 @@ pub fn parse_mob_update(bytes: &[u8]) -> Result<MobUpdate, ParseError> {
         return Err(ParseError::BadLength(bytes.len()));
     }
 
-    // 2026-07-28: read the packed coordinates explicitly rather than through the
-    // generated binding, whose bitfield positions are the PRE-patch ones — they
-    // put x where y now lives and account for no gap, so the fields landed
-    // misaligned and produced trajectories that jumped by thousands of units.
-    // Layout per upstream's spawnPositionUpdateEQL (legends 7612d72), a 64-bit
-    // packed unit at byte 4:
-    //     x  bits  0..18
-    //     z  bits 19..37
-    //     -  bits 38..44   (7-bit gap — omitting it is what shifted y)
-    //     y  bits 45..63
+    // Packed u64 at byte 4, Live's spawnPositionUpdate order:
+    //     y bits 0..18 | z bits 19..37 | 7-bit gap | x bits 45..63
+    // Read explicitly, not through the generated binding: its bitfield
+    // positions are pre-patch and account for no gap.
+    //
+    // X/Y corrected 2026-08-03 — the 07/28 rewrite had them reversed, taken
+    // from upstream's spawnPositionUpdateEQL, which contradicts its own Live
+    // struct. eql follows the Live order. See OPCODES_LEGENDS.md.
     let spawn_id = u16::from_le_bytes([bytes[0], bytes[1]]);
     let mut w = [0u8; 8];
     w.copy_from_slice(&bytes[4..12]);
     let packed = u64::from_le_bytes(w);
     let field = |shift: u32| sign_extend(((packed >> shift) & 0x7FFFF) as u32, 19) >> 3;
-    let x = field(0);
+    let y = field(0);
     let z = field(19);
-    let y = field(45);
+    let x = field(45);
     let heading = u16::from_le_bytes([bytes[12], bytes[13]]) & 0x0FFF;
 
     Ok(MobUpdate { spawn_id, x, y, z, heading })
@@ -76,29 +74,43 @@ mod tests {
     }
 
     #[test]
-    fn sign_extension_negative_x() {
-        // x is bits 0..18 of the 64-bit packed unit at byte 4. Set it to
+    fn sign_extension_negative_y() {
+        // y is bits 0..18 of the 64-bit packed unit at byte 4. Set it to
         // 0x4_0000 (the 19-bit signed minimum, -262144 before the >>3).
         let mut bytes = [0u8; 14];
         let bf: u64 = 0x4_0000u64;
         bytes[4..12].copy_from_slice(&bf.to_le_bytes());
         let m = parse_mob_update(&bytes).unwrap();
-        assert_eq!(m.x, -32768);
-        assert_eq!(m.y, 0);
+        assert_eq!(m.y, -32768);
+        assert_eq!(m.x, 0);
         assert_eq!(m.z, 0);
     }
 
-    // The gap between z and y is what the pre-patch binding omitted; pin each
-    // coordinate at its own offset so a future regeneration cannot re-shift them.
+    // The gap before the last field is what the pre-patch binding omitted; pin
+    // each coordinate at its own offset so a future regeneration cannot re-shift
+    // them. Distinct values per axis so a transpose fails loudly — the 07/28
+    // rewrite put x and y the wrong way round and nothing here caught it.
     #[test]
     fn each_coordinate_reads_from_its_own_field() {
         let mut bytes = [0u8; 14];
         let bf: u64 = (800u64 << 0) | (16u64 << 19) | (2400u64 << 45);
         bytes[4..12].copy_from_slice(&bf.to_le_bytes());
         let m = parse_mob_update(&bytes).unwrap();
-        assert_eq!(m.x, 100); // 800 >> 3
-        assert_eq!(m.z, 2); //  16 >> 3
-        assert_eq!(m.y, 300); // 2400 >> 3
+        assert_eq!(m.y, 100); // 800 >> 3  — bits 0..18
+        assert_eq!(m.z, 2); //  16 >> 3  — bits 19..37
+        assert_eq!(m.x, 300); // 2400 >> 3 — bits 45..63
     }
 
+    // A real 07/29 broadcast, cross-checked against the same spawn's
+    // OP_ZoneEntry position (spawn id 15704 at x=227, y=1806, z=79). Guards the
+    // axis assignment against wire bytes rather than against a synthetic pack.
+    #[test]
+    fn decodes_a_captured_update() {
+        let bytes: [u8; PAYLOAD_LEN] = [
+            0x58, 0x3D, 0x00, 0x00, 0x74, 0x38, 0xF8, 0x13, 0x00, 0x20, 0xE3, 0x00, 0x00, 0x00,
+        ];
+        let m = parse_mob_update(&bytes).unwrap();
+        assert_eq!(m.spawn_id, 15704);
+        assert_eq!((m.x, m.y, m.z), (227, 1806, 79));
+    }
 }
