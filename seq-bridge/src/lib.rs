@@ -635,6 +635,15 @@ mod ffi {
         ) -> u8;
         fn observe_stat_sync(self: &mut EqlSelfTracker, stat: &StatSync) -> SelfStat;
         fn take_pending_vitals(self: &mut EqlSelfTracker) -> SelfStat;
+        // Mid-session recovery: with no zone-in witnessed there is no name to
+        // match, so the player is invisible until they zone. Feed the id from
+        // the client's own outbound position report here — 1 = newly adopted
+        // provisionally (synthesise a record for it), 0 = nothing to do.
+        fn observe_self_pos(self: &mut EqlSelfTracker, spawn_id: u32) -> u8;
+        fn provisional_id(self: &EqlSelfTracker) -> u32;
+        // Non-zero when a real (name-matched) adoption has superseded a
+        // provisional id: drop whatever was synthesised for it.
+        fn take_retired_provisional(self: &mut EqlSelfTracker) -> u32;
         fn decode_loadout_swap(bytes: &[u8]) -> LoadoutSwap;
         fn decode_money_update(bytes: &[u8]) -> MoneyUpdate;
         fn decode_loot_transaction(bytes: &[u8]) -> LootTransaction;
@@ -879,6 +888,18 @@ impl EqlSelfTracker {
     fn take_pending_vitals(&mut self) -> ffi::SelfStat {
         self_stat_to_ffi(self.0.take_pending_vitals())
     }
+
+    fn observe_self_pos(&mut self, spawn_id: u32) -> u8 {
+        self.0.observe_self_pos(spawn_id) as u8
+    }
+
+    fn provisional_id(&self) -> u32 {
+        self.0.provisional_id()
+    }
+
+    fn take_retired_provisional(&mut self) -> u32 {
+        self.0.take_retired_provisional()
+    }
 }
 
 // live/test never see the eql self-record pair, so the tracker is inert there.
@@ -894,6 +915,9 @@ impl EqlSelfTracker {
     fn observe_spawn(&mut self, _player_name: &str, _spawn_name: &str, _spawn_id: u32) -> u8 { 0 }
     fn observe_stat_sync(&mut self, _stat: &ffi::StatSync) -> ffi::SelfStat { self_stat_none() }
     fn take_pending_vitals(&mut self) -> ffi::SelfStat { self_stat_none() }
+    fn observe_self_pos(&mut self, _spawn_id: u32) -> u8 { 0 }
+    fn provisional_id(&self) -> u32 { 0 }
+    fn take_retired_provisional(&mut self) -> u32 { 0 }
 }
 
 // eql-only: OP_BeginCast (0x6cbd) — a spawn started casting a spell. live/test

@@ -196,7 +196,15 @@ pub enum Event {
         end_max: i32,
     },
     /// The local player moved (OP_ClientUpdate self position).
-    SelfPos(Pos),
+    ///
+    /// `spawn_id` is the id the client stamps on its own outbound report. It is
+    /// carried here because it is the only self-identifying field that keeps
+    /// arriving mid-session, when no zone-in was witnessed and nothing else can
+    /// tell a host which spawn is the player — see
+    /// `seq_backend_eql::SelfTracker::observe_self_pos`. It is NOT an adoption
+    /// on its own (on eql it names the phantom twin); route it through the
+    /// tracker rather than pinning the player to it.
+    SelfPos { pos: Pos, spawn_id: u32 },
     /// A spawn changed pose/animation (OP_SpawnAppearance2 type 6: 110=sit,
     /// 100=stand, 111=duck). Only the pose subtype is surfaced — other
     /// appearance types carry no spawn field. The consumer updates the tracked

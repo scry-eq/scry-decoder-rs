@@ -140,12 +140,15 @@ fn hp_update(bytes: &[u8]) -> Decoded {
 
 fn self_pos(bytes: &[u8]) -> Decoded {
     match seq_decode::player_self_pos::parse_player_self_pos(bytes) {
-        Ok(s) => Decoded::One(Event::SelfPos(Pos {
-            x: s.x.round() as i32,
-            y: s.y.round() as i32,
-            z: s.z.round() as i32,
-            heading_deg: heading_deg(s.heading, 12),
-        })),
+        Ok(s) => Decoded::One(Event::SelfPos {
+            pos: Pos {
+                x: s.x.round() as i32,
+                y: s.y.round() as i32,
+                z: s.z.round() as i32,
+                heading_deg: heading_deg(s.heading, 12),
+            },
+            spawn_id: u32::from(s.spawn_id),
+        }),
         Err(_) => Decoded::Malformed,
     }
 }

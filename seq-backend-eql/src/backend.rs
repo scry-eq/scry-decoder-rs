@@ -239,12 +239,17 @@ fn self_pos(bytes: &[u8]) -> Decoded {
         // spawn headings above it is NOT inverted. Field boundaries from
         // upstream's struct, sense calibrated against travel direction; see
         // player_self_pos::HEADING_UNITS.
-        Ok(s) => Decoded::One(Event::SelfPos(Pos {
-            x: s.x.round() as i32,
-            y: s.y.round() as i32,
-            z: s.z.round() as i32,
-            heading_deg: ((u32::from(s.heading) * 360) >> 11) as u16,
-        })),
+        Ok(s) => Decoded::One(Event::SelfPos {
+            pos: Pos {
+                x: s.x.round() as i32,
+                y: s.y.round() as i32,
+                z: s.z.round() as i32,
+                heading_deg: ((u32::from(s.heading) * 360) >> 11) as u16,
+            },
+            // The phantom twin's id (see player_self_pos) — the host feeds it
+            // to SelfTracker, which is the only thing allowed to act on it.
+            spawn_id: u32::from(s.spawn_id),
+        }),
         Err(_) => Decoded::Malformed,
     }
 }

@@ -144,7 +144,7 @@ pub use player_profile::{PlayerProfile, PlayerProfileError}; // eql owns canonic
 pub use player_self_pos::{parse_player_self_pos, PlayerSelfPos, PlayerSelfPosError}; // module owns the canonical parser (validates against its own PAYLOAD_LEN, same const the size override reads)
 pub use player_spawn_pos::{parse_player_spawn_pos, PlayerSpawnPos, PlayerSpawnPosError};
 pub use self_pos_breadcrumb::{parse_self_pos_breadcrumb, BreadcrumbPoint, SelfPosBreadcrumb};
-pub use self_track::{SelfStat, SelfTracker, SpawnRouting, SAME_BATCH};
+pub use self_track::{SelfPosRouting, SelfStat, SelfTracker, SpawnRouting, SAME_BATCH};
 pub use remove_spawn::{parse_remove_spawn, RemoveSpawn, RemoveSpawnError};
 pub use simple_message::{parse_simple_message, SimpleMessage, SimpleMessageError};
 pub use skill_update::{parse_skill_update, SkillUpdate, SkillUpdateError};

@@ -29,6 +29,23 @@ use crate::StatSync;
 /// thousands off. Matches the window the daemon's `consumeSelfSpawn` used.
 pub const SAME_BATCH: u32 = 16;
 
+/// What a self-identifying packet means when NO zone-in was witnessed.
+///
+/// A host that attaches mid-session (sniffer started while already in a zone,
+/// or restarted) never sees `OP_PlayerProfile` or the `OP_ZoneEntry` burst, so
+/// [`SelfTracker::observe_spawn`] — which needs a name to match — can never
+/// fire, and the player is invisible to it until they zone. These are the two
+/// signals that keep arriving anyway and can only be the local player.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum SelfPosRouting {
+    /// Nothing to do: no id, or the self is already resolved properly.
+    Known = 0,
+    /// First provisional adoption of `spawn_id` — the host has no record for
+    /// this id, so it must synthesise one to show the player at all.
+    Adopted = 1,
+}
+
 /// What a self-named `OP_ZoneEntry` record means for the caller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -95,6 +112,13 @@ pub struct SelfTracker {
     /// was not yet known to be ours. At most one — the newest wins, since these
     /// are absolute cur/max snapshots rather than deltas.
     pending: Option<(u32, SelfStat)>,
+    /// Self id recovered without a zone-in (see [`SelfPosRouting`]). Ranks
+    /// BELOW `self_id`: it is the phantom twin's id, so it is only ever used
+    /// when there is no name-matched live copy to prefer.
+    provisional_id: u32,
+    /// A provisional id that a real adoption has just superseded, waiting to be
+    /// drained by the host so it can drop whatever it synthesised for it.
+    retired: u32,
 }
 
 impl SelfTracker {
@@ -119,9 +143,68 @@ impl SelfTracker {
         self.alt_id
     }
 
-    /// Either id counts as the player.
+    /// Either id counts as the player — as does a provisional id, which is the
+    /// only handle a mid-session attach has.
     pub fn is_self(&self, id: u32) -> bool {
-        id != 0 && (id == self.self_id || id == self.alt_id)
+        id != 0 && (id == self.self_id || id == self.alt_id || id == self.provisional_id)
+    }
+
+    /// The id recovered without a zone-in, or 0. Never overrides [`Self::self_id`].
+    pub fn provisional_id(&self) -> u32 {
+        self.provisional_id
+    }
+
+    /// Observe the spawn id carried by the local player's own outbound position
+    /// report (`OP_ClientUpdate`, C>S, `spawnId` at offset 2).
+    ///
+    /// Direction is the proof of ownership: the server never broadcasts your
+    /// own position back to you, and over a 161-report capture this field took
+    /// exactly three values, switching at precisely the two zone transitions,
+    /// with none ever appearing in the S>C stream (see `player_self_pos`).
+    ///
+    /// The id is the PHANTOM TWIN's, not the live copy's, which is why it must
+    /// never outrank `observe_spawn`'s name match: pinning the player to it
+    /// while the live copy exists attaches them to the record the client hides
+    /// and leaves the moving one loose in the spawn list. With no zone-in
+    /// witnessed neither record exists, so the twin id is the only one there
+    /// is — and it is the id eql keys the player's stats to anyway.
+    pub fn observe_self_pos(&mut self, spawn_id: u32) -> SelfPosRouting {
+        if spawn_id == 0 {
+            return SelfPosRouting::Known;
+        }
+
+        // Properly adopted already: the field still tells us which id is the
+        // twin, which is what stats are keyed to — learn it, adopt nothing.
+        if self.self_id != 0 {
+            if spawn_id != self.self_id && self.is_twin_candidate(spawn_id) {
+                self.alt_id = spawn_id;
+            }
+            return SelfPosRouting::Known;
+        }
+
+        self.adopt_provisional(spawn_id)
+    }
+
+    fn adopt_provisional(&mut self, spawn_id: u32) -> SelfPosRouting {
+        if self.provisional_id == spawn_id {
+            return SelfPosRouting::Known;
+        }
+
+        // A provisional id that changed (zoned while we were attached, without
+        // ever seeing a profile) supersedes itself: retire the old record.
+        if self.provisional_id != 0 {
+            self.retired = self.provisional_id;
+        }
+
+        self.provisional_id = spawn_id;
+        SelfPosRouting::Adopted
+    }
+
+    /// Drain a provisional id that has been superseded, or 0. The host drops
+    /// whatever it synthesised for that id; anything real under it will be
+    /// re-announced by the zone-in that superseded it.
+    pub fn take_retired_provisional(&mut self) -> u32 {
+        std::mem::replace(&mut self.retired, 0)
     }
 
     /// Close enough to the adopted id to be its twin, but not yet resolved.
@@ -152,6 +235,12 @@ impl SelfTracker {
         if self.self_id == 0 || spawn_id.abs_diff(self.self_id) > SAME_BATCH {
             self.self_id = spawn_id;
             self.alt_id = 0;
+            // A name match is authoritative, so any id guessed mid-session is
+            // now superseded — hand it back so the host drops what it made up.
+            if self.provisional_id != 0 && self.provisional_id != spawn_id {
+                self.retired = self.provisional_id;
+            }
+            self.provisional_id = 0;
             // Anything held against the previous zone's ids is stale.
             if !matches!(self.pending, Some((id, _)) if id == spawn_id) {
                 self.pending = None;
@@ -175,6 +264,20 @@ impl SelfTracker {
     /// update was a no-op against an id that has no spawn entry.
     pub fn observe_stat_sync(&mut self, s: &StatSync) -> SelfStat {
         if self.is_self(s.spawn_id) {
+            return SelfStat::from_stat_sync(s, true);
+        }
+
+        // Mid-session second signal. Mana and endurance ride this channel for
+        // the local player ONLY (see `StatSync`), so a wide packet carrying
+        // either identifies its id as ours without any zone-in — and unlike the
+        // position report it keeps arriving while the player stands still.
+        // Adoption only — no host-visible routing, unlike the position report:
+        // this packet carries no coordinates, so there is nothing to draw. It
+        // makes the stats land; the position path is what makes the player
+        // appear. (One tracker per client: a capture carrying two boxes through
+        // ONE tracker would see both players' mana here.)
+        if self.self_id == 0 && s.wide && (s.has_mana || s.has_end) && s.spawn_id != 0 {
+            self.adopt_provisional(s.spawn_id);
             return SelfStat::from_stat_sync(s, true);
         }
 
@@ -343,7 +446,82 @@ mod tests {
     fn nothing_matches_before_the_profile_names_us() {
         let mut t = SelfTracker::new();
         assert_eq!(t.observe_spawn("", ME, 5893), SpawnRouting::NotSelf);
-        assert_eq!(t.self_id(), 0);
-        assert!(!t.observe_stat_sync(&wide(5893, (1, 2), (3, 4), (5, 6))).is_self);
+        assert_eq!(t.self_id(), 0, "a name match is the only thing that sets self_id");
+    }
+
+    // ── mid-session attach ────────────────────────────────────────────────
+    // No profile and no zone-in burst were witnessed, so observe_spawn can
+    // never fire: these are the two signals that still identify the player.
+
+    #[test]
+    fn self_pos_adopts_provisionally_when_no_zone_in_was_seen() {
+        let mut t = SelfTracker::new();
+        assert_eq!(t.observe_self_pos(15707), SelfPosRouting::Adopted);
+        assert_eq!(t.provisional_id(), 15707);
+        assert!(t.is_self(15707));
+        assert_eq!(t.self_id(), 0, "provisional is not a real adoption");
+        // Every later report is the same id — the host already has its record.
+        assert_eq!(t.observe_self_pos(15707), SelfPosRouting::Known);
+    }
+
+    #[test]
+    fn wide_mana_identifies_us_while_standing_still() {
+        let mut t = SelfTracker::new();
+        // Mana and endurance ride this channel for the player only, so this
+        // packet can only be ours — and it arrives with no movement at all.
+        let v = t.observe_stat_sync(&wide(5906, (4023, 4265), (1780, 4170), (1138, 2976)));
+        assert!(v.is_self);
+        assert_eq!(v.mana_max, 4170);
+        assert_eq!(t.provisional_id(), 5906);
+    }
+
+    #[test]
+    fn hp_only_wide_packets_are_not_us() {
+        let mut t = SelfTracker::new();
+        let mut s = wide(1234, (500, 500), (0, 0), (0, 0));
+        s.has_mana = false;
+        s.has_end = false;
+        assert!(!t.observe_stat_sync(&s).is_self, "HP alone is any mob");
+        assert_eq!(t.provisional_id(), 0);
+    }
+
+    #[test]
+    fn a_name_match_supersedes_the_provisional_and_hands_it_back() {
+        let mut t = SelfTracker::new();
+        t.observe_self_pos(15707); // the twin, guessed mid-session
+        assert_eq!(t.observe_spawn(ME, ME, 15701), SpawnRouting::AdoptSelf);
+        assert_eq!(t.self_id(), 15701, "the live copy wins");
+        assert_eq!(t.provisional_id(), 0);
+        assert_eq!(t.take_retired_provisional(), 15707, "host must drop what it synthesised");
+        assert_eq!(t.take_retired_provisional(), 0, "drained once");
+    }
+
+    #[test]
+    fn self_pos_never_outranks_a_name_matched_self() {
+        let mut t = SelfTracker::new();
+        t.observe_spawn(ME, ME, 15701);
+        assert_eq!(t.observe_self_pos(15707), SelfPosRouting::Known);
+        assert_eq!(t.self_id(), 15701, "still pinned to the live copy");
+        assert_eq!(t.alt_id(), 15707, "but the field told us which id is the twin");
+        assert_eq!(t.provisional_id(), 0);
+    }
+
+    #[test]
+    fn zoning_while_still_provisional_retires_the_previous_id() {
+        let mut t = SelfTracker::new();
+        assert_eq!(t.observe_self_pos(15707), SelfPosRouting::Adopted);
+        assert_eq!(t.observe_self_pos(20311), SelfPosRouting::Adopted);
+        assert_eq!(t.take_retired_provisional(), 15707);
+        assert_eq!(t.provisional_id(), 20311);
+    }
+
+    #[test]
+    fn reset_clears_the_provisional_state_too() {
+        let mut t = SelfTracker::new();
+        t.observe_self_pos(15707);
+        t.reset();
+        assert_eq!(t.provisional_id(), 0);
+        assert_eq!(t.take_retired_provisional(), 0);
+        assert!(!t.is_self(15707));
     }
 }
