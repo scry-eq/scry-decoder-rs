@@ -33,24 +33,22 @@ pub fn parse_mob_update(bytes: &[u8]) -> Result<MobUpdate, ParseError> {
         return Err(ParseError::BadLength(bytes.len()));
     }
 
-    // Packed u64 at byte 4, Live's spawnPositionUpdate order:
-    //     y bits 0..18 | z bits 19..37 | 7-bit gap | x bits 45..63
-    // Read explicitly, not through the generated binding: its bitfield
-    // positions are pre-patch and account for no gap.
+    // Layout lives on the struct (y bits 0..18 | z 19..37 | 7-bit gap | x
+    // 45..63, ×8 fixed-point). Its accessors mask but don't sign-extend, so
+    // that and the >>3 happen here.
     //
     // X/Y corrected 2026-08-03. Upstream's spawnPositionUpdateEQL names these
     // in the wire frame and swaps x/y at the call site; the 07/28 rewrite took
     // its labels without that swap. We name fields in the map frame, so no
     // swap here. See OPCODES_LEGENDS.md.
-    let spawn_id = u16::from_le_bytes([bytes[0], bytes[1]]);
-    let mut w = [0u8; 8];
-    w.copy_from_slice(&bytes[4..12]);
-    let packed = u64::from_le_bytes(w);
-    let field = |shift: u32| sign_extend(((packed >> shift) & 0x7FFFF) as u32, 19) >> 3;
-    let y = field(0);
-    let z = field(19);
-    let x = field(45);
-    let heading = u16::from_le_bytes([bytes[12], bytes[13]]) & 0x0FFF;
+    let raw: spawnPositionUpdate =
+        unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const spawnPositionUpdate) };
+    let spawn_id = unsafe { std::ptr::addr_of!(raw.spawnId).read_unaligned() } as u16;
+    let coord = |v: u64| sign_extend(v as u32, 19) >> 3;
+    let y = coord(raw.y());
+    let z = coord(raw.z());
+    let x = coord(raw.x());
+    let heading = raw.heading() as u16;
 
     Ok(MobUpdate { spawn_id, x, y, z, heading })
 }

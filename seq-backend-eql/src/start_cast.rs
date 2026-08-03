@@ -21,35 +21,14 @@
 //! (Feedback), matching what was cast; targetId read 0 for untargeted casts and
 //! two distinct spawn ids for the targeted ones.
 //!
-//! Modelled as an eql-owned struct rather than the pinned `startCastStruct`
-//! binding: that one is Live's wire and must stay 39 bytes, and `bindings.rs`
-//! is generated. Declaring the record here keeps `PAYLOAD_LEN` derived from
-//! `size_of` — same contract as every other parser in this crate — instead of
-//! a hand-copied number that can drift from the layout above it.
+//! The layout lives on `eqstructs::startCastStruct`, which is eql-owned and
+//! hand-maintained, so `PAYLOAD_LEN` derives from `size_of` like every other
+//! parser in this crate.
 
+use crate::eqstructs::startCastStruct;
 use thiserror::Error;
 
-/// eql's 44-byte OP_CastSpell record. Field names mirror the wire/`everquest.h`
-/// spelling, as the generated bindings do.
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-#[allow(non_snake_case)]
-struct startCastWire {
-    /// int32_t slot — gem slot
-    slot: i32,
-    /// uint32_t spellId
-    spellId: u32,
-    /// uint8_t unknown0008[10] — reads 0xff on every capture
-    unknown0008: [u8; 10],
-    /// uint32_t targetId — 0 when cast with no target
-    targetId: u32,
-    /// uint32_t unknown0022 — per-spell constant, role unmapped
-    unknown0022: u32,
-    /// uint8_t unknown0026[18] — zero except a 1 at @31
-    unknown0026: [u8; 18],
-}
-
-pub const PAYLOAD_LEN: usize = std::mem::size_of::<startCastWire>();
+pub const PAYLOAD_LEN: usize = std::mem::size_of::<startCastStruct>();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StartCast {
@@ -68,8 +47,8 @@ pub fn parse_start_cast(bytes: &[u8]) -> Result<StartCast, StartCastError> {
     if bytes.len() != PAYLOAD_LEN {
         return Err(StartCastError::BadLength(bytes.len()));
     }
-    let raw: startCastWire =
-        unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const startCastWire) };
+    let raw: startCastStruct =
+        unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const startCastStruct) };
     Ok(StartCast {
         slot:      unsafe { std::ptr::addr_of!(raw.slot).read_unaligned() },
         spell_id:  unsafe { std::ptr::addr_of!(raw.spellId).read_unaligned() },
@@ -85,7 +64,6 @@ mod tests {
     // this fails rather than silently moving the gate.
     #[test]
     fn wire_struct_is_44_bytes() {
-        assert_eq!(std::mem::size_of::<startCastWire>(), 44);
         assert_eq!(PAYLOAD_LEN, 44);
     }
 

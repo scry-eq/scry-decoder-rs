@@ -330,15 +330,19 @@ def emit_rust(structs: list[tuple[str, list[tuple[str, str, str]], int]]) -> str
 
 # Backends with a generated bindings file. live + test mirror
 # showeq-daemon/src/backend/<t>/everquest.h and regenerate together (`all`).
-# eql's bindings are a PINNED fork that lives INSIDE the self-contained
-# seq-backend-eql crate (src/bindings.rs) and must NOT track Live — so eql is
-# never part of `all`; regenerate it explicitly, from an explicit fork header,
-# only when eql's own wire diverges.
+#
+# eql is NOT here and cannot be generated (2026-08-03). Its structs are
+# hand-maintained in seq-backend-eql/src/bindings.rs. The only header this
+# script could read for eql is Live's, so generating it would import Live's
+# layouts into eql — the coupling the 2026-07-09 clean break removed. eql's
+# wire has since diverged (startCastStruct 44 vs Live's 39, considerStruct 24
+# vs 32, and the hand-rolled bitfield/variable-length records), so there is no
+# header that describes it. Edit that file directly and update its size
+# assertion.
 AUTO_TARGETS = ("live", "test")
 OUT_PATH = {
     "live": Path("seq-structs-live") / "src" / "bindings.rs",
     "test": Path("seq-structs-test") / "src" / "bindings.rs",
-    "eql": Path("seq-backend-eql") / "src" / "bindings.rs",
 }
 
 
@@ -378,16 +382,15 @@ def main(argv: list[str]) -> int:
 
     # Usage:
     #   gen_eqstructs.py                       -> live (default)
-    #   gen_eqstructs.py live|test|eql         -> that backend from its
+    #   gen_eqstructs.py live|test             -> that backend from its
     #                                             backend/<t>/everquest.h
-    #   gen_eqstructs.py live|test|eql <hdr>   -> that backend from an EXPLICIT
-    #                                             header (e.g. a fork checkout) —
-    #                                             this is how eql pulls upstream
-    #                                             struct changes on its own terms
-    #   gen_eqstructs.py all                   -> live + test (NEVER eql: its
-    #                                             bindings are a pinned fork)
+    #   gen_eqstructs.py live|test <hdr>       -> that backend from an EXPLICIT
+    #                                             header (e.g. a fork checkout)
+    #   gen_eqstructs.py all                   -> live + test
     #   gen_eqstructs.py <path/to/h>           -> live output from an explicit
     #                                             header (back-compat)
+    #
+    # There is no eql target: eql's structs are hand-maintained. See OUT_PATH.
     args = argv[1:]
     target = args[0] if args else "live"
     explicit = Path(args[1]) if len(args) > 1 else None
@@ -401,6 +404,17 @@ def main(argv: list[str]) -> int:
 
     if target in OUT_PATH:
         return gen_one(here, target, explicit or default_header(daemon, target))
+
+    if target == "eql":
+        print(
+            "error: eql is not generated — its structs are hand-maintained in\n"
+            "       seq-backend-eql/src/bindings.rs. Generating from Live's\n"
+            "       everquest.h would import Live's layouts into eql, and eql's\n"
+            "       wire has diverged from it. Edit that file directly and update\n"
+            "       the matching size assertion in its __layout_tests.",
+            file=sys.stderr,
+        )
+        return 1
 
     # First arg is an explicit header path — writes the live crate (back-compat).
     return gen_one(here, "live", Path(target))
