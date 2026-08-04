@@ -70,10 +70,10 @@ pub const PAYLOAD_LEN: usize = 42;
 /// with 12/13/15/16-bit windows yields the identical angle (they are the same
 /// value with extra low bits), which is what fixes the low edge at bit 0 of @26.
 ///
-/// The SENSE is measured, not assumed: a running player faces where they go, so
-/// each leg's bearing IS the facing. Compass degrees are `field * 360 / 2048`
-/// with NO inversion — 0 = N, 512 = E, 1024 = S, 1536 = W. Note this is the
-/// opposite sense to the mob/npc streams, which DO invert via `heading_deg`.
+/// INVERTED like every other heading: `heading_deg(field, 11)`. Read
+/// uninverted it mirrors — a left turn rotates the marker right. Calibrate the
+/// sense on a TURN; facing-vs-travel-bearing can't see a mirror, since the
+/// bearing shares the frame.
 pub const HEADING_UNITS: u16 = 2048;
 
 #[derive(Debug, Clone, Copy, Default)]

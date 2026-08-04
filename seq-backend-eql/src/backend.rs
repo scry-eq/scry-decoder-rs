@@ -244,7 +244,7 @@ fn self_pos(bytes: &[u8]) -> Decoded {
                 x: s.x.round() as i32,
                 y: s.y.round() as i32,
                 z: s.z.round() as i32,
-                heading_deg: ((u32::from(s.heading) * 360) >> 11) as u16,
+                heading_deg: heading_deg(s.heading, 11),
             },
             // The phantom twin's id (see player_self_pos) — the host feeds it
             // to SelfTracker, which is the only thing allowed to act on it.
@@ -832,6 +832,22 @@ mod tests {
     fn unknown_opcode_is_unhandled() {
         let d = EqlBackend.decode("OP_DoesNotExist", Dir::ServerToClient, &[]);
         assert_eq!(d, Decoded::Unhandled);
+    }
+
+    // The parser returns the raw field; the sense is applied here.
+    #[test]
+    fn self_heading_is_inverted_like_every_other_heading() {
+        let mut b = [0u8; crate::player_self_pos::PAYLOAD_LEN];
+        b[26..30].copy_from_slice(&512u32.to_le_bytes()); // quarter of 2048
+
+        let Decoded::One(Event::SelfPos { pos, .. }) =
+            EqlBackend.decode("OP_ClientUpdate", Dir::ClientToServer, &b)
+        else {
+            panic!("expected a SelfPos event");
+        };
+
+        assert_eq!(pos.heading_deg, 270, "quarter turn must read 270, not 90");
+        assert_eq!(pos.heading_deg, heading_deg(512, 11));
     }
 
     #[test]
