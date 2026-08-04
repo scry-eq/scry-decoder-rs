@@ -271,13 +271,12 @@ impl SelfTracker {
         // the local player ONLY (see `StatSync`), so a wide packet carrying
         // either identifies its id as ours without any zone-in — and unlike the
         // position report it keeps arriving while the player stands still.
-        // Adoption only — no host-visible routing, unlike the position report:
-        // this packet carries no coordinates, so there is nothing to draw. It
-        // makes the stats land; the position path is what makes the player
-        // appear. (One tracker per client: a capture carrying two boxes through
-        // ONE tracker would see both players' mana here.)
+        // Attribution only: this packet has no coordinates, so it lands in
+        // `alt_id` and never touches `provisional_id`. Both slots matter —
+        // sharing one made the two signals overwrite each other, re-adopting
+        // (and re-synthesising) on every packet.
         if self.self_id == 0 && s.wide && (s.has_mana || s.has_end) && s.spawn_id != 0 {
-            self.adopt_provisional(s.spawn_id);
+            self.alt_id = s.spawn_id;
             return SelfStat::from_stat_sync(s, true);
         }
 
@@ -467,12 +466,31 @@ mod tests {
     #[test]
     fn wide_mana_identifies_us_while_standing_still() {
         let mut t = SelfTracker::new();
-        // Mana and endurance ride this channel for the player only, so this
-        // packet can only be ours — and it arrives with no movement at all.
+        // Mana/endurance ride this channel for the player only. No coordinates,
+        // so it resolves the id for attribution without becoming drawable.
         let v = t.observe_stat_sync(&wide(5906, (4023, 4265), (1780, 4170), (1138, 2976)));
         assert!(v.is_self);
         assert_eq!(v.mana_max, 4170);
-        assert_eq!(t.provisional_id(), 5906);
+        assert!(t.is_self(5906));
+        assert_eq!(t.provisional_id(), 0, "no coordinates — nothing to synthesise");
+    }
+
+    // The two mid-session signals carry different ids (pos = one record, stats
+    // = its twin). Sharing one slot made each overwrite the other, so every
+    // position report re-adopted and the host re-synthesised on a loop.
+    #[test]
+    fn the_two_signals_do_not_fight_over_the_id() {
+        let mut t = SelfTracker::new();
+        assert_eq!(t.observe_self_pos(11715), SelfPosRouting::Adopted);
+
+        for _ in 0..5 {
+            t.observe_stat_sync(&wide(11719, (100, 200), (50, 60), (10, 20)));
+            assert_eq!(t.observe_self_pos(11715), SelfPosRouting::Known, "adopt once");
+        }
+
+        assert_eq!(t.provisional_id(), 11715);
+        assert!(t.is_self(11719), "the twin still attributes stats");
+        assert_eq!(t.take_retired_provisional(), 0, "nothing was superseded");
     }
 
     #[test]
