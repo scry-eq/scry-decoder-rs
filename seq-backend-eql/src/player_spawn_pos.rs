@@ -1,44 +1,45 @@
-//! Parser for eql's 28-byte `playerSpawnPosStruct` (`OP_ClientUpdate`,
+//! Parser for eql's 24-byte `playerSpawnPosStruct` (`OP_ClientUpdate`,
 //! DIR_Server only — position broadcast for spawns other than the local player).
 //!
-//! **This is eql's OWN copy and diverges from Live's 24B struct** (clean-break:
-//! when eql and Live differ, only this copy changes — Live's `parse_player_spawn_pos`
-//! lives in `seq-decode`, untouched).
+//! **This is eql's OWN copy**; when eql and Live differ, only this copy changes
+//! (Live's `parse_player_spawn_pos` lives in `seq-decode`, untouched).
 //!
-//! **Re-derived 2026-07-29** (the 07/29 rotation, which rotated the whole opcode
-//! table AND grew this broadcast 24B -> 28B with a fully rearranged body — none
-//! of the 24B offsets survive). Each coord still sits in the **low 19 bits** of a
-//! word (signed, ×8 fixed-point), but all three moved and each now starts on a
-//! 4-byte boundary:
+//! **Re-derived 2026-08-04** (the 08/04 rotation, which shrank this broadcast
+//! 28B -> 24B and rearranged the body again — no 28B offset survives). Two of
+//! the three coords still sit in the **low 19 bits** of a word (signed, ×8
+//! fixed-point), but z now sits in the **high** 19 bits of its word:
 //!
 //! ```text
 //!   /*0000*/ u16  spawnId
 //!   /*0002*/ u16  spawnId2         (0 in every sample)
-//!   /*0004*/ u32  { z:19 (low, signed) | hi:13 }
-//!   /*0008*/ u32  { x:19 (low, signed) | hi:13 — reads 0 in every sample }
-//!   /*0012*/ u32  { y:19 (low, signed) | hi:13 }
-//!   /*0016*/ u32  unknown          (role TBD)
-//!   /*0020*/ u32  { lowfrac:8 | heading:13 @bit8 | hi:11 }
-//!   /*0024*/ u32  unknown          (upper 13 bits read 0 in every sample)
+//!   /*0004*/ u32  { x:19 (low, signed) | hi:13 }
+//!   /*0008*/ u32  unknown          (role TBD)
+//!   /*0012*/ u32  { lo:13 | z:19 (high, signed) }
+//!   /*0016*/ u32  { y:19 (low, signed) | heading:11 @bit19 | hi:2 }
+//!   /*0020*/ u32  unknown          (role TBD)
 //! ```
 //!
-//! How the coords were pinned (146 broadcasts): each 19-bit window was scored
-//! against the `OP_MobUpdate` / `OP_NpcMoveUpdate` position streams, which the
-//! 07/29 patch left untouched and which therefore stand as map-frame ground
-//! truth. The three winners beat their runners-up by 50-1000× on median error
-//! (z 0.00 vs 37.25, x 0.38 vs 54.38, y 0.50 vs 697.00). Two independent checks
-//! agree: decoded z spans a 144-unit terrain band while a wrong window spans the
-//! whole 19-bit field, and per-spawn tracks imply 0.9-1.6 units/sec median with
-//! **0 of 51** steps above 100 u/s (a wrong window puts the median at 2031 u/s).
+//! How the coords were pinned (993 broadcasts, 41 tracked spawns): an
+//! exhaustive scan of **all 173 candidate 19-bit windows** in the body scored
+//! each against the `OP_MobUpdate` / `OP_NpcMoveUpdate` position streams, which
+//! this patch left untouched and which therefore stand as map-frame ground
+//! truth. The scan independently selected these three as the global best for
+//! their axis, matching upstream's independent derivation.
 //!
-//! Heading is the 13-bit field at bit 8 of the @20 word — the same
-//! `{ lowfrac:8 | heading | hi }` sub-structure the C>S self-report uses. It is a
-//! **compass** value (8192 per circle, 0 = N, increasing clockwise) and is NOT
-//! inverted, unlike the `heading_deg` convention the mob/npc streams use.
-//! Measured against travel bearing over 26 player legs at a 3.8 degree median;
-//! every other candidate window scored 27 degrees or worse. The sample is small
-//! because this capture holds little movement, so treat the SENSE as measured but
-//! lightly evidenced — the field location is not in doubt.
+//! Absolute error against ground truth is not the right statistic here — this
+//! opcode carries *other PCs* while `OP_MobUpdate` carries NPCs, so only 57 of
+//! 993 records overlap a ground-truth track at all. The non-confounded checks:
+//! per-spawn trajectory smoothness over 931 consecutive steps gives a 4.00-unit
+//! median (p90 21.6) with 4 steps above 500 units, i.e. a real walk; and an
+//! x/y-transposed control scores 6× worse against ground truth (667-unit median
+//! vs 111, 1/57 within 25 units vs 18/57), which settles the axis orientation.
+//!
+//! Heading is an **11-bit** field at bit 19 of the @16 word — directly above
+//! `y`, in the bits upstream's struct labels `deltaY`. It is a **compass** value
+//! (2048 per circle, 0 = N, increasing clockwise) and is NOT inverted, unlike
+//! the `heading_deg` convention the mob/npc streams use. Measured against travel
+//! bearing over 448 legs at a 5.77-degree median; the next-best window scored
+//! 25.8 degrees and a random field would score ~90.
 //!
 //! This parser surfaces the *raw* sign-extended coords and the daemon applies
 //! `>> 3` (1/8-unit -> integer game world), matching the `EqlDispatch::mobUpdate`
@@ -47,14 +48,14 @@
 use crate::eqstructs::sign_extend;
 use thiserror::Error;
 
-pub const PAYLOAD_LEN: usize = 28;
+pub const PAYLOAD_LEN: usize = 24;
 
-/// Full circle in wire units for [`PlayerSpawnPos::heading`] (13-bit field).
+/// Full circle in wire units for [`PlayerSpawnPos::heading`] (11-bit field).
 ///
-/// Note this differs from the C>S self-report's 11-bit
-/// [`crate::player_self_pos::HEADING_UNITS`] — same packet family, different
-/// field widths. Both are compass values needing no inversion.
-pub const HEADING_UNITS: u16 = 8192;
+/// The 08/04 rotation narrowed this from 13 bits to 11, bringing it in line
+/// with the C>S self-report's [`crate::player_self_pos::HEADING_UNITS`]. Both
+/// are compass values needing no inversion.
+pub const HEADING_UNITS: u16 = 2048;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayerSpawnPos {
@@ -64,16 +65,16 @@ pub struct PlayerSpawnPos {
     pub x: i32,
     pub y: i32,
     pub z: i32,
-    /// No located field on eql's 28B wire — surfaced as 0.
+    /// No located field on eql's 24B wire — surfaced as 0.
     pub delta_x: i32,
     pub delta_y: i32,
     pub delta_z: i32,
-    /// 13-bit compass value (0..8191, see [`HEADING_UNITS`]); 0 = N, increasing
+    /// 11-bit compass value (0..2047, see [`HEADING_UNITS`]); 0 = N, increasing
     /// clockwise, NOT inverted. `SpawnShell::moveSpawn` takes no heading, so the
     /// daemon currently ignores this; it is decoded so callers that want a
     /// facing don't have to re-derive it.
     pub heading: u16,
-    /// Not carried on eql's 28B wire — surfaced as 0.
+    /// Not carried on eql's 24B wire — surfaced as 0.
     pub delta_heading: i16,
     pub animation: i16,
     pub pitch: u16,
@@ -103,13 +104,13 @@ pub fn parse_player_spawn_pos(
     let spawn_id = read_u16_le(bytes, 0);
     let spawn_id2 = read_u16_le(bytes, 2);
 
-    // z/x/y in the LOW 19 bits of the @4/@8/@12 words (high 13 bits carry
-    // something velocity-shaped on z and y, and read 0 on x — see module doc).
-    let z = sign_extend(read_u32_le(bytes, 4) & 0x7_FFFF, 19);
-    let x = sign_extend(read_u32_le(bytes, 8) & 0x7_FFFF, 19);
-    let y = sign_extend(read_u32_le(bytes, 12) & 0x7_FFFF, 19);
+    // x and y in the LOW 19 bits of the @4 and @16 words; z in the HIGH 19 of
+    // the @12 word (see module doc for how each was pinned).
+    let x = sign_extend(read_u32_le(bytes, 4) & 0x7_FFFF, 19);
+    let z = sign_extend(read_u32_le(bytes, 12) >> 13, 19);
+    let y = sign_extend(read_u32_le(bytes, 16) & 0x7_FFFF, 19);
 
-    let heading = ((read_u32_le(bytes, 20) >> 8) & 0x1FFF) as u16;
+    let heading = ((read_u32_le(bytes, 16) >> 19) & 0x7FF) as u16;
 
     Ok(PlayerSpawnPos {
         spawn_id,
@@ -133,9 +134,9 @@ mod tests {
 
     #[test]
     fn rejects_wrong_length() {
-        assert!(parse_player_spawn_pos(&[0; 24]).is_err()); // the pre-07/29 size is rejected
-        assert!(parse_player_spawn_pos(&[0; 27]).is_err());
-        assert!(parse_player_spawn_pos(&[0; 29]).is_err());
+        assert!(parse_player_spawn_pos(&[0; 28]).is_err()); // the pre-08/04 size is rejected
+        assert!(parse_player_spawn_pos(&[0; 23]).is_err());
+        assert!(parse_player_spawn_pos(&[0; 25]).is_err());
     }
 
     #[test]
@@ -147,49 +148,30 @@ mod tests {
     }
 
     #[test]
-    fn coords_are_the_low19_of_the_4_8_12_words() {
+    fn x_is_the_low19_at_4_and_z_is_the_high19_at_12() {
         let mut buf = [0u8; PAYLOAD_LEN];
         buf[0..2].copy_from_slice(&0x1151u16.to_le_bytes()); // spawnId 4433
-        // z = 42 with every high bit set (velocity-ish field, must be ignored);
-        // x = the 19-bit minimum; y = -1.
+        // x = 42 with every high bit set (the neighbouring field must be ignored).
         buf[4..8].copy_from_slice(&(42u32 | (0x1FFFu32 << 19)).to_le_bytes());
-        buf[8..12].copy_from_slice(&0x0004_0000u32.to_le_bytes());
-        buf[12..16].copy_from_slice(&0x0007_FFFFu32.to_le_bytes());
+        // z = the 19-bit minimum, parked in the HIGH bits, low 13 bits all set.
+        buf[12..16].copy_from_slice(&((0x0004_0000u32 << 13) | 0x1FFF).to_le_bytes());
         let p = parse_player_spawn_pos(&buf).unwrap();
         assert_eq!(p.spawn_id, 0x1151);
-        assert_eq!(p.z, 42);
-        assert_eq!(p.x, -262_144);
-        assert_eq!(p.y, -1);
+        assert_eq!(p.x, 42);
+        assert_eq!(p.z, -262_144);
     }
 
     #[test]
-    fn heading_is_13_bits_at_bit_8_of_the_word_at_20() {
+    fn y_and_heading_share_the_word_at_16() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        // A quarter circle, with both neighbouring sub-fields fully set so a
-        // sloppy mask would be caught.
-        let w = (u32::from(HEADING_UNITS) / 4) << 8 | 0xFF | (0x7FFu32 << 21);
-        buf[20..24].copy_from_slice(&w.to_le_bytes());
+        // y = -1 (all 19 bits set) and a quarter-circle heading directly above
+        // it, with the 2 spare top bits set so a sloppy mask would be caught.
+        let quarter = u32::from(HEADING_UNITS) / 4;
+        let w = 0x7_FFFFu32 | (quarter << 19) | (0x3u32 << 30);
+        buf[16..20].copy_from_slice(&w.to_le_bytes());
         let p = parse_player_spawn_pos(&buf).unwrap();
+        assert_eq!(p.y, -1);
         assert_eq!(p.heading, HEADING_UNITS / 4);
         assert!(p.heading < HEADING_UNITS);
-    }
-
-    // A real broadcast off the 07/29 wire: one sample of a walking player, taken
-    // from the middle of a 32-sample track that traces a smooth uphill walk. The
-    // expected position is cross-checked against the OP_MobUpdate /
-    // OP_NpcMoveUpdate streams for the same window (see module doc).
-    #[test]
-    fn decodes_a_captured_broadcast() {
-        let bytes: [u8; PAYLOAD_LEN] = [
-            0x7B, 0x3C, 0x00, 0x00, 0xBF, 0xFE, 0x07, 0x04, 0x9A, 0x09, 0x00, 0x00, 0xE9, 0x31,
-            0x80, 0x02, 0x00, 0xC0, 0x0B, 0x00, 0x25, 0x88, 0x03, 0x00, 0x64, 0x00, 0x00, 0x00,
-        ];
-        let p = parse_player_spawn_pos(&bytes).unwrap();
-        assert_eq!(p.spawn_id, 15483);
-        assert_eq!(p.spawn_id2, 0);
-        // raw 1/8-unit values, and the >> 3 the daemon applies
-        assert_eq!((p.x, p.y, p.z), (2458, 12777, -321));
-        assert_eq!((p.x >> 3, p.y >> 3, p.z >> 3), (307, 1597, -41));
-        assert_eq!(p.heading, 904); // ~39.7 degrees, i.e. NNE
     }
 }

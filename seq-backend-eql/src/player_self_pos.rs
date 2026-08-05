@@ -1,42 +1,46 @@
 //! Parser for the 42-byte `playerSelfPosStruct` (`OP_ClientUpdate`, C>S — the
 //! local player's own position report).
 //!
-//! **Re-derived 2026-07-29.** The 07/29 rotation rotated the whole opcode table
-//! AND grew this report 38B -> 42B with a fully rearranged body; none of the 38B
-//! offsets survive. Positions are IEEE floats in game-world units (no ×8 packing
-//! — this is C>S, distinct from the S>C packed `playerSpawnPosStruct`):
+//! **Re-derived 2026-08-04.** The 08/04 rotation rearranged the body again; the
+//! size stayed 42B, so no size gate could catch it. None of the 07/29 offsets
+//! survive. Positions are IEEE floats in game-world units (no ×8 packing —
+//! this is C>S, distinct from the S>C packed `playerSpawnPosStruct`):
 //!
 //! ```text
-//!   /*0000*/ u16  ctr        update counter (0..5181 over a capture)
-//!   /*0002*/ u16  spawnId    the local player's spawn id — BACK on the wire
-//!   /*0004*/ u8   unknown0004[6]
-//!   /*0010*/ f32  y          gameY
-//!   /*0014*/ f32  unknown    velocity candidate (-1.32 .. 0.43)
-//!   /*0018*/ f32  unknown    velocity candidate (-1.79 .. 1.92)
-//!   /*0022*/ f32  x          gameX
-//!   /*0026*/ u32  { heading:11 (low) | hi:21 }
-//!   /*0030*/ f32  unknown    velocity candidate (-2.01 .. 1.87)
-//!   /*0034*/ f32  z          gameZ
-//!   /*0038*/ u32  unknown
+//!   /*0000*/ u16  ctr        update counter
+//!   /*0002*/ u16  spawnId    the local player's spawn id (the PHANTOM TWIN's)
+//!   /*0004*/ u8   unknown0004[14]
+//!   /*0018*/ f32  y          gameY
+//!   /*0022*/ u32  { heading:11 (low) | hi:21 }
+//!   /*0026*/ u32  unknown
+//!   /*0030*/ f32  z          gameZ
+//!   /*0034*/ f32  unknown    velocity candidate
+//!   /*0038*/ f32  x          gameX
 //! ```
+//!
+//! Upstream declares this struct 44B (`tail[2]` past the `x` float at 38). The
+//! wire is **42B** — 703 C>S bodies in the 08/04 capture, none at 44 — so the
+//! tail is dropped here and `PAYLOAD_LEN` stays 42. Both payloads are gated
+//! `none`, so an over-long declaration would not warn; it would just hand this
+//! parser a short buffer.
 //!
 //! **How the axes were pinned.** The three position floats fall out of a range
 //! comparison against the `OP_SelfPos` breadcrumb (which reports the player's
-//! real path): over 161 self-reports the field ranges match the breadcrumb's
-//! per-axis ranges essentially exactly — @10 [-1559.64, 2552.56] vs the
-//! breadcrumb's [-1559.64, 2552.56], @22 [-197.76, 296.00] vs [-199.73, 296.00],
-//! @34 [-84.30, -43.72] vs [-84.68, -43.38]. Every other float offset in the
-//! packet spans at most ±2 (the velocities) or is pinned near 0.
+//! real path, and which was independently re-confirmed for 08/04). Over 703
+//! self-reports the field ranges match the breadcrumb's per-axis ranges
+//! essentially exactly — @18 [-2627.32, 1086.62] vs the breadcrumb's
+//! [-2627.32, 1086.62], @38 [-428.68, 1041.24] vs [-429.72, 1041.24], @30
+//! [-905.81, 51.44] vs [-905.81, 58.79]. Every other float offset in the packet
+//! spans at most ±5 (the velocities) or is pinned near 0. The 07/29 offsets
+//! (@10/@22/@34) now read zero or ±4, which is the tell that they moved.
 //!
-//! Which of @10/@22 is X and which is Y is NOT taken from the breadcrumb's own
+//! Which of @18/@38 is X and which is Y is NOT taken from the breadcrumb's own
 //! labels — those are in `/loc` order and transpose against the map frame, which
 //! is exactly the trap that produced a silently-swapped read in an earlier patch.
-//! It is settled physically instead: position updates are range-limited, so the
-//! player must sit inside the cloud of spawns the server is streaming them. Under
-//! `@10 = y, @22 = x` the player is within 300 units of a visible spawn in
-//! **490 of 518** samples (median 104); transposed, **0 of 518** (median 946).
-//! The ground-truth cloud is the untouched `OP_MobUpdate` / `OP_NpcMoveUpdate`
-//! streams, i.e. the same map frame `SpawnShell` and the map use.
+//! It is settled by matching each field's observed RANGE to the corresponding
+//! breadcrumb axis range (above): the three ranges are distinct enough that the
+//! assignment is unambiguous, and a transposed reading would put @18's
+//! 3714-unit span against an axis spanning 1470.
 //!
 //! **A spawnId is back at offset 2** (the 07/14 patch had dropped it; this
 //! matches upstream's `eqlClientSelfPosStruct`, which kept declaring it). Over a
@@ -63,17 +67,19 @@ pub const PAYLOAD_LEN: usize = 42;
 
 /// Full circle in wire heading units (11-bit field → 2048 steps).
 ///
-/// The facing is the low 11 bits of the dword at offset 26. Width and scale
-/// carry over from upstream's `eqlClientSelfPosStruct` (an 11-bit facing), and
-/// the location was re-measured for the 42B body: scored against travel bearing
-/// over 46 movement legs it lands at a 6.8 degree median, and the same field read
-/// with 12/13/15/16-bit windows yields the identical angle (they are the same
-/// value with extra low bits), which is what fixes the low edge at bit 0 of @26.
+/// The facing is the low 11 bits of the dword at offset 22 (moved from 26 by
+/// the 08/04 rotation, and agreeing with upstream's re-derivation). Scored
+/// against travel bearing over 453 movement legs it lands at a **2.14 degree**
+/// median; the next-best window in the whole 42B body scores 32.6 and a random
+/// field would score ~90, so the location is not in doubt.
 ///
 /// INVERTED like every other heading: `heading_deg(field, 11)`. Read
-/// uninverted it mirrors — a left turn rotates the marker right. Calibrate the
-/// sense on a TURN; facing-vs-travel-bearing can't see a mirror, since the
-/// bearing shares the frame.
+/// uninverted it mirrors — a left turn rotates the marker right. Only the
+/// OFFSET moved this patch; width, scale and sense are unchanged, so the
+/// downstream inversion carries over. Calibrate the sense on a TURN;
+/// facing-vs-travel-bearing can't see a mirror, since the bearing shares the
+/// frame — which is why the 2.14-degree fit above pins the location but is NOT
+/// evidence about the sense.
 pub const HEADING_UNITS: u16 = 2048;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -125,9 +131,9 @@ pub fn parse_player_self_pos(bytes: &[u8]) -> Result<PlayerSelfPos, PlayerSelfPo
     // Axis labels are the map frame's — MobUpdate's / the spawn record's — NOT
     // the breadcrumb's /loc ordering. See the module doc for how the X/Y
     // assignment was settled physically rather than from field labels.
-    let y = read_f32_le(bytes, 10);
-    let x = read_f32_le(bytes, 22);
-    let z = read_f32_le(bytes, 34);
+    let y = read_f32_le(bytes, 18);
+    let z = read_f32_le(bytes, 30);
+    let x = read_f32_le(bytes, 38);
 
     // The velocity components have NOT been located for this patch and are
     // deliberately surfaced as 0 rather than read from a plausible-looking
@@ -136,7 +142,7 @@ pub fn parse_player_self_pos(bytes: &[u8]) -> Result<PlayerSelfPos, PlayerSelfPo
     // ±2.1, the right magnitude for the ±2.26 units/tick of a full run); the
     // capture has too little sustained movement to tell which maps to which
     // axis.
-    let heading = (read_u32_le(bytes, 26) & 0x7FF) as u16;
+    let heading = (read_u32_le(bytes, 22) & 0x7FF) as u16;
 
     Ok(PlayerSelfPos {
         spawn_id,
@@ -165,42 +171,45 @@ mod tests {
     }
 
     #[test]
-    fn parses_floats_y10_x22_z34() {
+    fn parses_floats_y18_z30_x38() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        buf[10..14].copy_from_slice(&941.50f32.to_le_bytes()); // y
-        buf[22..26].copy_from_slice(&654.25f32.to_le_bytes()); // x
-        buf[34..38].copy_from_slice(&190.01f32.to_le_bytes()); // z
+        buf[18..22].copy_from_slice(&941.50f32.to_le_bytes()); // y
+        buf[30..34].copy_from_slice(&190.01f32.to_le_bytes()); // z
+        buf[38..42].copy_from_slice(&654.25f32.to_le_bytes()); // x
         let p = parse_player_self_pos(&buf).unwrap();
         assert_eq!(p.x, 654.25);
         assert_eq!(p.y, 941.50);
         assert_eq!(p.z, 190.01);
     }
 
-    // A real self-report off the 07/29 wire. Ground truth for the same moment
-    // comes from the OP_SelfPos breadcrumb, which agrees to 0.0000 on all three
-    // axes.
+    // A real self-report off the 08/04 wire. Ground truth for the same moment
+    // comes from the OP_SelfPos breadcrumb — a different opcode with a totally
+    // different encoding (IEEE floats in 17-byte tiled records) — and the two
+    // agree to 0.0000 units on all three axes. That cross-opcode agreement is
+    // what pins these offsets; the 07/29 offsets decode this same packet to
+    // zero.
     #[test]
     fn decodes_a_captured_self_report() {
         let bytes: [u8; PAYLOAD_LEN] = [
-            0x00, 0x00, 0x5B, 0x3D, 0x00, 0x00, 0x00, 0x00, 0xED, 0xA3, 0x00, 0xD6, 0x1D, 0x45,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x57, 0x43, 0x1B, 0x02,
-            0x00, 0x7F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x32, 0xC2, 0x00, 0x00, 0x4F, 0xCF,
+            0x14, 0x08, 0x3B, 0x26, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0xD4, 0x87, 0x44, 0x00, 0x04, 0xC0, 0x24, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x54, 0xC2, 0x30, 0x00, 0x00, 0x00, 0x00, 0x60, 0xB0, 0xC3,
         ];
         let p = parse_player_self_pos(&bytes).unwrap();
-        assert_eq!(p.x, 215.0);
-        assert_eq!(p.y, 2525.375);
-        assert_eq!(p.z, -44.625);
-        assert_eq!(p.spawn_id, 15707);
-        assert_eq!(p.heading, 539); // ~94.7 degrees, i.e. due east
+        assert_eq!(p.x, -352.75);
+        assert_eq!(p.y, 1086.625);
+        assert_eq!(p.z, -53.0);
+        assert_eq!(p.spawn_id, 9787);
+        assert_eq!(p.heading, 1024); // exactly 180 degrees
     }
 
-    // Facing is an 11-bit compass value in the low bits at 26: 0 = N, a quarter
+    // Facing is an 11-bit compass value in the low bits at 22: 0 = N, a quarter
     // circle = E. The neighbouring high bits are set so a sloppy mask is caught.
     #[test]
     fn decodes_the_facing_as_a_compass_value() {
         let mut buf = [0u8; PAYLOAD_LEN];
         let w = u32::from(HEADING_UNITS) / 4 | (0x1F_FFFFu32 << 11);
-        buf[26..30].copy_from_slice(&w.to_le_bytes());
+        buf[22..26].copy_from_slice(&w.to_le_bytes());
         let p = parse_player_self_pos(&buf).unwrap();
         assert_eq!(p.heading, HEADING_UNITS / 4);
         assert!(p.heading < HEADING_UNITS);
@@ -212,9 +221,9 @@ mod tests {
     #[test]
     fn velocity_is_not_decoded_this_patch() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        buf[14..18].copy_from_slice(&2.26f32.to_le_bytes());
-        buf[18..22].copy_from_slice(&2.26f32.to_le_bytes());
-        buf[30..34].copy_from_slice(&2.26f32.to_le_bytes());
+        buf[6..10].copy_from_slice(&2.26f32.to_le_bytes());
+        buf[10..14].copy_from_slice(&2.26f32.to_le_bytes());
+        buf[34..38].copy_from_slice(&2.26f32.to_le_bytes());
         let p = parse_player_self_pos(&buf).unwrap();
         assert_eq!((p.delta_x, p.delta_y, p.delta_z), (0.0, 0.0, 0.0));
     }

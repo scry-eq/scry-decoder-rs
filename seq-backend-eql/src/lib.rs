@@ -991,10 +991,11 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         // tail. Size comes from that parser, not from Live's 39B sizeof.
         ("startCastStruct", start_cast::PAYLOAD_LEN as u32),
         // eql OP_ClientUpdate S>C other-spawn position broadcast: 19-bit ×8 packed,
-        // coord in the LOW bits of the @4/@8/@12 words. The 2026-07-29 rotation grew
-        // it 24B -> 28B and rearranged the body; decoded by this crate's own
-        // parse_player_spawn_pos, re-derived against the untouched OP_MobUpdate /
-        // OP_NpcMoveUpdate streams — see that module and OPCODES_LEGENDS.md.
+        // x/y in the LOW bits of the @4/@16 words and z in the HIGH bits of @12.
+        // The 2026-08-04 rotation shrank it 28B -> 24B and rearranged the body;
+        // decoded by this crate's own parse_player_spawn_pos, re-derived against
+        // the untouched OP_MobUpdate / OP_NpcMoveUpdate streams — see that module
+        // and OPCODES_LEGENDS.md.
         ("playerSpawnPosStruct", player_spawn_pos::PAYLOAD_LEN as u32),
 
         // --- De-piggyback (2026-07-10): eql OWNS every mapped SZC_Match gate size ---
