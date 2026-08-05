@@ -119,6 +119,10 @@ pub struct SelfTracker {
     /// A provisional id that a real adoption has just superseded, waiting to be
     /// drained by the host so it can drop whatever it synthesised for it.
     retired: u32,
+    /// Whether the stat channel's mid-session guess has already been spent this
+    /// session. It is one-shot: re-arming it after a retraction just lets the
+    /// next stranger take the slot, which measured WORSE than leaving it empty.
+    guessed: bool,
 }
 
 impl SelfTracker {
@@ -267,16 +271,58 @@ impl SelfTracker {
             return SelfStat::from_stat_sync(s, true);
         }
 
-        // Mid-session second signal. Mana and endurance ride this channel for
-        // the local player ONLY (see `StatSync`), so a wide packet carrying
-        // either identifies its id as ours without any zone-in — and unlike the
-        // position report it keeps arriving while the player stands still.
-        // Attribution only: this packet has no coordinates, so it lands in
-        // `alt_id` and never touches `provisional_id`. Both slots matter —
-        // sharing one made the two signals overwrite each other, re-adopting
-        // (and re-synthesising) on every packet.
-        if self.self_id == 0 && s.wide && (s.has_mana || s.has_end) && s.spawn_id != 0 {
+        // Mid-session second signal, for a host that attached with no zone-in
+        // to name-match against. A wide packet carrying mana or endurance is
+        // treated as ours, and unlike the position report it keeps arriving
+        // while the player stands still. Attribution only: this packet has no
+        // coordinates, so it lands in `alt_id` and never touches
+        // `provisional_id`. Both slots matter — sharing one made the two
+        // signals overwrite each other, re-adopting on every packet.
+        //
+        // This is a GUESS, and it is bounded two ways. The premise — that
+        // mana/endurance ride this channel for the local player only — does not
+        // survive a zone full of other players, who report both.
+        //
+        //  1. It latches AT MOST ONCE per session (`alt_id == 0`). Re-deciding
+        //     per packet let every neighbouring PC claim to be us in turn, each
+        //     overwriting the last one's maxima. Measured on a 3-zone capture:
+        //     12 distinct ids claimed the player's stats where the correct
+        //     answer was 3, giving 16 conflicting sets of maxima.
+        //  2. Once the position report has named an id, the stats id must be
+        //     that id's TWIN — issued in the same batch, so within
+        //     `SAME_BATCH`. The two mid-session signals legitimately carry
+        //     different ids (pos = one record, stats = its twin), so they
+        //     corroborate rather than duplicate; an id far from the one we are
+        //     already tracking is some other spawn.
+        //
+        // A later name match supersedes the guess outright: `observe_spawn`
+        // clears `alt_id` when it adopts.
+        //
+        // Hosts that isolate one session per tracker (the daemon's per-box
+        // wiring) resolve `self_id` from the zone-in burst long before this can
+        // fire; hosts that funnel several sessions through one tracker reopen
+        // the window on every reset, which is what exposed the old behaviour.
+        // Once the position report has named an id, this one must be its twin
+        // — that is a real qualification, so it may latch freely. With nothing
+        // to qualify against (a true cold attach) it is an unqualified guess
+        // and gets exactly one shot per session.
+        let qualifies = if self.provisional_id != 0 {
+            s.spawn_id.abs_diff(self.provisional_id) <= SAME_BATCH
+        } else {
+            !self.guessed
+        };
+
+        if self.self_id == 0
+            && self.alt_id == 0
+            && s.wide
+            && (s.has_mana || s.has_end)
+            && s.spawn_id != 0
+            && qualifies
+        {
             self.alt_id = s.spawn_id;
+            if self.provisional_id == 0 {
+                self.guessed = true;
+            }
             return SelfStat::from_stat_sync(s, true);
         }
 
@@ -491,6 +537,57 @@ mod tests {
         assert_eq!(t.provisional_id(), 11715);
         assert!(t.is_self(11719), "the twin still attributes stats");
         assert_eq!(t.take_retired_provisional(), 0, "nothing was superseded");
+    }
+
+    // The mid-session guess latches once. Before this, every neighbouring PC
+    // reporting mana/endurance re-claimed the player's identity and overwrote
+    // their maxima — 12 ids claiming a 3-id answer on a real 3-zone capture.
+    #[test]
+    fn the_mid_session_guess_latches_only_once() {
+        let mut t = SelfTracker::new();
+
+        let first = t.observe_stat_sync(&wide(5906, (4023, 4265), (1780, 4170), (1138, 2976)));
+        assert!(first.is_self);
+        assert_eq!(first.mana_max, 4170);
+
+        // A different spawn reporting the same shape is NOT us.
+        let other = t.observe_stat_sync(&wide(8412, (1, 2), (3, 9999), (5, 6)));
+        assert!(!other.is_self, "a second id must not re-claim the player");
+        assert!(!t.is_self(8412));
+
+        // The latched id keeps attributing.
+        assert!(t.observe_stat_sync(&wide(5906, (10, 4265), (20, 4170), (30, 2976))).is_self);
+        assert!(t.is_self(5906));
+    }
+
+    // With a provisional id in hand the stats id must be its twin. A far-off id
+    // is another spawn, however player-shaped its packet looks.
+    #[test]
+    fn a_distant_id_cannot_claim_us_once_the_position_report_named_one() {
+        let mut t = SelfTracker::new();
+        assert_eq!(t.observe_self_pos(27695), SelfPosRouting::Adopted);
+
+        let far = t.observe_stat_sync(&wide(27607, (1, 2), (3, 4), (5, 6)));
+        assert!(!far.is_self, "88 ids away — not our twin");
+        assert!(!t.is_self(27607));
+
+        let twin = t.observe_stat_sync(&wide(27699, (7, 8), (9, 10), (11, 12)));
+        assert!(twin.is_self, "4 ids away — the twin");
+        assert!(t.is_self(27699));
+    }
+
+
+
+    // The guess is only a guess: a name match replaces it wholesale.
+    #[test]
+    fn a_name_match_supersedes_a_wrongly_latched_guess() {
+        let mut t = SelfTracker::new();
+        assert!(t.observe_stat_sync(&wide(9000, (1, 2), (3, 4), (5, 6))).is_self);
+        assert!(t.is_self(9000));
+
+        assert_eq!(t.observe_spawn(ME, ME, 4307), SpawnRouting::AdoptSelf);
+        assert!(!t.is_self(9000), "the guess is dropped once we are named");
+        assert!(t.is_self(4307));
     }
 
     #[test]
