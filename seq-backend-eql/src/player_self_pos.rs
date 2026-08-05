@@ -76,10 +76,14 @@ pub const PAYLOAD_LEN: usize = 42;
 /// INVERTED like every other heading: `heading_deg(field, 11)`. Read
 /// uninverted it mirrors — a left turn rotates the marker right. Only the
 /// OFFSET moved this patch; width, scale and sense are unchanged, so the
-/// downstream inversion carries over. Calibrate the sense on a TURN;
-/// facing-vs-travel-bearing can't see a mirror, since the bearing shares the
-/// frame — which is why the 2.14-degree fit above pins the location but is NOT
-/// evidence about the sense.
+/// downstream inversion carried over untouched, and that was **confirmed
+/// in-game on 2026-08-05**: the reticle tracks the turn instead of mirroring
+/// it.
+///
+/// Calibrate the sense on a TURN, never on facing-vs-travel-bearing: the
+/// bearing shares the frame, so it cannot see a mirror. That is why the
+/// 2.14-degree fit above pins the field's LOCATION but says nothing about its
+/// sense.
 pub const HEADING_UNITS: u16 = 2048;
 
 #[derive(Debug, Clone, Copy, Default)]
