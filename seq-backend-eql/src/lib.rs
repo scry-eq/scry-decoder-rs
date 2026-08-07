@@ -807,31 +807,45 @@ pub fn parse_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     // pinned to the same frame the breadcrumb and heading were verified in, so
     // it stays consistent with the self-position path.
     //
-    // ---- 2026-07-30: the 07/29 rotation moved the block again. ----
-    // The coordinates are now the FIRST three words of the six, in packet order
-    // Z, X, Y — the word this used to skip as `_lead` is Z, and the two the old
-    // read took as Y and Z are really X and Y. The remaining three read 0.
+    // ---- 2026-08-06: re-derived against upstream's struct + measurement. ----
+    // The previous read took the coordinates as the first THREE consecutive
+    // words (Z, X, Y, all low-19). That is not the block's shape, and the
+    // symptom was unmissable once plotted: word1 is a PAD that reads 0 in
+    // 479 of 952 id-paired records, so half of every zone's spawns rendered
+    // in a straight line at x = 0.
     //
-    // Re-derived against the untouched OP_MobUpdate / OP_NpcMoveUpdate streams
-    // plus the newly-decoded OP_ClientUpdate broadcast, matched per record
-    // within the same zone visit (the capture crosses three, and EQ reuses spawn
-    // ids per zone — merging them fabricates matches). Scanning every offset and
-    // all six axis orderings, the located records agree unanimously on the
-    // ordering (67/67 ZXY) and on a tail offset of len-103 (63/67); the
-    // block-relative offset scatters, confirming it is the tail the block tracks
-    // even though this walk reaches it sequentially.
+    // Upstream's `posData[5]` union (legends everquest.h) describes the real
+    // shape, and its consumer — `spawn.cpp: setPos(s->y >> 3, s->x >> 3,
+    // s->z >> 3)` — supplies the EQL transpose: their `y` field is world X and
+    // their `x` field is world Y. Reading their STRUCT without their CALL SITE
+    // transposes the map; reading the call site without the struct misses that
+    // Z lives in the HIGH bits. Both halves or neither.
     //
-    // The symptom this fixes: the old read reported coordinates shifted one word
-    // to the right, so a spawn's decoded Y was its real X and its decoded Z its
-    // real Y, with X taken from a word that reads ~0. Worst-axis error against
-    // ground truth had a median of 14766 units — spawns scattered tens of
-    // thousands of units from where they stood.
-    let z = pos19_word(w.u32()?);
-    let x = pos19_word(w.u32()?);
-    let y = pos19_word(w.u32()?);
-    let _w3 = w.u32()?;
-    let _w4 = w.u32()?;
+    // Word roles pinned by scoring every (word, half) against the untouched
+    // OP_MobUpdate stream over 952 id-paired records — median absolute error,
+    // best vs runner-up:
+    //     X = w0 low-19   161 vs 554     (upstream's `y` field)
+    //     Y = w3 low-19   182 vs 1441    (upstream's `x` field)
+    //     Z = w4 high-19    9 vs 43
+    // X/Y carry more error than Z because ZoneEntry reports a spawn-time
+    // position while MobUpdate reports the current one — mobs walk, terrain
+    // does not. Z's 9-unit median is what confirms the alignment.
+    //
+    // w1 is the pad (479/952 zero), w5 is always 0 (952/952). Upstream labels
+    // w4 `heading:12 | padding00:20`, but 12 + 1 + 19 = 32 and Z measurably
+    // lives in that "padding" — so their Z word index is off by two while
+    // their X/Y ones are right. Heading is still NOT recoverable: no word at
+    // 11- or 12-bit width scores better than noise against MobUpdate's facing,
+    // so it stays zeroed rather than pointed in a direction from the wrong bits.
+    let w0 = w.u32()?;
+    let _pad = w.u32()?;
+    let _w2 = w.u32()?;
+    let w3 = w.u32()?;
+    let w4 = w.u32()?;
     let _trail = w.u32()?;
+    let x = pos19_word(w0);
+    let y = pos19_word(w3);
+    let z = pos19_word(w4 >> 13);
     // The spawn record's facing did not survive the rearrangement: the word it
     // used to ride is now the Y coordinate. Upstream reports the remaining
     // heading word as unmapped and zeroes it at consumption; do the same rather
@@ -1469,17 +1483,18 @@ mod tests {
         u32le(&mut b, 0); // petOwnerId
         b.extend_from_slice(&[0u8; 49]); // npc==1 extra
         b.extend_from_slice(&[0u8; 60]); // equipment (else branch: 20 + 2*5*4)
-        // 2026-07-29 position block: the coordinates are the FIRST three of the
-        // six words, in packet order Z, X, Y; the remaining three read 0.
-        // Tail-anchored, so what matters is the distance from the end:
-        // Z @(len-103), X @(len-99), Y @(len-95).
+        // 2026-08-06 position block (upstream `posData` shape, word roles
+        // measured against OP_MobUpdate): w0 low-19 = X, w1 = pad, w3 low-19
+        // = Y, w4 high-19 = Z, w5 = 0. Building the pad as a NON-zero value
+        // here is deliberate: the bug this replaced read X out of w1, and a
+        // zero-filled pad would have let that reading pass.
         let _ = heading; // spawn facing did not survive the rearrangement
-        b.extend_from_slice(&pos_word(z)); // len-103
-        b.extend_from_slice(&pos_word(x)); // len-99
-        b.extend_from_slice(&pos_word(y)); // len-95
-        u32le(&mut b, 0); // len-91
-        u32le(&mut b, 0); // len-87
-        u32le(&mut b, 0); // len-83 (trailing word; unmapped)
+        b.extend_from_slice(&pos_word(x)); // w0: X in the low 19
+        u32le(&mut b, 0x1234_5678); // w1: pad — deliberately not zero
+        u32le(&mut b, 0); // w2
+        b.extend_from_slice(&pos_word(y)); // w3: Y in the low 19
+        u32le(&mut b, u32::from_le_bytes(pos_word(z)) << 13); // w4: Z in the high 19
+        u32le(&mut b, 0); // w5 (always 0 on the wire)
         text(&mut b, title);
         text(&mut b, suffix);
         text(&mut b, ""); // string 3
