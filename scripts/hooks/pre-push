@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Pre-push hook: mirror .github/workflows/ci.yml locally so a push that would
+# turn CI red fails here first. This repo has no other guard — the daemon hard-
+# links seq-bridge through Corrosion, so a break here surfaces as a *daemon*
+# build failure in a different repo.
+#
+# Activate in a fresh clone with:  git config core.hooksPath scripts/hooks
+# Bypass with:                     git push --no-verify
+set -euo pipefail
+
+REPO="$(git rev-parse --show-toplevel)"
+cd "${REPO}"
+
+# Drain the push range on stdin; we don't inspect it, but leaving it unread can
+# hand git an EPIPE.
+cat >/dev/null
+
+if ! command -v cargo >/dev/null 2>&1; then
+    echo "pre-push: no cargo on PATH — skipping (is the rust toolchain installed?)" >&2
+    exit 0
+fi
+
+# Testing all three backends is the point. `cargo test --workspace` builds every
+# crate with its DEFAULT features, so seq-decode is only ever compiled against
+# seq-structs-live — a struct-mirror or shared-FFI change can pass --workspace
+# and still break the test or eql link the daemon actually builds.
+echo "pre-push: cargo test --workspace (backend-live defaults)..."
+cargo test --workspace --quiet
+
+echo "pre-push: cargo test seq-decode against the test struct mirror..."
+cargo test -p seq-decode --no-default-features --features backend-test --quiet
+
+echo "pre-push: cargo test seq-backend-eql..."
+cargo test -p seq-backend-eql --quiet
+
+# Release is the profile Corrosion links (thin LTO + codegen-units=1).
+for B in live test eql; do
+    echo "pre-push: release build of seq-bridge (backend-${B})..."
+    cargo build -p seq-bridge --release \
+        --no-default-features --features "backend-${B}" --quiet
+done
+
+# The 2026-07-09 clean break: seq-backend-eql vendors its own parsers so a Live
+# wire patch cannot reach eql. One stray seq-decode dependency re-couples them
+# silently — the symptom would be an eql mis-decode months later.
+TREE="$(cargo tree -p seq-bridge --no-default-features --features backend-eql)"
+if grep -q 'seq-decode' <<<"${TREE}"; then
+    echo "" >&2
+    echo "ERROR: backend-eql pulled in seq-decode — the eql/Live clean break is broken." >&2
+    grep -n 'seq-decode' <<<"${TREE}" >&2
+    exit 1
+fi
+
+echo "pre-push: all three backends build and test clean; eql stays isolated."

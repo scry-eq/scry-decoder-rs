@@ -1,0 +1,69 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # One job per backend. `cargo test --workspace` alone is NOT enough coverage:
+  # it builds every crate with its own default features, so seq-decode is only
+  # ever compiled against seq-structs-live. A struct-mirror or shared-FFI change
+  # can therefore pass --workspace and still break the test or eql link that the
+  # daemon actually builds (-DSEQ_TARGET picks exactly one backend-* feature).
+  backend:
+    name: ${{ matrix.backend }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # live is the default-feature build, so --workspace here also runs
+          # every crate's own unit tests (seq-backend-eql's included).
+          - backend: live
+            test: cargo test --workspace
+          # seq-decode's parsers against the test struct mirror — the pairing
+          # --workspace never compiles.
+          - backend: test
+            test: cargo test -p seq-decode --no-default-features --features backend-test
+          - backend: eql
+            test: cargo test -p seq-backend-eql
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: toolchain
+        run: rustc -V && cargo -V
+
+      - name: test
+        run: ${{ matrix.test }}
+
+      # Release, because that is the profile the daemon links through Corrosion
+      # (thin LTO + codegen-units=1 — a debug build passing doesn't prove it).
+      - name: build the staticlib the daemon links
+        run: >-
+          cargo build -p seq-bridge --release
+          --no-default-features --features backend-${{ matrix.backend }}
+
+  eql-isolation:
+    name: eql links no Live decoder
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # The 2026-07-09 clean break: seq-backend-eql vendors its own copy of every
+      # parser so a Live wire patch cannot reach eql. Nothing in the type system
+      # enforces that — one `seq-decode` dependency re-couples them silently, and
+      # the symptom would be an eql mis-decode months later. Guard the edge.
+      - name: seq-decode must not appear in the backend-eql dep tree
+        run: |
+          tree=$(cargo tree -p seq-bridge --no-default-features --features backend-eql)
+          if grep -q 'seq-decode' <<<"$tree"; then
+            echo "::error::backend-eql pulled in seq-decode — the eql/Live clean break is broken"
+            grep -n 'seq-decode' <<<"$tree"
+            exit 1
+          fi
+          echo "ok: backend-eql has no seq-decode edge"
