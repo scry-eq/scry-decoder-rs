@@ -838,7 +838,7 @@ mod tests {
     #[test]
     fn self_heading_is_inverted_like_every_other_heading() {
         let mut b = [0u8; crate::player_self_pos::PAYLOAD_LEN];
-        b[22..26].copy_from_slice(&512u32.to_le_bytes()); // quarter of 2048
+        b[38..42].copy_from_slice(&512u32.to_le_bytes()); // quarter of 2048
 
         let Decoded::One(Event::SelfPos { pos, .. }) =
             EqlBackend.decode("OP_ClientUpdate", Dir::ClientToServer, &b)
