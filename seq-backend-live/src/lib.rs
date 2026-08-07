@@ -156,7 +156,9 @@ fn self_pos(bytes: &[u8]) -> Decoded {
 // OP_TargetMouse = the player's target selection (0 = cleared).
 fn target(bytes: &[u8]) -> Decoded {
     match seq_decode::client_target::parse_client_target(bytes) {
-        Ok(t) => Decoded::One(Event::Targeted { spawn_id: t.new_target }),
+        Ok(t) => Decoded::One(Event::Targeted {
+            spawn_id: t.new_target,
+        }),
         Err(_) => Decoded::Malformed,
     }
 }
@@ -164,7 +166,9 @@ fn target(bytes: &[u8]) -> Decoded {
 // OP_Consider = the player conned a spawn; the target is the considered spawn.
 fn consider(bytes: &[u8]) -> Decoded {
     match seq_decode::consider::parse_consider(bytes) {
-        Ok(c) => Decoded::One(Event::Considered { spawn_id: c.target_id }),
+        Ok(c) => Decoded::One(Event::Considered {
+            spawn_id: c.target_id,
+        }),
         Err(_) => Decoded::Malformed,
     }
 }

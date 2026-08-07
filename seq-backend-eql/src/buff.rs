@@ -91,7 +91,14 @@ pub fn parse_buff(bytes: &[u8]) -> Result<Buff, BuffError> {
         n => return Err(BuffError::BadForm(n)),
     };
 
-    Ok(Buff { spawn_id, spell_id, form, slot, dur_ticks, change_type: 0 })
+    Ok(Buff {
+        spawn_id,
+        spell_id,
+        form,
+        slot,
+        dur_ticks,
+        change_type: 0,
+    })
 }
 
 #[cfg(test)]
@@ -158,7 +165,10 @@ mod tests {
 
     #[test]
     fn rejects_unrecognized_form() {
-        assert!(matches!(parse_buff(&[0u8; 20]), Err(BuffError::BadForm(20))));
+        assert!(matches!(
+            parse_buff(&[0u8; 20]),
+            Err(BuffError::BadForm(20))
+        ));
     }
 
     #[test]

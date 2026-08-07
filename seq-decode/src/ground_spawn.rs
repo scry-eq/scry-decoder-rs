@@ -67,10 +67,7 @@ pub fn parse_ground_spawn(bytes: &[u8]) -> Result<GroundSpawn, GroundSpawnError>
     let text_end = p + 1; // skip the NUL
 
     let copy_len = text_len.min(ID_FILE_LEN);
-    let id_file = String::from_utf8_lossy(
-        &bytes[text_start..text_start + copy_len],
-    )
-    .into_owned();
+    let id_file = String::from_utf8_lossy(&bytes[text_start..text_start + copy_len]).into_owned();
 
     // After the text, the netstream layout is:
     //   3× u32 skip (zoneId, zoneInstance, unknown)
@@ -127,7 +124,7 @@ mod tests {
         buf.extend_from_slice(&42u32.to_le_bytes());
         buf.extend_from_slice(b"IT63_ACTORDEF");
         buf.push(0); // NUL terminator
-        // 3 u32 placeholders for zoneId / zoneInstance / unknown
+                     // 3 u32 placeholders for zoneId / zoneInstance / unknown
         buf.extend_from_slice(&[0u8; 12]);
         buf.extend_from_slice(&90.0f32.to_le_bytes());
         // 3 u32 unknowns

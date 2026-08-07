@@ -30,8 +30,8 @@ pub fn parse_consider(bytes: &[u8]) -> Result<Consider, ConsiderError> {
     Ok(Consider {
         player_id: unsafe { std::ptr::addr_of!(raw.playerid).read_unaligned() },
         target_id: unsafe { std::ptr::addr_of!(raw.targetid).read_unaligned() },
-        faction:   unsafe { std::ptr::addr_of!(raw.faction).read_unaligned() },
-        level:     unsafe { std::ptr::addr_of!(raw.level).read_unaligned() },
+        faction: unsafe { std::ptr::addr_of!(raw.faction).read_unaligned() },
+        level: unsafe { std::ptr::addr_of!(raw.level).read_unaligned() },
     })
 }
 

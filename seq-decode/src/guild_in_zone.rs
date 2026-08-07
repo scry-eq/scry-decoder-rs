@@ -43,7 +43,11 @@ fn entry_at(b: &[u8], off: usize) -> Option<(GuildInZone, usize)> {
     let nul = b.get(name_start..)?.iter().position(|&c| c == 0)?;
     let name = String::from_utf8_lossy(&b[name_start..name_start + nul]).into_owned();
     Some((
-        GuildInZone { guild_id, server_id, name },
+        GuildInZone {
+            guild_id,
+            server_id,
+            name,
+        },
         name_start + nul + 1,
     ))
 }

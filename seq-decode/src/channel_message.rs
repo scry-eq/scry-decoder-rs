@@ -34,24 +34,34 @@ pub enum ChannelMessageError {
     UnterminatedText(&'static str),
 }
 
-struct R<'a> { bytes: &'a [u8], p: usize }
+struct R<'a> {
+    bytes: &'a [u8],
+    p: usize,
+}
 
 impl<'a> R<'a> {
     fn need(&self, n: usize) -> Result<(), ChannelMessageError> {
         if self.bytes.len() < self.p + n {
             Err(ChannelMessageError::Truncated(self.bytes.len(), n))
-        } else { Ok(()) }
+        } else {
+            Ok(())
+        }
     }
     fn skip(&mut self, n: usize) -> Result<(), ChannelMessageError> {
-        self.need(n)?; self.p += n; Ok(())
+        self.need(n)?;
+        self.p += n;
+        Ok(())
     }
     fn u32(&mut self) -> Result<u32, ChannelMessageError> {
         self.need(4)?;
-        let v = u32::from_le_bytes(self.bytes[self.p..self.p+4].try_into().unwrap());
-        self.p += 4; Ok(v)
+        let v = u32::from_le_bytes(self.bytes[self.p..self.p + 4].try_into().unwrap());
+        self.p += 4;
+        Ok(v)
     }
     fn text(&mut self, which: &'static str) -> Result<String, ChannelMessageError> {
-        let end = self.bytes[self.p..].iter().position(|&b| b == 0)
+        let end = self.bytes[self.p..]
+            .iter()
+            .position(|&b| b == 0)
             .ok_or(ChannelMessageError::UnterminatedText(which))?;
         let s = String::from_utf8_lossy(&self.bytes[self.p..self.p + end]).into_owned();
         self.p += end + 1;
@@ -63,15 +73,20 @@ pub fn parse_channel_message(bytes: &[u8]) -> Result<ChannelMessage, ChannelMess
     let mut r = R { bytes, p: 0 };
     let sender = r.text("sender")?;
     let target = r.text("target")?;
-    r.skip(8)?;                              // unknown
+    r.skip(8)?; // unknown
     let language = r.u32()?;
     let chan_num = r.u32()?;
-    r.skip(4)?;                              // unknown u32
-    r.skip(1)?;                              // unknown u8
+    r.skip(4)?; // unknown u32
+    r.skip(1)?; // unknown u8
     let skill_in_language = r.u32()?;
     let message = r.text("message")?;
     Ok(ChannelMessage {
-        sender, target, language, chan_num, skill_in_language, message,
+        sender,
+        target,
+        language,
+        chan_num,
+        skill_in_language,
+        message,
     })
 }
 
@@ -79,18 +94,27 @@ pub fn parse_channel_message(bytes: &[u8]) -> Result<ChannelMessage, ChannelMess
 mod tests {
     use super::*;
 
-    fn build(sender: &[u8], target: &[u8], lang: u32, chan: u32, skill: u32,
-             message: &[u8]) -> Vec<u8> {
+    fn build(
+        sender: &[u8],
+        target: &[u8],
+        lang: u32,
+        chan: u32,
+        skill: u32,
+        message: &[u8],
+    ) -> Vec<u8> {
         let mut buf = Vec::new();
-        buf.extend_from_slice(sender); buf.push(0);
-        buf.extend_from_slice(target); buf.push(0);
+        buf.extend_from_slice(sender);
+        buf.push(0);
+        buf.extend_from_slice(target);
+        buf.push(0);
         buf.extend_from_slice(&[0u8; 8]);
         buf.extend_from_slice(&lang.to_le_bytes());
         buf.extend_from_slice(&chan.to_le_bytes());
         buf.extend_from_slice(&[0u8; 4]);
         buf.push(0);
         buf.extend_from_slice(&skill.to_le_bytes());
-        buf.extend_from_slice(message); buf.push(0);
+        buf.extend_from_slice(message);
+        buf.push(0);
         buf
     }
 

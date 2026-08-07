@@ -29,8 +29,8 @@ pub fn parse_hp_update(bytes: &[u8]) -> Result<HpUpdate, HpUpdateError> {
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const hpNpcUpdateStruct) };
     Ok(HpUpdate {
         spawn_id: unsafe { std::ptr::addr_of!(raw.spawnId).read_unaligned() },
-        cur_hp:   unsafe { std::ptr::addr_of!(raw.curHP).read_unaligned() },
-        max_hp:   unsafe { std::ptr::addr_of!(raw.maxHP).read_unaligned() },
+        cur_hp: unsafe { std::ptr::addr_of!(raw.curHP).read_unaligned() },
+        max_hp: unsafe { std::ptr::addr_of!(raw.maxHP).read_unaligned() },
     })
 }
 
@@ -49,7 +49,7 @@ mod tests {
         let mut buf = [0u8; 18];
         buf[0..2].copy_from_slice(&0xABCDu16.to_le_bytes());
         buf[2..6].copy_from_slice(&(-1234i32).to_le_bytes()); // curHP
-        // bytes 6..10 = unknown0006 — set to garbage; should be ignored.
+                                                              // bytes 6..10 = unknown0006 — set to garbage; should be ignored.
         buf[6..10].copy_from_slice(&0xDEADBEEFu32.to_le_bytes());
         buf[10..14].copy_from_slice(&5678i32.to_le_bytes()); // maxHP
         let r = parse_hp_update(&buf).unwrap();

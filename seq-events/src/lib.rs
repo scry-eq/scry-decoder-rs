@@ -214,7 +214,11 @@ pub enum Event {
     /// A spawn changed race/model via an illusion (OP_Illusion). The consumer
     /// merges the new race into the tracked spawn and re-renders it; the daemon
     /// ignores it for an unknown spawn (the spawn arrives already illusioned).
-    SpawnIllusion { spawn_id: u32, race: u32, gender: u8 },
+    SpawnIllusion {
+        spawn_id: u32,
+        race: u32,
+        gender: u8,
+    },
     /// Guilds present in the current zone, resolving guild ids to names
     /// (OP_GuildsInZoneList on zone-in, OP_NewGuildInZone as guilded players
     /// arrive — the latter is just a one-element list, so both map here).
@@ -265,10 +269,7 @@ pub enum Event {
     /// when the guild has none set. The wire carries no guild id — the MOTD is
     /// implicitly the local player's guild — so the consumer stamps it from the
     /// roster it tracks (0 if none has arrived).
-    GuildMotd {
-        message: String,
-        sender: String,
-    },
+    GuildMotd { message: String, sender: String },
     /// One entry of the guild's rank-name table (OP_ExpandedGuildInfo). Guilds
     /// rename their ranks freely, so a `GuildRosterMember.rank` only means
     /// something against this table. One arrives per rank (right after the
@@ -404,20 +405,24 @@ pub enum Event {
     /// at zone-in and on every buff change. A full snapshot: the consumer
     /// REPLACES that owner's buffs. `owner` == the player → the buff panel; a
     /// mob → that mob's effects. `remaining_ticks <= 0` on an entry = permanent.
-    BuffList {
-        owner: u32,
-        entries: Vec<BuffEntry>,
-    },
+    BuffList { owner: u32, entries: Vec<BuffEntry> },
     /// A member joined the group (OP_GroupFollow): `name` (the invitee) is added
     /// to the roster. `level` is the member's wire level (0 if absent).
     GroupFollow { name: String, level: u32 },
     /// A group departure (OP_GroupDisband / OP_GroupDisband2): `membername`
     /// leaves; `membername == yourname` means the whole group disbanded.
-    GroupDisband { yourname: String, membername: String },
+    GroupDisband {
+        yourname: String,
+        membername: String,
+    },
     /// The player levelled (OP_LevelUpdate). `level` is absolute, not a delta —
     /// consumers should assign it rather than increment. `exp` is the post-ding
     /// exp value, which cross-references the next Exp event.
-    LevelUpdate { level: u32, level_old: u32, exp: u32 },
+    LevelUpdate {
+        level: u32,
+        level_old: u32,
+        exp: u32,
+    },
     /// Zone-in boundary marker (OP_EnterWorld) — no payload; the daemon uses it
     /// to reset per-zone state.
     EnterWorld,

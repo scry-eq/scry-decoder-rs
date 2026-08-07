@@ -47,8 +47,7 @@ pub fn parse_door(bytes: &[u8]) -> Result<Door, DoorError> {
     }
     // `unknown0048` (a 20-byte copy of the five fields above — closed-state
     // pose?) and `unknown0056` are skipped, same as Live's parser.
-    let raw: doorStruct =
-        unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const doorStruct) };
+    let raw: doorStruct = unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const doorStruct) };
     Ok(Door {
         name: crate::cstr_field(&bytes[0..32]),
         y: unsafe { std::ptr::addr_of!(raw.y).read_unaligned() },

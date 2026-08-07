@@ -23,9 +23,7 @@ pub enum FormattedMessageError {
     BadLength(usize),
 }
 
-pub fn parse_formatted_message(
-    bytes: &[u8],
-) -> Result<FormattedMessage, FormattedMessageError> {
+pub fn parse_formatted_message(bytes: &[u8]) -> Result<FormattedMessage, FormattedMessageError> {
     if bytes.len() < HEADER_LEN {
         return Err(FormattedMessageError::BadLength(bytes.len()));
     }
@@ -33,7 +31,7 @@ pub fn parse_formatted_message(
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const formattedMessageStruct) };
     Ok(FormattedMessage {
         message_format: unsafe { std::ptr::addr_of!(raw.messageFormat).read_unaligned() },
-        message_color:  unsafe { std::ptr::addr_of!(raw.messageColor).read_unaligned() },
+        message_color: unsafe { std::ptr::addr_of!(raw.messageColor).read_unaligned() },
     })
 }
 
@@ -51,12 +49,8 @@ pub fn parse_formatted_message_args(bytes: &[u8]) -> Vec<String> {
     let mut off = HEADER_LEN;
 
     while off + 4 <= bytes.len() {
-        let len = u32::from_le_bytes([
-            bytes[off],
-            bytes[off + 1],
-            bytes[off + 2],
-            bytes[off + 3],
-        ]) as usize;
+        let len = u32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]])
+            as usize;
         off += 4;
         if len == 0 || off + len > bytes.len() {
             break;

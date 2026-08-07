@@ -49,17 +49,29 @@ pub fn parse_loot_drops(bytes: &[u8]) -> Result<LootDrops, LootDropsError> {
     let mut pos = nul + 1;
     while items.len() < count && pos + 12 <= bytes.len() {
         let icon = u32le(bytes, pos + 8); // item entry field[2]
-        let Some(open) = bytes[pos..].iter().position(|&c| c == 0x12) else { break };
+        let Some(open) = bytes[pos..].iter().position(|&c| c == 0x12) else {
+            break;
+        };
         let open = pos + open;
-        let Some(close) = bytes[open + 1..].iter().position(|&c| c == 0x12) else { break };
+        let Some(close) = bytes[open + 1..].iter().position(|&c| c == 0x12) else {
+            break;
+        };
         let close = open + 1 + close;
         let body = &bytes[open + 1..close];
         let item_id = crate::links::item_id_from_link(body);
         let name = String::from_utf8_lossy(body.get(ITEM_LINK_HEX..).unwrap_or(&[])).into_owned();
-        items.push(LootItem { name, icon, item_id });
+        items.push(LootItem {
+            name,
+            icon,
+            item_id,
+        });
         pos = close + 1;
     }
-    Ok(LootDrops { corpse_id, corpse_name, items })
+    Ok(LootDrops {
+        corpse_id,
+        corpse_name,
+        items,
+    })
 }
 
 #[cfg(test)]
@@ -88,7 +100,7 @@ mod tests {
         let mut b = vec![1, 0];
         b.extend_from_slice(&900u32.to_le_bytes());
         b.extend_from_slice(&11613u32.to_le_bytes()); // corpse_id
-        b.extend_from_slice(&2u32.to_le_bytes());      // count
+        b.extend_from_slice(&2u32.to_le_bytes()); // count
         b.extend_from_slice(b"Lady Vox\0");
         b.extend_from_slice(&item(&[11607, 1, 593], "McVaxius` Horn of War", 11607));
         b.extend_from_slice(&item(&[9240, 0, 552], "White Dragon Hide", 9240));
@@ -96,8 +108,22 @@ mod tests {
         assert_eq!(l.corpse_id, 11613);
         assert_eq!(l.corpse_name, "Lady Vox");
         assert_eq!(l.items.len(), 2);
-        assert_eq!(l.items[0], LootItem { name: "McVaxius` Horn of War".into(), icon: 593, item_id: 11607 });
-        assert_eq!(l.items[1], LootItem { name: "White Dragon Hide".into(), icon: 552, item_id: 9240 });
+        assert_eq!(
+            l.items[0],
+            LootItem {
+                name: "McVaxius` Horn of War".into(),
+                icon: 593,
+                item_id: 11607
+            }
+        );
+        assert_eq!(
+            l.items[1],
+            LootItem {
+                name: "White Dragon Hide".into(),
+                icon: 552,
+                item_id: 9240
+            }
+        );
     }
 }
 

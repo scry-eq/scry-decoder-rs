@@ -43,7 +43,13 @@ pub fn parse_mob_update(bytes: &[u8]) -> Result<MobUpdate, ParseError> {
     let x = sign_extend(raw.x() as u32, 19) >> 3;
     let heading = raw.heading() as u16;
 
-    Ok(MobUpdate { spawn_id, x, y, z, heading })
+    Ok(MobUpdate {
+        spawn_id,
+        x,
+        y,
+        z,
+        heading,
+    })
 }
 
 #[cfg(test)]
@@ -61,7 +67,13 @@ mod tests {
     fn all_zero_payload() {
         assert_eq!(
             parse_mob_update(&[0; 14]).unwrap(),
-            MobUpdate { spawn_id: 0, x: 0, y: 0, z: 0, heading: 0 },
+            MobUpdate {
+                spawn_id: 0,
+                x: 0,
+                y: 0,
+                z: 0,
+                heading: 0
+            },
         );
     }
 

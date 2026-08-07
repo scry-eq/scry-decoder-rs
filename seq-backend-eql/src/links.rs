@@ -52,8 +52,10 @@ mod tests {
 
     #[test]
     fn spell_link() {
-        assert_eq!(clean_links("cast \u{12}63^3686^0^1^'Blood of Pain\u{12}!"),
-                   "cast Blood of Pain!");
+        assert_eq!(
+            clean_links("cast \u{12}63^3686^0^1^'Blood of Pain\u{12}!"),
+            "cast Blood of Pain!"
+        );
     }
 
     #[test]

@@ -31,12 +31,12 @@ pub fn parse_dz_switch_info(bytes: &[u8]) -> Result<DzSwitch, DzSwitchError> {
     let raw: dzSwitchInfo =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const dzSwitchInfo) };
     Ok(DzSwitch {
-        zone_id:     unsafe { std::ptr::addr_of!(raw.zoneID).read_unaligned() },
+        zone_id: unsafe { std::ptr::addr_of!(raw.zoneID).read_unaligned() },
         instance_id: unsafe { std::ptr::addr_of!(raw.instanceID).read_unaligned() },
-        kind:        unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
-        x:           unsafe { std::ptr::addr_of!(raw.x).read_unaligned() },
-        y:           unsafe { std::ptr::addr_of!(raw.y).read_unaligned() },
-        z:           unsafe { std::ptr::addr_of!(raw.z).read_unaligned() },
+        kind: unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
+        x: unsafe { std::ptr::addr_of!(raw.x).read_unaligned() },
+        y: unsafe { std::ptr::addr_of!(raw.y).read_unaligned() },
+        z: unsafe { std::ptr::addr_of!(raw.z).read_unaligned() },
     })
 }
 

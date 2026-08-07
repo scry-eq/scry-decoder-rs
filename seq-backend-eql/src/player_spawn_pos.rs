@@ -94,9 +94,7 @@ fn read_u16_le(bytes: &[u8], at: usize) -> u16 {
     u16::from_le_bytes([bytes[at], bytes[at + 1]])
 }
 
-pub fn parse_player_spawn_pos(
-    bytes: &[u8],
-) -> Result<PlayerSpawnPos, PlayerSpawnPosError> {
+pub fn parse_player_spawn_pos(bytes: &[u8]) -> Result<PlayerSpawnPos, PlayerSpawnPosError> {
     if bytes.len() != PAYLOAD_LEN {
         return Err(PlayerSpawnPosError::BadLength(bytes.len()));
     }
@@ -151,7 +149,7 @@ mod tests {
     fn x_is_the_low19_at_4_and_z_is_the_high19_at_12() {
         let mut buf = [0u8; PAYLOAD_LEN];
         buf[0..2].copy_from_slice(&0x1151u16.to_le_bytes()); // spawnId 4433
-        // x = 42 with every high bit set (the neighbouring field must be ignored).
+                                                             // x = 42 with every high bit set (the neighbouring field must be ignored).
         buf[4..8].copy_from_slice(&(42u32 | (0x1FFFu32 << 19)).to_le_bytes());
         // z = the 19-bit minimum, parked in the HIGH bits, low 13 bits all set.
         buf[12..16].copy_from_slice(&((0x0004_0000u32 << 13) | 0x1FFF).to_le_bytes());

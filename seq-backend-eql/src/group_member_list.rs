@@ -37,9 +37,7 @@ fn is_name_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 
-pub fn parse_group_member_list(
-    bytes: &[u8],
-) -> Result<GroupMemberList, GroupMemberListError> {
+pub fn parse_group_member_list(bytes: &[u8]) -> Result<GroupMemberList, GroupMemberListError> {
     if bytes.len() < 8 {
         return Err(GroupMemberListError::Short(bytes.len()));
     }
@@ -69,7 +67,11 @@ pub fn parse_group_member_list(
         }
     }
 
-    Ok(GroupMemberList { group_id, member_count, names })
+    Ok(GroupMemberList {
+        group_id,
+        member_count,
+        names,
+    })
 }
 
 #[cfg(test)]

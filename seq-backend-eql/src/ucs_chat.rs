@@ -150,7 +150,10 @@ pub fn parse_ucs_chat(payload: &[u8]) -> Vec<UcsRecord> {
         // remainder (byte 5 onward, up to the first non-printable for safety).
         let channel_first = field[4];
         let rest = &field[5..];
-        let k = rest.iter().position(|&c| !printable(c)).unwrap_or(rest.len());
+        let k = rest
+            .iter()
+            .position(|&c| !printable(c))
+            .unwrap_or(rest.len());
         let channel_rest = latin1(&rest[..k]);
 
         // Whole trailing printable run of the field (name recovery for outliers).
@@ -248,39 +251,64 @@ mod tests {
         c
     }
 
-    fn build(header: &[u8; 4], channel: &[u8], server_sender: &[u8],
-             message: &[u8], score: &[u8]) -> Vec<u8> {
+    fn build(
+        header: &[u8; 4],
+        channel: &[u8],
+        server_sender: &[u8],
+        message: &[u8],
+        score: &[u8],
+    ) -> Vec<u8> {
         let mut p = Vec::new();
-        p.extend_from_slice(header);          // masked 4-byte header
-        p.extend_from_slice(channel); p.push(0);
-        p.extend_from_slice(server_sender); p.push(0);
-        p.extend_from_slice(message); p.push(0);
+        p.extend_from_slice(header); // masked 4-byte header
+        p.extend_from_slice(channel);
+        p.push(0);
+        p.extend_from_slice(server_sender);
+        p.push(0);
+        p.extend_from_slice(message);
+        p.push(0);
         p.extend_from_slice(b"SPAM:");
-        p.extend_from_slice(score); p.push(b':'); p.push(0);
+        p.extend_from_slice(score);
+        p.push(b':');
+        p.push(0);
         p
     }
 
     #[test]
     fn decodes_one_record() {
-        let plain = build(b"\x01\x02\x03\x04", b"General", b"Rivervale.Alice",
-                          b"hey anyone selling", b"0");
+        let plain = build(
+            b"\x01\x02\x03\x04",
+            b"General",
+            b"Rivervale.Alice",
+            b"hey anyone selling",
+            b"0",
+        );
         let recs = parse_ucs_chat(&encode(&plain));
         assert_eq!(recs.len(), 1);
         let r = &recs[0];
-        assert_eq!(r.channel_first, b'G');    // byte 4 of the channel field
+        assert_eq!(r.channel_first, b'G'); // byte 4 of the channel field
         assert_eq!(r.channel_rest, "eneral");
         assert_eq!(r.channel_run, "General"); // trailing printable run of the field
-        assert_eq!(r.sender, "Alice");        // after the last '.'
+        assert_eq!(r.sender, "Alice"); // after the last '.'
         assert_eq!(r.message, "hey anyone selling");
         assert!(!r.spam);
     }
 
     #[test]
     fn flags_spam_and_multiple_records() {
-        let mut plain = build(b"\xaa\xbb\xcc\xdd", b"NewPlayers", b"Rivervale.Bob",
-                              b"clean line", b"0");
-        plain.extend_from_slice(&build(b"\x00\x00\x00\x00", b"General",
-                                       b"Rivervale.Eve", b"spammy", b"7"));
+        let mut plain = build(
+            b"\xaa\xbb\xcc\xdd",
+            b"NewPlayers",
+            b"Rivervale.Bob",
+            b"clean line",
+            b"0",
+        );
+        plain.extend_from_slice(&build(
+            b"\x00\x00\x00\x00",
+            b"General",
+            b"Rivervale.Eve",
+            b"spammy",
+            b"7",
+        ));
         let recs = parse_ucs_chat(&encode(&plain));
         assert_eq!(recs.len(), 2);
         assert_eq!(recs[0].sender, "Bob");
@@ -292,8 +320,8 @@ mod tests {
 
     #[test]
     fn rejects_short_and_noise() {
-        assert!(parse_ucs_chat(b"\x00\x15\x00\x00").is_empty());       // too short
-        assert!(parse_ucs_chat(&[0u8; 64]).is_empty());               // no SPAM anchor
+        assert!(parse_ucs_chat(b"\x00\x15\x00\x00").is_empty()); // too short
+        assert!(parse_ucs_chat(&[0u8; 64]).is_empty()); // no SPAM anchor
     }
 
     #[test]
@@ -302,10 +330,10 @@ mod tests {
         plain.extend_from_slice(b"Channels: 1=General2(400), 2=myraid(1)\0");
         plain.extend_from_slice(b"You have joined raidchat.\0");
         let names = parse_ucs_channels(&encode(&plain));
-        assert!(names.contains(&"General2".to_string()));   // /list roster
+        assert!(names.contains(&"General2".to_string())); // /list roster
         assert!(names.contains(&"myraid".to_string()));
-        assert!(names.contains(&"raidchat".to_string()));   // "joined <name>"
-        // No SPAM anchor -> no chat records.
+        assert!(names.contains(&"raidchat".to_string())); // "joined <name>"
+                                                          // No SPAM anchor -> no chat records.
         assert!(parse_ucs_chat(&encode(&plain)).is_empty());
     }
 }

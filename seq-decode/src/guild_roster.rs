@@ -171,7 +171,7 @@ mod tests {
         lp(&mut b, "Self");
         b.extend_from_slice(&[0u8; 10]); // skip4 + skip4 + skip2
         b.extend_from_slice(&1u32.to_le_bytes()); // count
-        // banker_flag = 3 -> banker + alt
+                                                  // banker_flag = 3 -> banker + alt
         lp(&mut b, "X");
         b.extend_from_slice(&1u32.to_le_bytes());
         b.extend_from_slice(&3u32.to_le_bytes()); // banker
@@ -192,7 +192,10 @@ mod tests {
 
     #[test]
     fn empty_roster() {
-        assert!(parse_guild_member_list(&roster(&[])).unwrap().members.is_empty());
+        assert!(parse_guild_member_list(&roster(&[]))
+            .unwrap()
+            .members
+            .is_empty());
     }
 
     #[test]

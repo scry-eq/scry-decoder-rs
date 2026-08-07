@@ -267,7 +267,9 @@ fn self_pos_breadcrumb(bytes: &[u8]) -> Decoded {
 // OP_TargetMouse = target select (byte-identical to Live's clientTargetStruct).
 fn target(bytes: &[u8]) -> Decoded {
     match crate::client_target::parse_client_target(bytes) {
-        Ok(t) => Decoded::One(Event::Targeted { spawn_id: t.new_target }),
+        Ok(t) => Decoded::One(Event::Targeted {
+            spawn_id: t.new_target,
+        }),
         Err(_) => Decoded::Malformed,
     }
 }
@@ -275,7 +277,9 @@ fn target(bytes: &[u8]) -> Decoded {
 // OP_Consider = con result; the considered spawn is the target (eql's own 24B).
 fn consider(bytes: &[u8]) -> Decoded {
     match crate::consider::parse_consider(bytes) {
-        Ok(c) => Decoded::One(Event::Considered { spawn_id: c.target_id }),
+        Ok(c) => Decoded::One(Event::Considered {
+            spawn_id: c.target_id,
+        }),
         Err(_) => Decoded::Malformed,
     }
 }
@@ -639,7 +643,11 @@ fn invocation_name(id: u32) -> Option<&'static str> {
 }
 fn resolve_ability(bytes: &[u8], name_of: fn(u32) -> Option<&'static str>) -> Option<String> {
     let id = crate::parse_activate_ability(bytes).ok()?;
-    Some(name_of(id).map(str::to_owned).unwrap_or_else(|| format!("#{id}")))
+    Some(
+        name_of(id)
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("#{id}")),
+    )
 }
 fn inspect_answer(bytes: &[u8]) -> Decoded {
     // 1956B inspectDataStruct: pad[4], spawnId@4, itemNames[23][64]@8,
@@ -654,10 +662,16 @@ fn inspect_answer(bytes: &[u8]) -> Decoded {
     }
     let spawn_id = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
     let item_names = (0..23)
-        .map(|i| crate::cstr_latin1(&bytes[NAMES_OFF + i * NAME_LEN..NAMES_OFF + (i + 1) * NAME_LEN]))
+        .map(|i| {
+            crate::cstr_latin1(&bytes[NAMES_OFF + i * NAME_LEN..NAMES_OFF + (i + 1) * NAME_LEN])
+        })
         .collect();
     let bio = crate::cstr_latin1(&bytes[BIO_OFF..BIO_OFF + BIO_LEN]);
-    Decoded::One(Event::InspectAnswer { spawn_id, item_names, bio })
+    Decoded::One(Event::InspectAnswer {
+        spawn_id,
+        item_names,
+        bio,
+    })
 }
 fn guild_motd(bytes: &[u8]) -> Decoded {
     // Fixed layout; the parser is shared with the bridge's decode_guild_motd.
@@ -696,7 +710,10 @@ fn guild_roster(bytes: &[u8]) -> Decoded {
                     zone_id: m.zone_id as u32,
                 })
                 .collect();
-            Decoded::One(Event::GuildRoster { guild_id: r.guild_id, members })
+            Decoded::One(Event::GuildRoster {
+                guild_id: r.guild_id,
+                members,
+            })
         }
         Err(_) => Decoded::Malformed,
     }
@@ -875,7 +892,10 @@ mod tests {
         let mut buf = [0u8; 12]; // remDropStruct: dropId@0, spawnId@4
         buf[0..2].copy_from_slice(&0x1234u16.to_le_bytes());
         let d = EqlBackend.decode("OP_ClickObject", Dir::ServerToClient, &buf);
-        assert_eq!(d, Decoded::One(Event::GroundItemRemoved { drop_id: 0x1234 }));
+        assert_eq!(
+            d,
+            Decoded::One(Event::GroundItemRemoved { drop_id: 0x1234 })
+        );
     }
 
     #[test]
@@ -894,7 +914,10 @@ mod tests {
         let d = EqlBackend.decode("OP_SpawnAppearance2", Dir::ServerToClient, &b);
         assert_eq!(
             d,
-            Decoded::One(Event::SpawnAnimation { spawn_id: 1234, animation: 110 })
+            Decoded::One(Event::SpawnAnimation {
+                spawn_id: 1234,
+                animation: 110
+            })
         );
     }
 
@@ -909,15 +932,30 @@ mod tests {
     #[test]
     fn stance_resolves_known_and_unknown() {
         let known = EqlBackend.decode("OP_Stance", Dir::ServerToClient, &118u32.to_le_bytes());
-        assert_eq!(known, Decoded::One(Event::Stance { name: "Defense".into() }));
+        assert_eq!(
+            known,
+            Decoded::One(Event::Stance {
+                name: "Defense".into()
+            })
+        );
         let unknown = EqlBackend.decode("OP_Stance", Dir::ServerToClient, &999u32.to_le_bytes());
-        assert_eq!(unknown, Decoded::One(Event::Stance { name: "#999".into() }));
+        assert_eq!(
+            unknown,
+            Decoded::One(Event::Stance {
+                name: "#999".into()
+            })
+        );
     }
 
     #[test]
     fn invocation_resolves() {
         let d = EqlBackend.decode("OP_Invocation", Dir::ServerToClient, &125u32.to_le_bytes());
-        assert_eq!(d, Decoded::One(Event::Invocation { name: "Recover".into() }));
+        assert_eq!(
+            d,
+            Decoded::One(Event::Invocation {
+                name: "Recover".into()
+            })
+        );
     }
 
     #[test]
@@ -928,7 +966,11 @@ mod tests {
         b[1572..1572 + 3].copy_from_slice(b"Hi!"); // mytext (bio)
         let d = EqlBackend.decode("OP_InspectAnswer", Dir::ServerToClient, &b);
         match d {
-            Decoded::One(Event::InspectAnswer { spawn_id, item_names, bio }) => {
+            Decoded::One(Event::InspectAnswer {
+                spawn_id,
+                item_names,
+                bio,
+            }) => {
                 assert_eq!(spawn_id, 77);
                 assert_eq!(item_names.len(), 23);
                 assert_eq!(item_names[0], "Sword");
@@ -980,7 +1022,13 @@ mod tests {
         let d = EqlBackend.decode("OP_TimeOfDay", Dir::ServerToClient, &b);
         assert_eq!(
             d,
-            Decoded::One(Event::TimeOfDay { year: 3521, month: 3, day: 7, hour: 13, minute: 45 })
+            Decoded::One(Event::TimeOfDay {
+                year: 3521,
+                month: 3,
+                day: 7,
+                hour: 13,
+                minute: 45
+            })
         );
     }
 
@@ -1017,7 +1065,11 @@ mod level_update_tests {
         assert!(crate::level_update::parse_level_update(&b).is_err());
         assert_eq!(
             level_update(&b),
-            Decoded::One(Event::LevelUpdate { level: 6, level_old: 5, exp: 1530 })
+            Decoded::One(Event::LevelUpdate {
+                level: 6,
+                level_old: 5,
+                exp: 1530
+            })
         );
     }
 

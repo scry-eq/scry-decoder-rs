@@ -26,8 +26,8 @@ pub fn parse_start_cast(bytes: &[u8]) -> Result<StartCast, StartCastError> {
     let raw: startCastStruct =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const startCastStruct) };
     Ok(StartCast {
-        slot:      unsafe { std::ptr::addr_of!(raw.slot).read_unaligned() },
-        spell_id:  unsafe { std::ptr::addr_of!(raw.spellId).read_unaligned() },
+        slot: unsafe { std::ptr::addr_of!(raw.slot).read_unaligned() },
+        spell_id: unsafe { std::ptr::addr_of!(raw.spellId).read_unaligned() },
         target_id: unsafe { std::ptr::addr_of!(raw.targetId).read_unaligned() },
     })
 }

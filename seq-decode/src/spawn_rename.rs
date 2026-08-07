@@ -26,9 +26,9 @@ pub fn parse_spawn_rename(bytes: &[u8]) -> Result<SpawnRename, SpawnRenameError>
         return Err(SpawnRenameError::BadLength(bytes.len()));
     }
     Ok(SpawnRename {
-        old_name:       crate::cstr_field(&bytes[0..64]),
+        old_name: crate::cstr_field(&bytes[0..64]),
         old_name_again: crate::cstr_field(&bytes[64..128]),
-        new_name:       crate::cstr_field(&bytes[128..192]),
+        new_name: crate::cstr_field(&bytes[128..192]),
     })
 }
 

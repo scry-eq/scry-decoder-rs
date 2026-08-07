@@ -24,9 +24,7 @@ pub enum SpawnAppearanceError {
     BadLength(usize),
 }
 
-pub fn parse_spawn_appearance(
-    bytes: &[u8],
-) -> Result<SpawnAppearance, SpawnAppearanceError> {
+pub fn parse_spawn_appearance(bytes: &[u8]) -> Result<SpawnAppearance, SpawnAppearanceError> {
     if bytes.len() != PAYLOAD_LEN {
         return Err(SpawnAppearanceError::BadLength(bytes.len()));
     }
@@ -34,7 +32,7 @@ pub fn parse_spawn_appearance(
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const spawnAppearanceStruct) };
     Ok(SpawnAppearance {
         spawn_id: unsafe { std::ptr::addr_of!(raw.spawnId).read_unaligned() },
-        kind:     unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
+        kind: unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
     })
 }
 

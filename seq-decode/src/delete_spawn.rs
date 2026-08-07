@@ -42,13 +42,22 @@ mod tests {
     #[test]
     fn rejects_wrong_length() {
         assert_eq!(parse_delete_spawn(&[]), Err(DeleteSpawnError::BadLength(0)));
-        assert_eq!(parse_delete_spawn(&[0; 3]), Err(DeleteSpawnError::BadLength(3)));
-        assert_eq!(parse_delete_spawn(&[0; 5]), Err(DeleteSpawnError::BadLength(5)));
+        assert_eq!(
+            parse_delete_spawn(&[0; 3]),
+            Err(DeleteSpawnError::BadLength(3))
+        );
+        assert_eq!(
+            parse_delete_spawn(&[0; 5]),
+            Err(DeleteSpawnError::BadLength(5))
+        );
     }
 
     #[test]
     fn all_zero_payload() {
-        assert_eq!(parse_delete_spawn(&[0; 4]).unwrap(), DeleteSpawn { spawn_id: 0 });
+        assert_eq!(
+            parse_delete_spawn(&[0; 4]).unwrap(),
+            DeleteSpawn { spawn_id: 0 }
+        );
     }
 
     #[test]

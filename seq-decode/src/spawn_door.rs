@@ -36,22 +36,21 @@ pub fn parse_door(bytes: &[u8]) -> Result<Door, DoorError> {
     if bytes.len() != PAYLOAD_LEN {
         return Err(DoorError::BadLength(bytes.len()));
     }
-    let raw: doorStruct =
-        unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const doorStruct) };
+    let raw: doorStruct = unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const doorStruct) };
     let name_raw: [u8; 32] = unsafe { std::ptr::addr_of!(raw.name).read_unaligned() };
     Ok(Door {
         name: crate::cstr_field(&name_raw),
-        y:           unsafe { std::ptr::addr_of!(raw.y).read_unaligned() },
-        x:           unsafe { std::ptr::addr_of!(raw.x).read_unaligned() },
-        z:           unsafe { std::ptr::addr_of!(raw.z).read_unaligned() },
-        heading:     unsafe { std::ptr::addr_of!(raw.heading).read_unaligned() },
-        incline:     unsafe { std::ptr::addr_of!(raw.incline).read_unaligned() },
-        size:        unsafe { std::ptr::addr_of!(raw.size).read_unaligned() },
-        door_id:     unsafe { std::ptr::addr_of!(raw.doorId).read_unaligned() },
-        opentype:    unsafe { std::ptr::addr_of!(raw.opentype).read_unaligned() },
-        spawnstate:  unsafe { std::ptr::addr_of!(raw.spawnstate).read_unaligned() },
+        y: unsafe { std::ptr::addr_of!(raw.y).read_unaligned() },
+        x: unsafe { std::ptr::addr_of!(raw.x).read_unaligned() },
+        z: unsafe { std::ptr::addr_of!(raw.z).read_unaligned() },
+        heading: unsafe { std::ptr::addr_of!(raw.heading).read_unaligned() },
+        incline: unsafe { std::ptr::addr_of!(raw.incline).read_unaligned() },
+        size: unsafe { std::ptr::addr_of!(raw.size).read_unaligned() },
+        door_id: unsafe { std::ptr::addr_of!(raw.doorId).read_unaligned() },
+        opentype: unsafe { std::ptr::addr_of!(raw.opentype).read_unaligned() },
+        spawnstate: unsafe { std::ptr::addr_of!(raw.spawnstate).read_unaligned() },
         invertstate: unsafe { std::ptr::addr_of!(raw.invertstate).read_unaligned() },
-        zone_point:  unsafe { std::ptr::addr_of!(raw.zonePoint).read_unaligned() },
+        zone_point: unsafe { std::ptr::addr_of!(raw.zonePoint).read_unaligned() },
     })
 }
 

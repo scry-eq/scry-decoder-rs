@@ -41,24 +41,34 @@ pub enum NewZoneError {
     UnterminatedText(&'static str),
 }
 
-struct R<'a> { bytes: &'a [u8], p: usize }
+struct R<'a> {
+    bytes: &'a [u8],
+    p: usize,
+}
 
 impl<'a> R<'a> {
     fn need(&self, n: usize) -> Result<(), NewZoneError> {
         if self.bytes.len() < self.p + n {
             Err(NewZoneError::Truncated(self.bytes.len(), n))
-        } else { Ok(()) }
+        } else {
+            Ok(())
+        }
     }
     fn skip(&mut self, n: usize) -> Result<(), NewZoneError> {
-        self.need(n)?; self.p += n; Ok(())
+        self.need(n)?;
+        self.p += n;
+        Ok(())
     }
     fn f32(&mut self) -> Result<f32, NewZoneError> {
         self.need(4)?;
         let v = f32::from_le_bytes(self.bytes[self.p..self.p + 4].try_into().unwrap());
-        self.p += 4; Ok(v)
+        self.p += 4;
+        Ok(v)
     }
     fn text(&mut self, which: &'static str) -> Result<String, NewZoneError> {
-        let end = self.bytes[self.p..].iter().position(|&b| b == 0)
+        let end = self.bytes[self.p..]
+            .iter()
+            .position(|&b| b == 0)
             .ok_or(NewZoneError::UnterminatedText(which))?;
         let s = String::from_utf8_lossy(&self.bytes[self.p..self.p + end]).into_owned();
         self.p += end + 1;
@@ -69,9 +79,9 @@ impl<'a> R<'a> {
 pub fn parse_new_zone(bytes: &[u8]) -> Result<NewZone, NewZoneError> {
     let mut r = R { bytes, p: 0 };
     let short_name = r.text("short_name")?;
-    let long_name  = r.text("long_name")?;
+    let long_name = r.text("long_name")?;
     r.skip(2)?;
-    let zonefile   = r.text("zonefile")?;
+    let zonefile = r.text("zonefile")?;
     r.skip(90)?;
     let zone_exp_multiplier = r.f32()?;
     r.skip(28)?;
@@ -79,8 +89,13 @@ pub fn parse_new_zone(bytes: &[u8]) -> Result<NewZone, NewZoneError> {
     let safe_x = r.f32()?;
     let safe_z = r.f32()?;
     Ok(NewZone {
-        short_name, long_name, zonefile,
-        zone_exp_multiplier, safe_y, safe_x, safe_z,
+        short_name,
+        long_name,
+        zonefile,
+        zone_exp_multiplier,
+        safe_y,
+        safe_x,
+        safe_z,
         zone_id: 0,
     })
 }
@@ -89,13 +104,23 @@ pub fn parse_new_zone(bytes: &[u8]) -> Result<NewZone, NewZoneError> {
 mod tests {
     use super::*;
 
-    fn build(short_name: &[u8], long_name: &[u8], zonefile: &[u8],
-             exp_mult: f32, safe_y: f32, safe_x: f32, safe_z: f32) -> Vec<u8> {
+    fn build(
+        short_name: &[u8],
+        long_name: &[u8],
+        zonefile: &[u8],
+        exp_mult: f32,
+        safe_y: f32,
+        safe_x: f32,
+        safe_z: f32,
+    ) -> Vec<u8> {
         let mut buf = Vec::new();
-        buf.extend_from_slice(short_name); buf.push(0);
-        buf.extend_from_slice(long_name);  buf.push(0);
+        buf.extend_from_slice(short_name);
+        buf.push(0);
+        buf.extend_from_slice(long_name);
+        buf.push(0);
         buf.extend_from_slice(&[0u8; 2]);
-        buf.extend_from_slice(zonefile);   buf.push(0);
+        buf.extend_from_slice(zonefile);
+        buf.push(0);
         buf.extend_from_slice(&[0u8; 90]);
         buf.extend_from_slice(&exp_mult.to_le_bytes());
         buf.extend_from_slice(&[0u8; 28]);
@@ -107,8 +132,15 @@ mod tests {
 
     #[test]
     fn parses_fields() {
-        let buf = build(b"ecommons", b"East Commonlands", b"ecommons",
-                        1.0, -100.0, 200.0, -50.0);
+        let buf = build(
+            b"ecommons",
+            b"East Commonlands",
+            b"ecommons",
+            1.0,
+            -100.0,
+            200.0,
+            -50.0,
+        );
         let z = parse_new_zone(&buf).unwrap();
         assert_eq!(z.short_name, "ecommons");
         assert_eq!(z.long_name, "East Commonlands");

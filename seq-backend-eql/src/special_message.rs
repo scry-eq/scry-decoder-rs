@@ -46,12 +46,11 @@ pub fn parse_special_message(bytes: &[u8]) -> Result<SpecialMessage, SpecialMess
         return Err(SpecialMessageError::Truncated(bytes.len(), HEADER_LEN));
     }
     let message_color = u32::from_le_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]);
-    let target        = u16::from_le_bytes([bytes[7], bytes[8]]);
+    let target = u16::from_le_bytes([bytes[7], bytes[8]]);
 
     let source_start = HEADER_LEN;
     let source_end = source_start
-        + find_nul(&bytes[source_start..])
-            .ok_or(SpecialMessageError::SourceUnterminated)?;
+        + find_nul(&bytes[source_start..]).ok_or(SpecialMessageError::SourceUnterminated)?;
     let source = String::from_utf8_lossy(&bytes[source_start..source_end]).into_owned();
 
     let message_start = source_end + 1 + MID_PADDING;
@@ -62,11 +61,15 @@ pub fn parse_special_message(bytes: &[u8]) -> Result<SpecialMessage, SpecialMess
         ));
     }
     let message_end = message_start
-        + find_nul(&bytes[message_start..])
-            .ok_or(SpecialMessageError::MessageUnterminated)?;
+        + find_nul(&bytes[message_start..]).ok_or(SpecialMessageError::MessageUnterminated)?;
     let message = String::from_utf8_lossy(&bytes[message_start..message_end]).into_owned();
 
-    Ok(SpecialMessage { message_color, target, source, message })
+    Ok(SpecialMessage {
+        message_color,
+        target,
+        source,
+        message,
+    })
 }
 
 #[cfg(test)]

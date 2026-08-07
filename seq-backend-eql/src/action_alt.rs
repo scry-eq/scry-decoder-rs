@@ -11,7 +11,7 @@ pub const PAYLOAD_LEN: usize = std::mem::size_of::<actionAltStruct>();
 pub struct ActionAlt {
     pub target: u16,
     pub source: u16,
-    pub spell: u16,   // unsigned: modern spell IDs exceed 32767
+    pub spell: u16, // unsigned: modern spell IDs exceed 32767
     pub level: u8,
     pub kind: u8,
 }
@@ -31,9 +31,9 @@ pub fn parse_action_alt(bytes: &[u8]) -> Result<ActionAlt, ActionAltError> {
     Ok(ActionAlt {
         target: unsafe { std::ptr::addr_of!(raw.target).read_unaligned() },
         source: unsafe { std::ptr::addr_of!(raw.source).read_unaligned() },
-        spell:  unsafe { std::ptr::addr_of!(raw.spell).read_unaligned() },
-        level:  unsafe { std::ptr::addr_of!(raw.level).read_unaligned() },
-        kind:   unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
+        spell: unsafe { std::ptr::addr_of!(raw.spell).read_unaligned() },
+        level: unsafe { std::ptr::addr_of!(raw.level).read_unaligned() },
+        kind: unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
     })
 }
 

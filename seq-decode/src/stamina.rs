@@ -27,7 +27,7 @@ pub fn parse_stamina(bytes: &[u8]) -> Result<Stamina, StaminaError> {
     let raw: staminaStruct =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const staminaStruct) };
     Ok(Stamina {
-        food:  unsafe { std::ptr::addr_of!(raw.food).read_unaligned() },
+        food: unsafe { std::ptr::addr_of!(raw.food).read_unaligned() },
         water: unsafe { std::ptr::addr_of!(raw.water).read_unaligned() },
     })
 }

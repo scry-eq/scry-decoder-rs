@@ -220,10 +220,7 @@ mod tests {
     fn two_member_roster_matches_the_captured_122_byte_shape() {
         // Mirrors the captured sample: 4-char and 6-char names, both level 24,
         // three-class masks, ranks 1 and 2, one in a zone and one offline.
-        let b = roster(&[
-            ("Aaaa", 24, 0x4006, 1, 50),
-            ("Bbbbbb", 24, 0x0502, 2, 0),
-        ]);
+        let b = roster(&[("Aaaa", 24, 0x4006, 1, 50), ("Bbbbbb", 24, 0x0502, 2, 0)]);
         assert_eq!(b.len(), 122, "layout must reproduce the captured length");
 
         let r = parse_guild_member_list(&b).unwrap();

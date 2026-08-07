@@ -29,11 +29,11 @@ pub fn parse_wear_change(bytes: &[u8]) -> Result<WearChange, WearChangeError> {
     let raw: SpawnUpdateStruct =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const SpawnUpdateStruct) };
     Ok(WearChange {
-        spawn_id:   unsafe { std::ptr::addr_of!(raw.spawnId).read_unaligned() },
+        spawn_id: unsafe { std::ptr::addr_of!(raw.spawnId).read_unaligned() },
         subcommand: unsafe { std::ptr::addr_of!(raw.subcommand).read_unaligned() },
-        arg1:       unsafe { std::ptr::addr_of!(raw.arg1).read_unaligned() },
-        arg2:       unsafe { std::ptr::addr_of!(raw.arg2).read_unaligned() },
-        arg3:       unsafe { std::ptr::addr_of!(raw.arg3).read_unaligned() },
+        arg1: unsafe { std::ptr::addr_of!(raw.arg1).read_unaligned() },
+        arg2: unsafe { std::ptr::addr_of!(raw.arg2).read_unaligned() },
+        arg3: unsafe { std::ptr::addr_of!(raw.arg3).read_unaligned() },
     })
 }
 

@@ -38,12 +38,12 @@ pub fn parse_illusion(bytes: &[u8]) -> Result<Illusion, IllusionError> {
     }
     Ok(Illusion {
         spawn_id: unsafe { std::ptr::addr_of!(raw.spawnId).read_unaligned() },
-        name:     crate::cstr_field(&name_bytes),
-        race:    unsafe { std::ptr::addr_of!(raw.race).read_unaligned() },
-        gender:  unsafe { std::ptr::addr_of!(raw.gender).read_unaligned() },
+        name: crate::cstr_field(&name_bytes),
+        race: unsafe { std::ptr::addr_of!(raw.race).read_unaligned() },
+        gender: unsafe { std::ptr::addr_of!(raw.gender).read_unaligned() },
         texture: unsafe { std::ptr::addr_of!(raw.texture).read_unaligned() },
-        helm:    unsafe { std::ptr::addr_of!(raw.helm).read_unaligned() },
-        face:    unsafe { std::ptr::addr_of!(raw.face).read_unaligned() },
+        helm: unsafe { std::ptr::addr_of!(raw.helm).read_unaligned() },
+        face: unsafe { std::ptr::addr_of!(raw.face).read_unaligned() },
     })
 }
 

@@ -28,7 +28,7 @@ pub fn parse_skill_update(bytes: &[u8]) -> Result<SkillUpdate, SkillUpdateError>
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const skillIncStruct) };
     Ok(SkillUpdate {
         skill_id: unsafe { std::ptr::addr_of!(raw.skillId).read_unaligned() },
-        value:    unsafe { std::ptr::addr_of!(raw.value).read_unaligned() },
+        value: unsafe { std::ptr::addr_of!(raw.value).read_unaligned() },
     })
 }
 

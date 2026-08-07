@@ -61,13 +61,17 @@ pub enum NpcMoveUpdateError {
 /// implementation in `netstream.cpp`.
 struct BitStream<'a> {
     data: &'a [u8],
-    cur: usize,        // bit index of next bit to read
-    total: usize,      // bit length of the buffer
+    cur: usize,   // bit index of next bit to read
+    total: usize, // bit length of the buffer
 }
 
 impl<'a> BitStream<'a> {
     fn new(data: &'a [u8]) -> Self {
-        Self { data, cur: 0, total: data.len() * 8 }
+        Self {
+            data,
+            cur: 0,
+            total: data.len() * 8,
+        }
     }
 
     /// Mirrors `BitStream::readUInt`: returns 0 on under-read so the
@@ -81,7 +85,11 @@ impl<'a> BitStream<'a> {
         let mut byte_idx = self.cur >> 3;
         let mut out: u32 = 0;
 
-        let lead_partial = if self.cur % 8 == 0 { 0 } else { 8 - (self.cur % 8) };
+        let lead_partial = if self.cur % 8 == 0 {
+            0
+        } else {
+            8 - (self.cur % 8)
+        };
 
         if lead_partial > bit_count {
             // All bits live in the partial lead byte.
@@ -104,8 +112,7 @@ impl<'a> BitStream<'a> {
         }
 
         if tail_partial > 0 {
-            out = (out << tail_partial)
-                | ((self.data[byte_idx] as u32) >> (8 - tail_partial));
+            out = (out << tail_partial) | ((self.data[byte_idx] as u32) >> (8 - tail_partial));
         }
 
         self.cur += bit_count;
@@ -117,13 +124,15 @@ impl<'a> BitStream<'a> {
     fn read_int(&mut self, bit_count: usize) -> i32 {
         let sign = self.read_uint(1);
         let mag = self.read_uint(bit_count - 1) as i32;
-        if sign != 0 { -mag } else { mag }
+        if sign != 0 {
+            -mag
+        } else {
+            mag
+        }
     }
 }
 
-pub fn parse_npc_move_update(
-    bytes: &[u8],
-) -> Result<NpcMoveUpdate, NpcMoveUpdateError> {
+pub fn parse_npc_move_update(bytes: &[u8]) -> Result<NpcMoveUpdate, NpcMoveUpdateError> {
     if bytes.len() < 13 || bytes.len() > 24 {
         return Err(NpcMoveUpdateError::BadLength(bytes.len()));
     }
@@ -169,9 +178,13 @@ pub fn parse_npc_move_update(
 
     Ok(NpcMoveUpdate {
         spawn_id,
-        x, y, z,
+        x,
+        y,
+        z,
         heading,
-        delta_x, delta_y, delta_z,
+        delta_x,
+        delta_y,
+        delta_z,
         delta_heading,
         animation,
     })

@@ -35,12 +35,13 @@ fn cstr(field: &[u8]) -> String {
     String::from_utf8_lossy(&field[..end]).into_owned()
 }
 
-pub fn parse_guild_member_update(bytes: &[u8]) -> Result<GuildMemberUpdate, GuildMemberUpdateError> {
+pub fn parse_guild_member_update(
+    bytes: &[u8],
+) -> Result<GuildMemberUpdate, GuildMemberUpdateError> {
     if bytes.len() != PAYLOAD_LEN {
         return Err(GuildMemberUpdateError::BadLength(bytes.len()));
     }
-    let raw: RawUpdate =
-        unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const RawUpdate) };
+    let raw: RawUpdate = unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const RawUpdate) };
     let name_field = unsafe { std::ptr::addr_of!(raw.name).read_unaligned() };
     Ok(GuildMemberUpdate {
         name: cstr(&name_field),

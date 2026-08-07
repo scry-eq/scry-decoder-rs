@@ -5,13 +5,18 @@
 
 use seq_decode::{parse_mob_update, MobUpdate, MOB_UPDATE_LEN};
 
-fn build_payload(spawn_id: u16, y_19: i32, z_19: i32, x_19: i32, heading_12: u16) -> [u8; MOB_UPDATE_LEN] {
+fn build_payload(
+    spawn_id: u16,
+    y_19: i32,
+    z_19: i32,
+    x_19: i32,
+    heading_12: u16,
+) -> [u8; MOB_UPDATE_LEN] {
     let mut buf = [0u8; MOB_UPDATE_LEN];
     buf[0..2].copy_from_slice(&spawn_id.to_le_bytes());
     let pack19 = |v: i32| (v as u32) & 0x7_FFFF;
-    let bf64: u64 = (pack19(y_19) as u64)
-        | ((pack19(z_19) as u64) << 19)
-        | ((pack19(x_19) as u64) << 45);
+    let bf64: u64 =
+        (pack19(y_19) as u64) | ((pack19(z_19) as u64) << 19) | ((pack19(x_19) as u64) << 45);
     buf[4..12].copy_from_slice(&bf64.to_le_bytes());
     buf[12..14].copy_from_slice(&(heading_12 & 0x0FFF).to_le_bytes());
     buf
@@ -25,7 +30,13 @@ fn matches_cpp_probe_pattern() {
     let buf = build_payload(0x1234, 1, 2, -1, 0xABC);
     assert_eq!(
         parse_mob_update(&buf).unwrap(),
-        MobUpdate { spawn_id: 0x1234, y: 0, z: 0, x: -1, heading: 0xABC },
+        MobUpdate {
+            spawn_id: 0x1234,
+            y: 0,
+            z: 0,
+            x: -1,
+            heading: 0xABC
+        },
     );
 }
 

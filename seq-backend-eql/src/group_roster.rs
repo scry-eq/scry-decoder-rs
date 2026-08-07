@@ -39,7 +39,10 @@ pub fn parse_group_roster(bytes: &[u8]) -> Result<GroupRoster, GroupRosterError>
 
     // Solo = not in a group.
     if count < 2 {
-        return Ok(GroupRoster { group_id, members: vec![] });
+        return Ok(GroupRoster {
+            group_id,
+            members: vec![],
+        });
     }
 
     let mut members = Vec::with_capacity(count.min(bytes.len() / REC_STRIDE + 1));
@@ -71,7 +74,10 @@ mod tests {
     fn solo_is_empty() {
         let mut b = [0u8; 20];
         b[4..8].copy_from_slice(&1u32.to_le_bytes()); // count = 1
-        assert_eq!(parse_group_roster(&b).unwrap().members, Vec::<String>::new());
+        assert_eq!(
+            parse_group_roster(&b).unwrap().members,
+            Vec::<String>::new()
+        );
     }
 
     #[test]
@@ -81,7 +87,10 @@ mod tests {
         b[REC_OFF..REC_OFF + 4].copy_from_slice(b"Hero");
         let s2 = REC_OFF + REC_STRIDE;
         b[s2..s2 + 5].copy_from_slice(b"Alice");
-        assert_eq!(parse_group_roster(&b).unwrap().members, vec!["Hero", "Alice"]);
+        assert_eq!(
+            parse_group_roster(&b).unwrap().members,
+            vec!["Hero", "Alice"]
+        );
     }
 }
 

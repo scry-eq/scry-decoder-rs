@@ -42,16 +42,18 @@ pub enum FormattedMessageError {
     BadLength(usize),
 }
 
-pub fn parse_formatted_message(
-    bytes: &[u8],
-) -> Result<FormattedMessage, FormattedMessageError> {
+pub fn parse_formatted_message(bytes: &[u8]) -> Result<FormattedMessage, FormattedMessageError> {
     if bytes.len() < HEADER_LEN {
         return Err(FormattedMessageError::BadLength(bytes.len()));
     }
     let format_id = u32::from_le_bytes(bytes[5..9].try_into().unwrap());
     let msg_color = u32::from_le_bytes(bytes[9..13].try_into().unwrap());
     let args = split_args(&bytes[HEADER_LEN..]);
-    Ok(FormattedMessage { format_id, msg_color, args })
+    Ok(FormattedMessage {
+        format_id,
+        msg_color,
+        args,
+    })
 }
 
 /// Split the length-prefixed arg blob (`[u32 len][len bytes]`…) into positional
@@ -69,7 +71,9 @@ fn split_args(blob: &[u8]) -> Vec<String> {
         if pos + len > blob.len() {
             break; // truncated / corrupt
         }
-        out.push(crate::links::clean_links(&String::from_utf8_lossy(&blob[pos..pos + len])));
+        out.push(crate::links::clean_links(&String::from_utf8_lossy(
+            &blob[pos..pos + len],
+        )));
         pos += len;
     }
     out

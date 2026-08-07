@@ -29,10 +29,10 @@ pub fn parse_level_update(bytes: &[u8]) -> Result<LevelUpdate, LevelUpdateError>
     let raw: levelUpUpdateStruct =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const levelUpUpdateStruct) };
     Ok(LevelUpdate {
-        level:     unsafe { std::ptr::addr_of!(raw.level).read_unaligned() },
+        level: unsafe { std::ptr::addr_of!(raw.level).read_unaligned() },
         level_old: unsafe { std::ptr::addr_of!(raw.levelOld).read_unaligned() },
-        exp:       unsafe { std::ptr::addr_of!(raw.exp).read_unaligned() },
-        unknown0:  unsafe { std::ptr::addr_of!(raw.unknown0012).read_unaligned() },
+        exp: unsafe { std::ptr::addr_of!(raw.exp).read_unaligned() },
+        unknown0: unsafe { std::ptr::addr_of!(raw.unknown0012).read_unaligned() },
     })
 }
 
@@ -50,6 +50,9 @@ mod tests {
     fn parses_fields() {
         // Sample bytes from 2026-05-01 confirmation log:
         // {level=2, levelOld=1, exp=814}; +8 trailing padding bytes (24B total).
+        // One u32 field per row — the rows ARE the struct, so keep rustfmt's
+        // fill-to-margin off it.
+        #[rustfmt::skip]
         let buf = [
             0x02, 0x00, 0x00, 0x00,
             0x01, 0x00, 0x00, 0x00,

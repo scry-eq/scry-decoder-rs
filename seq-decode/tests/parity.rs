@@ -12,15 +12,20 @@ fn parse_reference(bytes: &[u8]) -> Option<MobUpdate> {
     }
     let spawn_id = u16::from_le_bytes([bytes[0], bytes[1]]);
     let bf64 = u64::from_le_bytes([
-        bytes[4], bytes[5], bytes[6], bytes[7],
-        bytes[8], bytes[9], bytes[10], bytes[11],
+        bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11],
     ]);
     let y = sign_extend_19((bf64 & 0x7_FFFF) as u32) >> 3;
     let z = sign_extend_19(((bf64 >> 19) & 0x7_FFFF) as u32) >> 3;
     let x = sign_extend_19(((bf64 >> 45) & 0x7_FFFF) as u32) >> 3;
     let bf16 = u16::from_le_bytes([bytes[12], bytes[13]]);
     let heading = bf16 & 0x0FFF;
-    Some(MobUpdate { spawn_id, x, y, z, heading })
+    Some(MobUpdate {
+        spawn_id,
+        x,
+        y,
+        z,
+        heading,
+    })
 }
 
 fn sign_extend_19(v: u32) -> i32 {
@@ -33,7 +38,9 @@ fn sign_extend_19(v: u32) -> i32 {
 }
 
 fn lcg(seed: &mut u64) -> u64 {
-    *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *seed = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     *seed
 }
 

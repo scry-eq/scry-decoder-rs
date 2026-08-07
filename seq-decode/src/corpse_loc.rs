@@ -28,9 +28,9 @@ pub fn parse_corpse_loc(bytes: &[u8]) -> Result<CorpseLoc, CorpseLocError> {
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const corpseLocStruct) };
     Ok(CorpseLoc {
         spawn_id: unsafe { std::ptr::addr_of!(raw.spawnId).read_unaligned() },
-        x:        unsafe { std::ptr::addr_of!(raw.x).read_unaligned() },
-        y:        unsafe { std::ptr::addr_of!(raw.y).read_unaligned() },
-        z:        unsafe { std::ptr::addr_of!(raw.z).read_unaligned() },
+        x: unsafe { std::ptr::addr_of!(raw.x).read_unaligned() },
+        y: unsafe { std::ptr::addr_of!(raw.y).read_unaligned() },
+        z: unsafe { std::ptr::addr_of!(raw.z).read_unaligned() },
     })
 }
 

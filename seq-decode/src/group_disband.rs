@@ -25,10 +25,8 @@ pub fn parse_group_disband(bytes: &[u8]) -> Result<GroupDisband, GroupDisbandErr
     }
     let raw: groupDisbandStruct =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const groupDisbandStruct) };
-    let yourname_raw: [u8; 64] =
-        unsafe { std::ptr::addr_of!(raw.yourname).read_unaligned() };
-    let membername_raw: [u8; 64] =
-        unsafe { std::ptr::addr_of!(raw.membername).read_unaligned() };
+    let yourname_raw: [u8; 64] = unsafe { std::ptr::addr_of!(raw.yourname).read_unaligned() };
+    let membername_raw: [u8; 64] = unsafe { std::ptr::addr_of!(raw.membername).read_unaligned() };
     Ok(GroupDisband {
         yourname: crate::cstr_field(&yourname_raw),
         membername: crate::cstr_field(&membername_raw),

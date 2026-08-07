@@ -107,7 +107,9 @@ mod tests {
     #[test]
     fn rejects_ragged_length() {
         // remainder > 1 byte is not a valid record boundary.
-        assert!(parse_self_pos_breadcrumb(&[0u8; RECORD_LEN + 5]).points.is_empty());
+        assert!(parse_self_pos_breadcrumb(&[0u8; RECORD_LEN + 5])
+            .points
+            .is_empty());
         assert!(parse_self_pos_breadcrumb(&[0u8; 3]).points.is_empty());
         assert!(parse_self_pos_breadcrumb(&[]).points.is_empty());
     }

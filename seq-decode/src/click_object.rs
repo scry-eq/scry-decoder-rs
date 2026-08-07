@@ -26,7 +26,7 @@ pub fn parse_click_object(bytes: &[u8]) -> Result<ClickObject, ClickObjectError>
     let raw: remDropStruct =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const remDropStruct) };
     Ok(ClickObject {
-        drop_id:  unsafe { std::ptr::addr_of!(raw.dropId).read_unaligned() },
+        drop_id: unsafe { std::ptr::addr_of!(raw.dropId).read_unaligned() },
         spawn_id: unsafe { std::ptr::addr_of!(raw.spawnId).read_unaligned() },
     })
 }

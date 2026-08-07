@@ -62,6 +62,17 @@ jobs:
           cargo build -p seq-bridge --release
           --no-default-features --features backend-${{ matrix.backend }}
 
+  # Backend-independent, so it runs once rather than in the matrix. Note the
+  # generated seq-structs-{live,test}/src/bindings.rs are pulled in with
+  # `include!()`, which rustfmt does not follow — regenerating them can never
+  # break this check.
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: cargo fmt --all -- --check
+
   eql-isolation:
     name: eql links no Live decoder
     runs-on: ubuntu-latest

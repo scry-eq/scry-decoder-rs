@@ -214,18 +214,12 @@ impl<'a> R<'a> {
     /// The C side copies a fixed-width buffer (64 / 32) regardless of
     /// `length` and lets the destination be NUL-padded; we just take
     /// the first NUL-terminated string out of the `length` bytes.
-    fn length_prefixed_name(
-        &mut self,
-        cap: usize,
-    ) -> Result<String, PlayerProfileError> {
+    fn length_prefixed_name(&mut self, cap: usize) -> Result<String, PlayerProfileError> {
         let len = self.u32_le()? as usize;
         self.need(len)?;
         let span = &self.bytes[self.p..self.p + len];
         let take = cap.min(len);
-        let end = span[..take]
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(take);
+        let end = span[..take].iter().position(|&b| b == 0).unwrap_or(take);
         let s = String::from_utf8_lossy(&span[..end]).into_owned();
         self.p += len;
         Ok(s)
@@ -635,7 +629,7 @@ mod tests {
         b.extend_from_slice(&200.0f32.to_le_bytes()); // y
         b.extend_from_slice(&(-50.0f32).to_le_bytes()); // z
         b.extend_from_slice(&0.5f32.to_le_bytes()); // heading
-        // deity, intoxication
+                                                    // deity, intoxication
         b.extend_from_slice(&201u32.to_le_bytes());
         b.extend_from_slice(&0u32.to_le_bytes());
         // refresh_count = 0

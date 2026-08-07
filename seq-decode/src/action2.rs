@@ -33,8 +33,8 @@ pub fn parse_action2(bytes: &[u8]) -> Result<Action2, Action2Error> {
         target: unsafe { std::ptr::addr_of!(raw.target).read_unaligned() },
         source: unsafe { std::ptr::addr_of!(raw.source).read_unaligned() },
         damage: unsafe { std::ptr::addr_of!(raw.damage).read_unaligned() },
-        spell:  unsafe { std::ptr::addr_of!(raw.spell).read_unaligned() },
-        kind:   unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
+        spell: unsafe { std::ptr::addr_of!(raw.spell).read_unaligned() },
+        kind: unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
     })
 }
 
@@ -51,11 +51,11 @@ mod tests {
     #[test]
     fn parses_melee_hit() {
         let mut buf = [0u8; 48];
-        buf[0..2].copy_from_slice(&100u16.to_le_bytes());     // target
-        buf[2..4].copy_from_slice(&200u16.to_le_bytes());     // source
-        buf[8..12].copy_from_slice(&42i32.to_le_bytes());     // damage
-        buf[20..24].copy_from_slice(&(-1i32).to_le_bytes());  // spell (-1 = melee)
-        buf[40] = 7;                                            // type (kick?)
+        buf[0..2].copy_from_slice(&100u16.to_le_bytes()); // target
+        buf[2..4].copy_from_slice(&200u16.to_le_bytes()); // source
+        buf[8..12].copy_from_slice(&42i32.to_le_bytes()); // damage
+        buf[20..24].copy_from_slice(&(-1i32).to_le_bytes()); // spell (-1 = melee)
+        buf[40] = 7; // type (kick?)
         let a = parse_action2(&buf).unwrap();
         assert_eq!(a.target, 100);
         assert_eq!(a.source, 200);

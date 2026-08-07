@@ -25,7 +25,9 @@ pub fn parse_group_follow(bytes: &[u8]) -> Result<GroupFollow, GroupFollowError>
     if bytes.len() < NAME_LEN {
         return Err(GroupFollowError::BadLength(bytes.len()));
     }
-    Ok(GroupFollow { name: crate::cstr_field(&bytes[..NAME_LEN]) })
+    Ok(GroupFollow {
+        name: crate::cstr_field(&bytes[..NAME_LEN]),
+    })
 }
 
 #[cfg(test)]

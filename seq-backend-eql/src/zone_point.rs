@@ -34,12 +34,12 @@ pub fn parse_zone_point(bytes: &[u8]) -> Result<ZonePoint, ZonePointError> {
     let raw: zonePointStruct =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const zonePointStruct) };
     Ok(ZonePoint {
-        zone_trigger:  unsafe { std::ptr::addr_of!(raw.zoneTrigger).read_unaligned() },
-        y:             unsafe { std::ptr::addr_of!(raw.y).read_unaligned() },
-        x:             unsafe { std::ptr::addr_of!(raw.x).read_unaligned() },
-        z:             unsafe { std::ptr::addr_of!(raw.z).read_unaligned() },
-        heading:       unsafe { std::ptr::addr_of!(raw.heading).read_unaligned() },
-        zone_id:       unsafe { std::ptr::addr_of!(raw.zoneId).read_unaligned() },
+        zone_trigger: unsafe { std::ptr::addr_of!(raw.zoneTrigger).read_unaligned() },
+        y: unsafe { std::ptr::addr_of!(raw.y).read_unaligned() },
+        x: unsafe { std::ptr::addr_of!(raw.x).read_unaligned() },
+        z: unsafe { std::ptr::addr_of!(raw.z).read_unaligned() },
+        heading: unsafe { std::ptr::addr_of!(raw.heading).read_unaligned() },
+        zone_id: unsafe { std::ptr::addr_of!(raw.zoneId).read_unaligned() },
         zone_instance: unsafe { std::ptr::addr_of!(raw.zoneInstance).read_unaligned() },
     })
 }
@@ -57,13 +57,13 @@ mod tests {
     #[test]
     fn parses_fields() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        buf[0..4].copy_from_slice(&7u32.to_le_bytes());      // zoneTrigger
-        buf[4..8].copy_from_slice(&1.5f32.to_le_bytes());    // y
-        buf[8..12].copy_from_slice(&2.5f32.to_le_bytes());   // x
-        buf[12..16].copy_from_slice(&3.5f32.to_le_bytes());  // z
+        buf[0..4].copy_from_slice(&7u32.to_le_bytes()); // zoneTrigger
+        buf[4..8].copy_from_slice(&1.5f32.to_le_bytes()); // y
+        buf[8..12].copy_from_slice(&2.5f32.to_le_bytes()); // x
+        buf[12..16].copy_from_slice(&3.5f32.to_le_bytes()); // z
         buf[16..20].copy_from_slice(&90.0f32.to_le_bytes()); // heading
-        buf[20..22].copy_from_slice(&57u16.to_le_bytes());   // zoneId
-        buf[22..24].copy_from_slice(&3u16.to_le_bytes());    // zoneInstance
+        buf[20..22].copy_from_slice(&57u16.to_le_bytes()); // zoneId
+        buf[22..24].copy_from_slice(&3u16.to_le_bytes()); // zoneInstance
         let p = parse_zone_point(&buf).unwrap();
         assert_eq!(p.zone_trigger, 7);
         assert_eq!(p.y, 1.5);

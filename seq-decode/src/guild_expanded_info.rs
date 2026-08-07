@@ -42,7 +42,8 @@ pub struct ExpandedGuildInfo {
 }
 
 fn u32_at(b: &[u8], o: usize) -> Option<u32> {
-    b.get(o..o + 4).map(|s| u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+    b.get(o..o + 4)
+        .map(|s| u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
 }
 
 /// Read a NUL-terminated latin1 string of at most `max` bytes starting at `o`.
@@ -60,7 +61,11 @@ pub fn parse_expanded_guild_info(bytes: &[u8]) -> ExpandedGuildInfo {
     let action = u32_at(bytes, 0).unwrap_or(0);
     let guild_id = u32_at(bytes, OFF_GUILD_ID).unwrap_or(0);
 
-    let mut info = ExpandedGuildInfo { action, guild_id, ..Default::default() };
+    let mut info = ExpandedGuildInfo {
+        action,
+        guild_id,
+        ..Default::default()
+    };
 
     if action == ACTION_RANK_NAME {
         if let Some(idx) = u32_at(bytes, OFF_RANK_INDEX) {

@@ -372,7 +372,11 @@ mod tests {
     }
 
     fn keepalive(spawn_id: u32) -> StatSync {
-        StatSync { spawn_id, wide: true, ..StatSync::default() }
+        StatSync {
+            spawn_id,
+            wide: true,
+            ..StatSync::default()
+        }
     }
 
     #[test]
@@ -381,7 +385,11 @@ mod tests {
         assert_eq!(t.observe_spawn(ME, ME, 5893), SpawnRouting::AdoptSelf);
         assert_eq!(t.self_id(), 5893);
         assert_eq!(t.observe_spawn(ME, ME, 5906), SpawnRouting::SelfTwin);
-        assert_eq!(t.self_id(), 5893, "movement id must not be re-homed by the twin");
+        assert_eq!(
+            t.self_id(),
+            5893,
+            "movement id must not be re-homed by the twin"
+        );
         assert_eq!(t.alt_id(), 5906);
         assert!(t.is_self(5893) && t.is_self(5906));
     }
@@ -390,7 +398,10 @@ mod tests {
     fn other_spawns_are_not_self() {
         let mut t = SelfTracker::new();
         t.observe_spawn(ME, ME, 5893);
-        assert_eq!(t.observe_spawn(ME, "Someoneelse", 5901), SpawnRouting::NotSelf);
+        assert_eq!(
+            t.observe_spawn(ME, "Someoneelse", 5901),
+            SpawnRouting::NotSelf
+        );
         assert!(!t.is_self(5901));
     }
 
@@ -450,7 +461,10 @@ mod tests {
         t.observe_spawn(ME, ME, 5893);
         t.observe_stat_sync(&wide(5906, (10, 20), (30, 40), (50, 60)));
         // A neighbour resolves, but it is not us and not our twin.
-        assert_eq!(t.observe_spawn(ME, "Neighbour", 5901), SpawnRouting::NotSelf);
+        assert_eq!(
+            t.observe_spawn(ME, "Neighbour", 5901),
+            SpawnRouting::NotSelf
+        );
         assert!(!t.take_pending_vitals().any());
     }
 
@@ -484,14 +498,21 @@ mod tests {
         assert_eq!(t.alt_id(), 0);
         assert!(!t.is_self(5893));
         t.observe_spawn(ME, ME, 5906);
-        assert!(!t.take_pending_vitals().any(), "pre-reset vitals must not survive");
+        assert!(
+            !t.take_pending_vitals().any(),
+            "pre-reset vitals must not survive"
+        );
     }
 
     #[test]
     fn nothing_matches_before_the_profile_names_us() {
         let mut t = SelfTracker::new();
         assert_eq!(t.observe_spawn("", ME, 5893), SpawnRouting::NotSelf);
-        assert_eq!(t.self_id(), 0, "a name match is the only thing that sets self_id");
+        assert_eq!(
+            t.self_id(),
+            0,
+            "a name match is the only thing that sets self_id"
+        );
     }
 
     // ── mid-session attach ────────────────────────────────────────────────
@@ -518,7 +539,11 @@ mod tests {
         assert!(v.is_self);
         assert_eq!(v.mana_max, 4170);
         assert!(t.is_self(5906));
-        assert_eq!(t.provisional_id(), 0, "no coordinates — nothing to synthesise");
+        assert_eq!(
+            t.provisional_id(),
+            0,
+            "no coordinates — nothing to synthesise"
+        );
     }
 
     // The two mid-session signals carry different ids (pos = one record, stats
@@ -531,7 +556,11 @@ mod tests {
 
         for _ in 0..5 {
             t.observe_stat_sync(&wide(11719, (100, 200), (50, 60), (10, 20)));
-            assert_eq!(t.observe_self_pos(11715), SelfPosRouting::Known, "adopt once");
+            assert_eq!(
+                t.observe_self_pos(11715),
+                SelfPosRouting::Known,
+                "adopt once"
+            );
         }
 
         assert_eq!(t.provisional_id(), 11715);
@@ -556,7 +585,10 @@ mod tests {
         assert!(!t.is_self(8412));
 
         // The latched id keeps attributing.
-        assert!(t.observe_stat_sync(&wide(5906, (10, 4265), (20, 4170), (30, 2976))).is_self);
+        assert!(
+            t.observe_stat_sync(&wide(5906, (10, 4265), (20, 4170), (30, 2976)))
+                .is_self
+        );
         assert!(t.is_self(5906));
     }
 
@@ -576,13 +608,14 @@ mod tests {
         assert!(t.is_self(27699));
     }
 
-
-
     // The guess is only a guess: a name match replaces it wholesale.
     #[test]
     fn a_name_match_supersedes_a_wrongly_latched_guess() {
         let mut t = SelfTracker::new();
-        assert!(t.observe_stat_sync(&wide(9000, (1, 2), (3, 4), (5, 6))).is_self);
+        assert!(
+            t.observe_stat_sync(&wide(9000, (1, 2), (3, 4), (5, 6)))
+                .is_self
+        );
         assert!(t.is_self(9000));
 
         assert_eq!(t.observe_spawn(ME, ME, 4307), SpawnRouting::AdoptSelf);
@@ -607,7 +640,11 @@ mod tests {
         assert_eq!(t.observe_spawn(ME, ME, 15701), SpawnRouting::AdoptSelf);
         assert_eq!(t.self_id(), 15701, "the live copy wins");
         assert_eq!(t.provisional_id(), 0);
-        assert_eq!(t.take_retired_provisional(), 15707, "host must drop what it synthesised");
+        assert_eq!(
+            t.take_retired_provisional(),
+            15707,
+            "host must drop what it synthesised"
+        );
         assert_eq!(t.take_retired_provisional(), 0, "drained once");
     }
 
@@ -617,7 +654,11 @@ mod tests {
         t.observe_spawn(ME, ME, 15701);
         assert_eq!(t.observe_self_pos(15707), SelfPosRouting::Known);
         assert_eq!(t.self_id(), 15701, "still pinned to the live copy");
-        assert_eq!(t.alt_id(), 15707, "but the field told us which id is the twin");
+        assert_eq!(
+            t.alt_id(),
+            15707,
+            "but the field told us which id is the twin"
+        );
         assert_eq!(t.provisional_id(), 0);
     }
 

@@ -29,7 +29,7 @@ pub fn parse_zone_change(bytes: &[u8]) -> Result<ZoneChange, ZoneChangeError> {
     let raw_name: [u8; 64] = unsafe { std::ptr::addr_of!(raw.name).read_unaligned() };
     Ok(ZoneChange {
         name: crate::cstr_field(&raw_name),
-        zone_id:       unsafe { std::ptr::addr_of!(raw.zoneId).read_unaligned() },
+        zone_id: unsafe { std::ptr::addr_of!(raw.zoneId).read_unaligned() },
         zone_instance: unsafe { std::ptr::addr_of!(raw.zoneInstance).read_unaligned() },
     })
 }

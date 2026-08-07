@@ -33,6 +33,9 @@ cargo test -p seq-decode --no-default-features --features backend-test --quiet
 echo "pre-push: cargo test seq-backend-eql..."
 cargo test -p seq-backend-eql --quiet
 
+echo "pre-push: rustfmt..."
+cargo fmt --all -- --check
+
 # The workspace sets `[workspace.lints.rust] warnings = "deny"`, which covers
 # clippy lints too — an unclean tree breaks `cargo clippy` for everyone, not just
 # CI. Per backend, because the feature-gated FFI arms in seq-bridge are only

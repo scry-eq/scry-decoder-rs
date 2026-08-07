@@ -52,43 +52,43 @@ pub mod end_update;
 pub mod exp_update;
 pub mod formatted_message;
 pub mod ground_spawn;
-pub mod links;
-pub mod loot_drops;
-pub mod loot_message;
-pub mod loot_transaction;
-pub mod money_update;
 pub mod group_disband;
 pub mod group_follow;
 pub mod group_member_list;
+pub mod group_roster;
 pub mod guild_expanded_info;
 pub mod guild_in_zone;
 pub mod guild_motd;
 pub mod guild_roster;
-pub mod group_roster;
 pub mod hp_update;
 pub mod illusion;
 pub mod level_update;
+pub mod links;
 pub mod loadout_swap;
+pub mod loot_drops;
+pub mod loot_message;
+pub mod loot_transaction;
 pub mod mana_change;
 pub mod mob_health;
 pub mod mob_update;
+pub mod money_update;
 pub mod new_zone;
 pub mod npc_move_update;
 pub mod player_profile;
 pub mod player_self_pos;
 pub mod player_spawn_pos;
+pub mod remove_spawn;
 pub mod self_pos_breadcrumb;
 pub mod self_track;
-pub mod remove_spawn;
 pub mod simple_message;
 pub mod skill_update;
 pub mod spawn_appearance;
 pub mod spawn_door;
 pub mod spawn_rename;
 pub mod special_message;
-pub mod ucs_chat;
 pub mod stamina;
 pub mod start_cast;
+pub mod ucs_chat;
 pub mod wear_change;
 pub mod zone_change;
 pub mod zone_point;
@@ -114,17 +114,15 @@ pub use dz_info::{parse_dz_info, DzInfo, DzInfoError};
 pub use dz_switch_info::{parse_dz_switch_info, DzSwitch, DzSwitchError};
 pub use end_update::{parse_end_update, EndUpdate, EndUpdateError};
 pub use exp_update::{parse_exp_update, ExpUpdate, ExpUpdateError};
-pub use formatted_message::{
-    parse_formatted_message, FormattedMessage, FormattedMessageError,
-};
+pub use formatted_message::{parse_formatted_message, FormattedMessage, FormattedMessageError};
 pub use ground_spawn::{parse_ground_spawn, GroundSpawn, GroundSpawnError};
+pub use group_disband::{parse_group_disband, GroupDisband, GroupDisbandError};
+pub use group_follow::{parse_group_follow, GroupFollow, GroupFollowError};
+pub use group_roster::{parse_group_roster, GroupRoster, GroupRosterError};
 pub use loot_drops::{parse_loot_drops, LootDrops, LootDropsError};
 pub use loot_message::{parse_loot_message, LootMessage, LootMessageError};
 pub use loot_transaction::{parse_loot_transaction, LootTransaction, LootTransactionError};
 pub use money_update::{parse_money_update, MoneyUpdate, MoneyUpdateError};
-pub use group_disband::{parse_group_disband, GroupDisband, GroupDisbandError};
-pub use group_follow::{parse_group_follow, GroupFollow, GroupFollowError};
-pub use group_roster::{parse_group_roster, GroupRoster, GroupRosterError};
 // Vendored 18B `hpNpcUpdateStruct` parser: eql never sees Live's fixed HP
 // struct (0x2735 is the multiplexed stat channel decoded by `parse_stat_sync`
 // below), so the shared `decode_hp_update` FFI is stubbed inert for eql in the
@@ -135,28 +133,24 @@ pub use level_update::{parse_level_update, LevelUpdate, LevelUpdateError};
 pub use loadout_swap::{parse_loadout_swap, LoadoutSwap, LoadoutSwapError};
 pub use mana_change::{parse_mana_change, ManaChange, ManaChangeError};
 pub use mob_health::{parse_mob_health, MobHealth, MobHealthError};
-pub use mob_update::{
-    parse_mob_update, MobUpdate, ParseError, PAYLOAD_LEN as MOB_UPDATE_LEN,
-};
+pub use mob_update::{parse_mob_update, MobUpdate, ParseError, PAYLOAD_LEN as MOB_UPDATE_LEN};
 pub use new_zone::{NewZone, NewZoneError}; // eql owns canonical `parse_new_zone` (below)
 pub use npc_move_update::{parse_npc_move_update, NpcMoveUpdate, NpcMoveUpdateError};
 pub use player_profile::{PlayerProfile, PlayerProfileError}; // eql owns canonical `parse_player_profile` (below)
 pub use player_self_pos::{parse_player_self_pos, PlayerSelfPos, PlayerSelfPosError}; // module owns the canonical parser (validates against its own PAYLOAD_LEN, same const the size override reads)
 pub use player_spawn_pos::{parse_player_spawn_pos, PlayerSpawnPos, PlayerSpawnPosError};
+pub use remove_spawn::{parse_remove_spawn, RemoveSpawn, RemoveSpawnError};
 pub use self_pos_breadcrumb::{parse_self_pos_breadcrumb, BreadcrumbPoint, SelfPosBreadcrumb};
 pub use self_track::{SelfPosRouting, SelfStat, SelfTracker, SpawnRouting, SAME_BATCH};
-pub use remove_spawn::{parse_remove_spawn, RemoveSpawn, RemoveSpawnError};
 pub use simple_message::{parse_simple_message, SimpleMessage, SimpleMessageError};
 pub use skill_update::{parse_skill_update, SkillUpdate, SkillUpdateError};
-pub use spawn_appearance::{
-    parse_spawn_appearance, SpawnAppearance, SpawnAppearanceError,
-};
+pub use spawn_appearance::{parse_spawn_appearance, SpawnAppearance, SpawnAppearanceError};
 pub use spawn_door::{parse_door, Door, DoorError};
 pub use spawn_rename::{parse_spawn_rename, SpawnRename, SpawnRenameError};
 pub use special_message::{parse_special_message, SpecialMessage, SpecialMessageError};
-pub use ucs_chat::{parse_ucs_channels, parse_ucs_chat, UcsRecord};
 pub use stamina::{parse_stamina, Stamina, StaminaError};
 pub use start_cast::{parse_start_cast, StartCast, StartCastError};
+pub use ucs_chat::{parse_ucs_channels, parse_ucs_chat, UcsRecord};
 pub use wear_change::{parse_wear_change, WearChange, WearChangeError};
 pub use zone_change::{parse_zone_change, ZoneChange, ZoneChangeError};
 pub use zone_point::{parse_zone_point, ZonePoint, ZonePointError};
@@ -183,7 +177,9 @@ pub enum DecodeError {
 // Little-endian scalar reads at a byte offset. Callers length-guard first, so
 // the fixed indexing below stays in bounds.
 #[inline]
-fn rd_u16(b: &[u8], o: usize) -> u16 { u16::from_le_bytes([b[o], b[o + 1]]) }
+fn rd_u16(b: &[u8], o: usize) -> u16 {
+    u16::from_le_bytes([b[o], b[o + 1]])
+}
 #[inline]
 fn rd_u32(b: &[u8], o: usize) -> u32 {
     u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
@@ -191,10 +187,16 @@ fn rd_u32(b: &[u8], o: usize) -> u32 {
 #[inline]
 fn rd_i64(b: &[u8], o: usize) -> i64 {
     i64::from_le_bytes([
-        b[o], b[o + 1], b[o + 2], b[o + 3], b[o + 4], b[o + 5], b[o + 6], b[o + 7],
+        b[o],
+        b[o + 1],
+        b[o + 2],
+        b[o + 3],
+        b[o + 4],
+        b[o + 5],
+        b[o + 6],
+        b[o + 7],
     ])
 }
-
 
 /// Latin-1 → `String` (each byte is a codepoint), matching the daemon's
 /// `QString::fromLatin1`.
@@ -240,7 +242,9 @@ pub struct ZoneSpawn {
 // up front), these return `None` past the end so a truncated tail degrades to
 // "identity + name only" instead of panicking.
 #[inline]
-fn opt_u8(b: &[u8], o: usize) -> Option<u8> { b.get(o).copied() }
+fn opt_u8(b: &[u8], o: usize) -> Option<u8> {
+    b.get(o).copied()
+}
 #[inline]
 fn opt_u16_le(b: &[u8], o: usize) -> Option<u16> {
     Some(u16::from_le_bytes(b.get(o..o + 2)?.try_into().unwrap()))
@@ -404,7 +408,7 @@ pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
         gender: b[20],
         race: rd_u32(b, 21),
         class_: rd_u32(b, 25),
-        class_mask: rd_u32(b, 29),  // EQL multiclass bitmask (bit N = class N)
+        class_mask: rd_u32(b, 29), // EQL multiclass bitmask (bit N = class N)
         level: b[33],
         ..Default::default()
     };
@@ -498,7 +502,9 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
     // Read a LE u32 and advance; bail out of the whole walk on underflow.
     macro_rules! next_u32 {
         () => {{
-            if p + 4 > len { return; }
+            if p + 4 > len {
+                return;
+            }
             let v = rd_u32(b, p);
             p += 4;
             v
@@ -508,7 +514,9 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
     macro_rules! skip {
         ($n:expr) => {{
             let n = $n;
-            if p.checked_add(n).map_or(true, |e| e > len) { return; }
+            if p.checked_add(n).map_or(true, |e| e > len) {
+                return;
+            }
             p += n;
         }};
     }
@@ -530,9 +538,12 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
     skip!(equip_count.saturating_mul(20));
 
     // three unknown count-prefixed arrays: 20B, 4B, 4B entries.
-    let s0 = next_u32!() as usize; skip!(s0.saturating_mul(20));
-    let s1 = next_u32!() as usize; skip!(s1.saturating_mul(4));
-    let s2 = next_u32!() as usize; skip!(s2.saturating_mul(4));
+    let s0 = next_u32!() as usize;
+    skip!(s0.saturating_mul(20));
+    let s1 = next_u32!() as usize;
+    skip!(s1.saturating_mul(4));
+    let s2 = next_u32!() as usize;
+    skip!(s2.saturating_mul(4));
 
     // face / hair / beard / eyes / etc.
     skip!(51);
@@ -547,7 +558,9 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
     // whole block before the loop so a corrupt count can't over-allocate.
     let aa_count = next_u32!() as usize;
     let aa_bytes = aa_count.saturating_mul(12);
-    if p.checked_add(aa_bytes).map_or(true, |e| e > len) { return; }
+    if p.checked_add(aa_bytes).map_or(true, |e| e > len) {
+        return;
+    }
     let mut aa_spent: u32 = 0;
     prof.aa_ids.reserve(aa_count);
     prof.aa_values.reserve(aa_count);
@@ -564,7 +577,11 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
 
     // SKILLS: u32 count, then count * u32 (store up to MAX_KNOWN_SKILLS).
     let skill_count = next_u32!() as usize;
-    if p.checked_add(skill_count.saturating_mul(4)).map_or(true, |e| e > len) { return; }
+    if p.checked_add(skill_count.saturating_mul(4))
+        .map_or(true, |e| e > len)
+    {
+        return;
+    }
     let stored = skill_count.min(MAX_KNOWN_SKILLS);
     prof.skills.reserve(stored);
     for i in 0..skill_count {
@@ -608,12 +625,18 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
 pub fn parse_new_zone(b: &[u8]) -> Result<NewZone, DecodeError> {
     // short_name @0, long_name after its NUL. Two packed C-strings name the zone
     // + drive the map; the binary tail (safe point, exp mult, …) is unused.
-    let n0 = b.iter().position(|&c| c == 0).ok_or(DecodeError::Short(b.len()))?;
+    let n0 = b
+        .iter()
+        .position(|&c| c == 0)
+        .ok_or(DecodeError::Short(b.len()))?;
     if n0 == 0 {
         return Err(DecodeError::Short(b.len()));
     }
     let rest = &b[n0 + 1..];
-    let n1 = rest.iter().position(|&c| c == 0).ok_or(DecodeError::Short(b.len()))?;
+    let n1 = rest
+        .iter()
+        .position(|&c| c == 0)
+        .ok_or(DecodeError::Short(b.len()))?;
     Ok(NewZone {
         short_name: latin1(&b[..n0]),
         long_name: latin1(&rest[..n1]),
@@ -650,8 +673,12 @@ struct Walk<'a> {
     p: usize,
 }
 impl<'a> Walk<'a> {
-    fn new(b: &'a [u8]) -> Self { Walk { b, p: 0 } }
-    fn pos(&self) -> usize { self.p }
+    fn new(b: &'a [u8]) -> Self {
+        Walk { b, p: 0 }
+    }
+    fn pos(&self) -> usize {
+        self.p
+    }
     fn need(&self, n: usize) -> Result<(), DecodeError> {
         if self.p + n > self.b.len() {
             Err(DecodeError::BadLength(self.b.len()))
@@ -697,7 +724,11 @@ impl<'a> Walk<'a> {
 #[inline]
 fn pos19_word(w: u32) -> i16 {
     let v = w & 0x7FFFF;
-    let raw = if v & 0x4_0000 != 0 { (v as i32) - (1 << 19) } else { v as i32 };
+    let raw = if v & 0x4_0000 != 0 {
+        (v as i32) - (1 << 19)
+    } else {
+        v as i32
+    };
     (raw >> 3) as i16
 }
 
@@ -720,7 +751,7 @@ pub fn parse_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     let _misc_data = w.u32()?;
     let _other_data = w.u8()?;
     w.skip(8)?; // unknown3, unknown4
-    // (EQ Legends aura-flagged spawns carry no aura block on the wire.)
+                // (EQ Legends aura-flagged spawns carry no aura block on the wire.)
 
     // bodytype: `charProperties` count-prefixed u32s; the first is the bodytype.
     let char_properties = w.u8()?;
@@ -999,7 +1030,10 @@ pub fn parse_activate_ability(b: &[u8]) -> Result<u32, DecodeError> {
 pub fn size_overrides() -> Vec<(&'static str, u32)> {
     vec![
         // eql /consider is 24B both ways; Live's considerStruct is 32B.
-        ("considerStruct", core::mem::size_of::<eqstructs::considerStruct>() as u32),
+        (
+            "considerStruct",
+            core::mem::size_of::<eqstructs::considerStruct>() as u32,
+        ),
         // eql OP_CastSpell is a fixed 44B (validated locally 2026-08-03; the gate
         // was pinned at 40 from the Live struct, so every packet was size-dropped).
         // slot@0/spellId@4/targetId@18 kept their offsets — the record grew at the
@@ -1012,7 +1046,6 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         // the untouched OP_MobUpdate / OP_NpcMoveUpdate streams — see that module
         // and OPCODES_LEGENDS.md.
         ("playerSpawnPosStruct", player_spawn_pos::PAYLOAD_LEN as u32),
-
         // --- De-piggyback (2026-07-10): eql OWNS every mapped SZC_Match gate size ---
         // The daemon's compiled size table is Live's `everquest.h` sizeof. Before
         // this block, any mapped eql SZC_Match opcode NOT listed above silently
@@ -1027,61 +1060,106 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         // pinned `eqstructs` where a binding exists, so if eql's copy later diverges the
         // gate tracks it — never Live's. The handful with no pinned binding (eql reuses
         // the shared decode) carry the capture-confirmed eql size as a literal.
-        ("spawnPositionUpdate", core::mem::size_of::<eqstructs::spawnPositionUpdate>() as u32),
-        ("clientTargetStruct", core::mem::size_of::<eqstructs::clientTargetStruct>() as u32),
-        ("manaDecrementStruct", core::mem::size_of::<eqstructs::manaDecrementStruct>() as u32),
-        ("expUpdateStruct", core::mem::size_of::<eqstructs::expUpdateStruct>() as u32),
-        ("skillIncStruct", core::mem::size_of::<eqstructs::skillIncStruct>() as u32),
+        (
+            "spawnPositionUpdate",
+            core::mem::size_of::<eqstructs::spawnPositionUpdate>() as u32,
+        ),
+        (
+            "clientTargetStruct",
+            core::mem::size_of::<eqstructs::clientTargetStruct>() as u32,
+        ),
+        (
+            "manaDecrementStruct",
+            core::mem::size_of::<eqstructs::manaDecrementStruct>() as u32,
+        ),
+        (
+            "expUpdateStruct",
+            core::mem::size_of::<eqstructs::expUpdateStruct>() as u32,
+        ),
+        (
+            "skillIncStruct",
+            core::mem::size_of::<eqstructs::skillIncStruct>() as u32,
+        ),
         // OP_Stamina (0x3b0c, 07/14): stock 8B staminaStruct {u32 food, u32 water};
         // capture-verified food/water tick down together. Pinned so the gate is eql-owned.
-        ("staminaStruct", core::mem::size_of::<eqstructs::staminaStruct>() as u32),
+        (
+            "staminaStruct",
+            core::mem::size_of::<eqstructs::staminaStruct>() as u32,
+        ),
         // OP_Illusion (0x2e7d, 07/14): 332B spawnIllusionStruct — the /*0336*/
         // offset marker in everquest.h is stale; eql's pinned copy is 332 (fires
         // 332x33 in the fight capture). parse_illusion.
-        ("spawnIllusionStruct", core::mem::size_of::<eqstructs::spawnIllusionStruct>() as u32),
+        (
+            "spawnIllusionStruct",
+            core::mem::size_of::<eqstructs::spawnIllusionStruct>() as u32,
+        ),
         // OP_TimeOfDay (0x0b7f): 8B timeOfDayStruct {u8 hour/min/day/month,u16 year};
         // no pinned eql binding, literal capture-confirmed size (fires 8x12).
         ("timeOfDayStruct", 8),
         // OP_InspectAnswer (0x6a04): 1956B inspectDataStruct; not seen in the fight
         // capture (inspect is passive) — size from the struct def.
         ("inspectDataStruct", 1956),
-        ("deleteSpawnStruct", core::mem::size_of::<eqstructs::deleteSpawnStruct>() as u32),
-        ("newCorpseStruct", core::mem::size_of::<eqstructs::newCorpseStruct>() as u32),
-        ("remDropStruct", core::mem::size_of::<eqstructs::remDropStruct>() as u32),
-        ("action2Struct", core::mem::size_of::<eqstructs::action2Struct>() as u32),
-        ("actionStruct", core::mem::size_of::<eqstructs::actionStruct>() as u32),
-        ("actionAltStruct", core::mem::size_of::<eqstructs::actionAltStruct>() as u32),
+        (
+            "deleteSpawnStruct",
+            core::mem::size_of::<eqstructs::deleteSpawnStruct>() as u32,
+        ),
+        (
+            "newCorpseStruct",
+            core::mem::size_of::<eqstructs::newCorpseStruct>() as u32,
+        ),
+        (
+            "remDropStruct",
+            core::mem::size_of::<eqstructs::remDropStruct>() as u32,
+        ),
+        (
+            "action2Struct",
+            core::mem::size_of::<eqstructs::action2Struct>() as u32,
+        ),
+        (
+            "actionStruct",
+            core::mem::size_of::<eqstructs::actionStruct>() as u32,
+        ),
+        (
+            "actionAltStruct",
+            core::mem::size_of::<eqstructs::actionAltStruct>() as u32,
+        ),
         // OP_SimpleMessage (0x50a7, 07/12 rotation): stock 12B {u32 eqstrId, u32
         // color, u32 0}; pinned binding so the gate tracks eql's own copy.
-        ("simpleMessageStruct", core::mem::size_of::<eqstructs::simpleMessageStruct>() as u32),
+        (
+            "simpleMessageStruct",
+            core::mem::size_of::<eqstructs::simpleMessageStruct>() as u32,
+        ),
         // No pinned eql binding (eql reuses the shared decode) — capture-confirmed size:
         ("playerSelfPosStruct", player_self_pos::PAYLOAD_LEN as u32), // OP_ClientUpdate C>S self-pos: 42B post-07/29 (was 38B); floats Y@10/X@22/Z@34, spawnId@2, heading@26
-        ("altExpUpdateStruct", 12),    // OP_AAExpUpdate (0x42d1): u32 altexp, u32 aaUnspent, u32 tail
+        ("altExpUpdateStruct", 12), // OP_AAExpUpdate (0x42d1): u32 altexp, u32 aaUnspent, u32 tail
         // eql door rows are 132B (Live doorStruct is 136B); OP_SpawnDoor gates
         // SZC_Modulus on this and newDoorSpawns strides via door_stride().
         ("doorStruct", spawn_door::PAYLOAD_LEN as u32),
-        ("timeOfDayStruct", 8),        // OP_TimeOfDay
-        ("zoneServerInfoStruct", 130), // OP_ZoneServerInfo (world)
-        ("spawnAppearance2Struct", 24),// OP_SpawnAppearance2
+        ("timeOfDayStruct", 8),         // OP_TimeOfDay
+        ("zoneServerInfoStruct", 130),  // OP_ZoneServerInfo (world)
+        ("spawnAppearance2Struct", 24), // OP_SpawnAppearance2
         // OP_SpawnAppearance. eql's payload is the WIDE 24B record ({u32 spawnId,
         // u32 type, u32 value} + 12B of zeros), not Live's 8B struct — eql has one
         // appearance opcode where Live has two. This entry was missing, so a
         // mapped SZC_Match opcode silently inherited the compiled Live sizeof of 8
         // and the gate dropped every packet; --strict-gate-sizes flags exactly
         // this class. The size comes from eql's own parser, never from Live.
-        ("spawnAppearanceStruct", spawn_appearance::PAYLOAD_LEN as u32),
-        ("inspectDataStruct", 1956),   // OP_InspectAnswer
+        (
+            "spawnAppearanceStruct",
+            spawn_appearance::PAYLOAD_LEN as u32,
+        ),
+        ("inspectDataStruct", 1956), // OP_InspectAnswer
         // Stock-struct reuse (eql size == Live's today, stock layout): declared
         // so the gate is eql-owned, not silently inherited from everquest.h.
-        ("randomStruct", 76),               // OP_RandomReply (76B, l-patch addendum 3)
-        ("tradeSpellBookSlotsStruct", 8),   // OP_SwapSpell
-        ("buffWindowSlotStruct", 12),       // OP_BuffWindow
+        ("randomStruct", 76), // OP_RandomReply (76B, l-patch addendum 3)
+        ("tradeSpellBookSlotsStruct", 8), // OP_SwapSpell
+        ("buffWindowSlotStruct", 12), // OP_BuffWindow
         // 07/14 remap SZC_Match opcodes; no pinned eql binding, gate = eql WIRE size.
         // OP_BeginCast: eql wire is 19B (spellId u16@0, spawnId u16@4, castTime u16@6 —
         // Xerxes-confirmed), NOT the stock 15B beginCastStruct; gate at 19 so SZC_Match passes.
-        ("beginCastStruct", 19),            // OP_BeginCast (0x6cbd)
-        ("consentResponseStruct", 193),     // OP_ConsentResponse (0x2265) + OP_DenyResponse (0x05fc)
-        ("GuildMemberUpdate", 88),          // OP_GuildMemberUpdate (0x0717)
+        ("beginCastStruct", 19),        // OP_BeginCast (0x6cbd)
+        ("consentResponseStruct", 193), // OP_ConsentResponse (0x2265) + OP_DenyResponse (0x05fc)
+        ("GuildMemberUpdate", 88),      // OP_GuildMemberUpdate (0x0717)
         // OP_Stance (0x0fab) + OP_Invocation (0x3b12): 4B {u32 abilityId}. Same
         // struct/size for both; the opcode id picks stance vs invocation.
         ("activateAbilityStruct", 4),
@@ -1164,9 +1242,21 @@ pub fn parse_stat_sync(b: &[u8]) -> Result<StatSync, DecodeError> {
             (c, 100)
         };
         match bit {
-            1 => { out.has_hp = true; out.hp_cur = cur; out.hp_max = max; }
-            2 => { out.has_mana = true; out.mana_cur = cur; out.mana_max = max; }
-            _ => { out.has_end = true; out.end_cur = cur; out.end_max = max; }
+            1 => {
+                out.has_hp = true;
+                out.hp_cur = cur;
+                out.hp_max = max;
+            }
+            2 => {
+                out.has_mana = true;
+                out.mana_cur = cur;
+                out.mana_max = max;
+            }
+            _ => {
+                out.has_end = true;
+                out.end_cur = cur;
+                out.end_max = max;
+            }
         }
     }
     Ok(out)
@@ -1249,7 +1339,12 @@ pub fn parse_buff_list(b: &[u8]) -> Result<BuffList, DecodeError> {
             pos += 4;
             s
         };
-        entries.push(BuffListEntry { spell_id, remaining_ticks, slot, caster });
+        entries.push(BuffListEntry {
+            spell_id,
+            remaining_ticks,
+            slot,
+            caster,
+        });
     }
     // Structural canary: the parse must consume the packet exactly.
     if pos != b.len() {
@@ -1367,11 +1462,11 @@ mod tests {
             b[off..off + 4].copy_from_slice(&v.to_le_bytes());
         };
         for (i, v) in [9275u32, 10, 25, 47].iter().enumerate() {
-            put(&mut b, 33687 + i * 4, *v);   // carried
-            put(&mut b, 36245 + i * 4, *v);   // inventory mirror
+            put(&mut b, 33687 + i * 4, *v); // carried
+            put(&mut b, 36245 + i * 4, *v); // inventory mirror
         }
         for (i, v) in [1234u32, 5, 3, 5].iter().enumerate() {
-            put(&mut b, 36261 + i * 4, *v);   // bank, right after the mirror
+            put(&mut b, 36261 + i * 4, *v); // bank, right after the mirror
         }
         let p = parse_player_profile(&b).unwrap();
         assert_eq!((p.platinum, p.gold, p.silver, p.copper), (9275, 10, 25, 47));
@@ -1448,9 +1543,20 @@ mod tests {
     /// equipment branch); the 9-slot humanoid branch is exercised by the goldens.
     #[allow(clippy::too_many_arguments)]
     fn build_spawn(
-        name: &str, id: u32, level: u8, cur_hp: u8, race: u32, deity: u32,
-        class_: u32, z: i32, y: i32, x: i32, heading: u16, last: &str,
-        title: &str, suffix: &str,
+        name: &str,
+        id: u32,
+        level: u8,
+        cur_hp: u8,
+        race: u32,
+        deity: u32,
+        class_: u32,
+        z: i32,
+        y: i32,
+        x: i32,
+        heading: u16,
+        last: &str,
+        title: &str,
+        suffix: &str,
     ) -> Vec<u8> {
         let mut b = Vec::new();
         let text = |b: &mut Vec<u8>, s: &str| {
@@ -1488,11 +1594,11 @@ mod tests {
         u32le(&mut b, 0); // petOwnerId
         b.extend_from_slice(&[0u8; 49]); // npc==1 extra
         b.extend_from_slice(&[0u8; 60]); // equipment (else branch: 20 + 2*5*4)
-        // 2026-08-06 position block (upstream `posData` shape, word roles
-        // measured against OP_MobUpdate): w0 low-19 = X, w1 = pad, w3 low-19
-        // = Y, w4 high-19 = Z, w5 = 0. Building the pad as a NON-zero value
-        // here is deliberate: the bug this replaced read X out of w1, and a
-        // zero-filled pad would have let that reading pass.
+                                         // 2026-08-06 position block (upstream `posData` shape, word roles
+                                         // measured against OP_MobUpdate): w0 low-19 = X, w1 = pad, w3 low-19
+                                         // = Y, w4 high-19 = Z, w5 = 0. Building the pad as a NON-zero value
+                                         // here is deliberate: the bug this replaced read X out of w1, and a
+                                         // zero-filled pad would have let that reading pass.
         let _ = heading; // spawn facing did not survive the rearrangement
         b.extend_from_slice(&pos_word(x)); // w0: X in the low 19
         u32le(&mut b, 0x1234_5678); // w1: pad — deliberately not zero
@@ -1514,7 +1620,19 @@ mod tests {
     #[test]
     fn spawn_full_walk_reads_all_fields() {
         let b = build_spawn(
-            "a guard", 4242, 55, 90, 14, 396, 3, 80, -15, 10, 1234, "", "Protector",
+            "a guard",
+            4242,
+            55,
+            90,
+            14,
+            396,
+            3,
+            80,
+            -15,
+            10,
+            1234,
+            "",
+            "Protector",
             "of Qeynos",
         );
         let s = parse_spawn(&b).unwrap();
@@ -1542,7 +1660,20 @@ mod tests {
     fn spawn_last_name_and_position_past_i16_window() {
         // far spawn (|y·8| > i16::MAX) must not wrap; surname decodes; no title.
         let b = build_spawn(
-            "Grarf", 7, 60, 100, 14, 0, 5, 12, -4700, 5200, 0, "Ironforge", "", "",
+            "Grarf",
+            7,
+            60,
+            100,
+            14,
+            0,
+            5,
+            12,
+            -4700,
+            5200,
+            0,
+            "Ironforge",
+            "",
+            "",
         );
         let s = parse_spawn(&b).unwrap();
         assert_eq!(s.y, -4700);
@@ -1620,7 +1751,7 @@ mod tests {
         b[29..37].copy_from_slice(&40i64.to_le_bytes()); // mana max
         b[37..45].copy_from_slice(&50i64.to_le_bytes()); // end cur
         b[45..53].copy_from_slice(&60i64.to_le_bytes()); // end max
-        // bytes 53..57 = trailing u32, ignored.
+                                                         // bytes 53..57 = trailing u32, ignored.
         let s = parse_stat_sync(&b).unwrap();
         assert!(s.has_hp && s.hp_cur == 10 && s.hp_max == 20);
         assert!(s.has_mana && s.mana_cur == 30 && s.mana_max == 40);
@@ -1655,14 +1786,14 @@ mod tests {
         b.push(1); // flag
         b.push(2); // count
         b.extend_from_slice(&[0u8; 5]); // pad
-        // record 1: spell 278, ticks 5, empty caster, slot 1 (u32 — not final)
+                                        // record 1: spell 278, ticks 5, empty caster, slot 1 (u32 — not final)
         b.extend_from_slice(&278u32.to_le_bytes());
         b.extend_from_slice(&1u32.to_le_bytes());
         b.extend_from_slice(&5i32.to_le_bytes());
         b.extend_from_slice(&0u32.to_le_bytes());
         b.push(0); // empty name
         b.extend_from_slice(&1u32.to_le_bytes()); // slot
-        // record 2 (final): spell 515, ticks -1 (permanent), caster "X", slot 7 (u16)
+                                                  // record 2 (final): spell 515, ticks -1 (permanent), caster "X", slot 7 (u16)
         b.extend_from_slice(&515u32.to_le_bytes());
         b.extend_from_slice(&1u32.to_le_bytes());
         b.extend_from_slice(&(-1i32).to_le_bytes());
@@ -1675,11 +1806,21 @@ mod tests {
         assert_eq!(list.entries.len(), 2);
         assert_eq!(
             list.entries[0],
-            BuffListEntry { spell_id: 278, remaining_ticks: 5, slot: 1, caster: String::new() }
+            BuffListEntry {
+                spell_id: 278,
+                remaining_ticks: 5,
+                slot: 1,
+                caster: String::new()
+            }
         );
         assert_eq!(
             list.entries[1],
-            BuffListEntry { spell_id: 515, remaining_ticks: -1, slot: 7, caster: "X".into() }
+            BuffListEntry {
+                spell_id: 515,
+                remaining_ticks: -1,
+                slot: 7,
+                caster: "X".into()
+            }
         );
         // Truncation / trailing-garbage both fail the cursor-lands-on-end canary.
         assert!(parse_buff_list(&b[..b.len() - 1]).is_err());

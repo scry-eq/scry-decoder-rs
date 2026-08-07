@@ -28,7 +28,7 @@ pub fn parse_simple_message(bytes: &[u8]) -> Result<SimpleMessage, SimpleMessage
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const simpleMessageStruct) };
     Ok(SimpleMessage {
         message_format: unsafe { std::ptr::addr_of!(raw.messageFormat).read_unaligned() },
-        message_color:  unsafe { std::ptr::addr_of!(raw.messageColor).read_unaligned() },
+        message_color: unsafe { std::ptr::addr_of!(raw.messageColor).read_unaligned() },
     })
 }
 

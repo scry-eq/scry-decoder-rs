@@ -33,14 +33,14 @@ pub fn parse_death(bytes: &[u8]) -> Result<Death, DeathError> {
     let raw: newCorpseStruct =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const newCorpseStruct) };
     Ok(Death {
-        spawn_id:      unsafe { std::ptr::addr_of!(raw.spawnId).read_unaligned() },
-        killer_id:     unsafe { std::ptr::addr_of!(raw.killerId).read_unaligned() },
-        corpse_id:     unsafe { std::ptr::addr_of!(raw.corpseid).read_unaligned() },
-        kind:          unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
-        spell_id:      unsafe { std::ptr::addr_of!(raw.spellId).read_unaligned() },
-        zone_id:       unsafe { std::ptr::addr_of!(raw.zoneId).read_unaligned() },
+        spawn_id: unsafe { std::ptr::addr_of!(raw.spawnId).read_unaligned() },
+        killer_id: unsafe { std::ptr::addr_of!(raw.killerId).read_unaligned() },
+        corpse_id: unsafe { std::ptr::addr_of!(raw.corpseid).read_unaligned() },
+        kind: unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
+        spell_id: unsafe { std::ptr::addr_of!(raw.spellId).read_unaligned() },
+        zone_id: unsafe { std::ptr::addr_of!(raw.zoneId).read_unaligned() },
         zone_instance: unsafe { std::ptr::addr_of!(raw.zoneInstance).read_unaligned() },
-        damage:        unsafe { std::ptr::addr_of!(raw.damage).read_unaligned() },
+        damage: unsafe { std::ptr::addr_of!(raw.damage).read_unaligned() },
     })
 }
 

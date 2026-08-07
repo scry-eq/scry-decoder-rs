@@ -18,7 +18,11 @@ use thiserror::Error;
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum CursorError {
     #[error("read past end of buffer at offset {offset}, wanted {wanted} more bytes, have {have}")]
-    Eof { offset: usize, wanted: usize, have: usize },
+    Eof {
+        offset: usize,
+        wanted: usize,
+        have: usize,
+    },
 }
 
 pub struct Cursor<'a> {
@@ -31,9 +35,15 @@ impl<'a> Cursor<'a> {
         Self { buf, pos: 0 }
     }
 
-    pub fn pos(&self) -> usize { self.pos }
-    pub fn remaining(&self) -> usize { self.buf.len() - self.pos }
-    pub fn at_end(&self) -> bool { self.pos >= self.buf.len() }
+    pub fn pos(&self) -> usize {
+        self.pos
+    }
+    pub fn remaining(&self) -> usize {
+        self.buf.len() - self.pos
+    }
+    pub fn at_end(&self) -> bool {
+        self.pos >= self.buf.len()
+    }
 
     fn need(&self, n: usize) -> Result<(), CursorError> {
         if self.remaining() < n {

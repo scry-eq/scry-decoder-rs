@@ -59,9 +59,7 @@ fn read_u32_le(bytes: &[u8], at: usize) -> u32 {
     u32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]])
 }
 
-pub fn parse_spawn_appearance(
-    bytes: &[u8],
-) -> Result<SpawnAppearance, SpawnAppearanceError> {
+pub fn parse_spawn_appearance(bytes: &[u8]) -> Result<SpawnAppearance, SpawnAppearanceError> {
     if bytes.len() != PAYLOAD_LEN {
         return Err(SpawnAppearanceError::BadLength(bytes.len()));
     }

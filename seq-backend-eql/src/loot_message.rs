@@ -34,18 +34,27 @@ mod tests {
     use super::*;
 
     fn link(name: &str) -> String {
-        format!("\u{12}{}{}\u{12}", "0".repeat(crate::links::ITEM_LINK_HEX), name)
+        format!(
+            "\u{12}{}{}\u{12}",
+            "0".repeat(crate::links::ITEM_LINK_HEX),
+            name
+        )
     }
 
     #[test]
     fn rejects_short() {
-        assert_eq!(parse_loot_message(&[0; 4]), Err(LootMessageError::BadLength(4)));
+        assert_eq!(
+            parse_loot_message(&[0; 4]),
+            Err(LootMessageError::BadLength(4))
+        );
     }
 
     #[test]
     fn cleans_item_link() {
         let mut b = 286u32.to_le_bytes().to_vec();
-        b.extend_from_slice(format!("You looted a {} from a corpse", link("Fine Steel")).as_bytes());
+        b.extend_from_slice(
+            format!("You looted a {} from a corpse", link("Fine Steel")).as_bytes(),
+        );
         let m = parse_loot_message(&b).unwrap();
         assert_eq!(m.color, 286);
         assert_eq!(m.text, "You looted a Fine Steel from a corpse");

@@ -14,19 +14,21 @@
 //! `backend` alias below routes each call to the active backend's decoders, and
 //! the few opcodes whose eql wire diverges call eql's parser explicitly.
 
-#[cfg(not(any(feature = "backend-live", feature = "backend-test", feature = "backend-eql")))]
-compile_error!(
-    "seq-bridge: enable exactly one backend feature (default: backend-live)."
-);
+#[cfg(not(any(
+    feature = "backend-live",
+    feature = "backend-test",
+    feature = "backend-eql"
+)))]
+compile_error!("seq-bridge: enable exactly one backend feature (default: backend-live).");
 
 // The active backend's decoder crate. live/test share `seq-decode`; eql is its
 // own self-contained stack (`seq-backend-eql`). Shared decoders call
 // `backend::parse_*`; the eql-diverged opcodes cfg-select
 // `seq_backend_eql::parse_legends_*` directly below.
-#[cfg(not(feature = "backend-eql"))]
-use seq_decode as backend;
 #[cfg(feature = "backend-eql")]
 use seq_backend_eql as backend;
+#[cfg(not(feature = "backend-eql"))]
+use seq_decode as backend;
 
 // cxx expands `-> Box<T>` entries into code using an API stabilized after the
 // workspace's declared rust-version (1.75). It's generated, so there is nothing
@@ -189,8 +191,13 @@ mod ffi {
         ok: bool,
     }
     struct LootTransaction {
-        item_id: u32, slot: u32, corpse_id: u32,
-        quantity: u32, sequence: u32, coin_copper: u32, ok: bool,
+        item_id: u32,
+        slot: u32,
+        corpse_id: u32,
+        quantity: u32,
+        sequence: u32,
+        coin_copper: u32,
+        ok: bool,
     }
     struct MoneyUpdate {
         platinum: u32,
@@ -251,10 +258,23 @@ mod ffi {
         spell_id: i32,
         ok: bool,
     }
-    struct Stamina { food: u32, water: u32, ok: bool }
-    struct EndUpdate { spawn_id: u16, cur: u32, max: u32, ok: bool }
+    struct Stamina {
+        food: u32,
+        water: u32,
+        ok: bool,
+    }
+    struct EndUpdate {
+        spawn_id: u16,
+        cur: u32,
+        max: u32,
+        ok: bool,
+    }
     struct Consider {
-        player_id: u32, target_id: u32, faction: i32, level: i32, ok: bool,
+        player_id: u32,
+        target_id: u32,
+        faction: i32,
+        level: i32,
+        ok: bool,
     }
     /// A backend-declared payload size override: `name` (a toml `typename`) →
     /// its authoritative size on the linked backend. The daemon applies these
@@ -362,56 +382,113 @@ mod ffi {
         new_name: String,
         ok: bool,
     }
-    struct ClientTarget { new_target: u32, ok: bool }
+    struct ClientTarget {
+        new_target: u32,
+        ok: bool,
+    }
     struct Death {
-        spawn_id: u32, killer_id: u32, corpse_id: u32, kind: i32,
-        spell_id: u32, zone_id: u16, zone_instance: u16, damage: u32,
+        spawn_id: u32,
+        killer_id: u32,
+        corpse_id: u32,
+        kind: i32,
+        spell_id: u32,
+        zone_id: u16,
+        zone_instance: u16,
+        damage: u32,
         ok: bool,
     }
 
     // Stage A+5
-    struct ClickObject { drop_id: u16, spawn_id: u16, ok: bool }
+    struct ClickObject {
+        drop_id: u16,
+        spawn_id: u16,
+        ok: bool,
+    }
     struct Illusion {
-        spawn_id: u32, name: String, race: u32, gender: u8,
-        texture: u8, helm: u8, face: u32, ok: bool,
+        spawn_id: u32,
+        name: String,
+        race: u32,
+        gender: u8,
+        texture: u8,
+        helm: u8,
+        face: u32,
+        ok: bool,
     }
     struct Buff {
-        spawn_id: u32, spell_id: u32,
+        spawn_id: u32,
+        spell_id: u32,
         // form: 0=fade(13b) | 1=initial(30b) | 2=live-update(34+b) |
         // 3=compact(24b, eql buff-slot channel). For form 3, spawn_id is 0 and
         // slot is 0xff for scribe/bar refreshes; change_type is 1=faded/4=applied.
-        form: u8, slot: u8, dur_ticks: u32, change_type: u32, ok: bool,
+        form: u8,
+        slot: u8,
+        dur_ticks: u32,
+        change_type: u32,
+        ok: bool,
     }
     struct Action2 {
-        target: u16, source: u16, damage: i32, spell: i32, kind: u8, ok: bool,
+        target: u16,
+        source: u16,
+        damage: i32,
+        spell: i32,
+        kind: u8,
+        ok: bool,
     }
 
     // Stage A+6 — second small-fixed POD batch.
     struct WearChange {
-        spawn_id: u16, subcommand: u16, arg1: i16, arg2: i16, arg3: u8,
+        spawn_id: u16,
+        subcommand: u16,
+        arg1: i16,
+        arg2: i16,
+        arg3: u8,
         ok: bool,
     }
     struct ZoneChange {
-        name: String, zone_id: u16, zone_instance: u16, ok: bool,
+        name: String,
+        zone_id: u16,
+        zone_instance: u16,
+        ok: bool,
     }
     struct DzInfo {
-        new_dz: u8, max_players: u32, dz_name: String, name: String,
+        new_dz: u8,
+        max_players: u32,
+        dz_name: String,
+        name: String,
         ok: bool,
     }
     struct DzSwitch {
-        zone_id: u16, instance_id: u16, kind: u32,
-        x: f32, y: f32, z: f32, ok: bool,
+        zone_id: u16,
+        instance_id: u16,
+        kind: u32,
+        x: f32,
+        y: f32,
+        z: f32,
+        ok: bool,
     }
     struct StartCast {
-        slot: i32, spell_id: u32, target_id: u32, ok: bool,
+        slot: i32,
+        spell_id: u32,
+        target_id: u32,
+        ok: bool,
     }
     struct Action {
-        target: u16, source: u16, spell: u16, level: u8, kind: u8, ok: bool,
+        target: u16,
+        source: u16,
+        spell: u16,
+        level: u8,
+        kind: u8,
+        ok: bool,
     }
     struct GroupDisband {
-        yourname: String, membername: String, ok: bool,
+        yourname: String,
+        membername: String,
+        ok: bool,
     }
-    struct GroupFollow { name: String, ok: bool }
+    struct GroupFollow {
+        name: String,
+        ok: bool,
+    }
     struct GroupMemberList {
         group_id: u32,
         member_count: u32,
@@ -426,22 +503,36 @@ mod ffi {
         ok: bool,
     }
     struct CorpseLoc {
-        spawn_id: u32, x: f32, y: f32, z: f32, ok: bool,
+        spawn_id: u32,
+        x: f32,
+        y: f32,
+        z: f32,
+        ok: bool,
     }
 
     // Stage A+7 — variable-length / array opcodes.
     struct Door {
         name: String,
-        y: f32, x: f32, z: f32, heading: f32,
-        incline: u32, size: u32,
-        door_id: u8, opentype: u8, spawnstate: u8, invertstate: u8,
+        y: f32,
+        x: f32,
+        z: f32,
+        heading: f32,
+        incline: u32,
+        size: u32,
+        door_id: u8,
+        opentype: u8,
+        spawnstate: u8,
+        invertstate: u8,
         zone_point: u32,
         ok: bool,
     }
     struct GroundSpawn {
         drop_id: u32,
         id_file: String,
-        heading: f32, y: f32, x: f32, z: f32,
+        heading: f32,
+        y: f32,
+        x: f32,
+        z: f32,
         bytes_consumed: u32,
         ok: bool,
     }
@@ -451,8 +542,12 @@ mod ffi {
     // zonePointStruct slice.
     struct ZonePoint {
         zone_trigger: u32,
-        y: f32, x: f32, z: f32, heading: f32,
-        zone_id: u16, zone_instance: u16,
+        y: f32,
+        x: f32,
+        z: f32,
+        heading: f32,
+        zone_id: u16,
+        zone_instance: u16,
         ok: bool,
     }
 
@@ -505,7 +600,9 @@ mod ffi {
         long_name: String,
         zonefile: String,
         zone_exp_multiplier: f32,
-        safe_y: f32, safe_x: f32, safe_z: f32,
+        safe_y: f32,
+        safe_x: f32,
+        safe_z: f32,
         zone_id: u32,
         ok: bool,
     }
@@ -525,19 +622,27 @@ mod ffi {
         race: u32,
         class_: u32,
         class_mask: u32,
-        stance: u32,       // EQL active stance ability id (profile @33777); 0 = none
-        invocation: u32,   // EQL active invocation ability id (profile @33781); 0 = none
+        stance: u32,     // EQL active stance ability id (profile @33777); 0 = none
+        invocation: u32, // EQL active invocation ability id (profile @33781); 0 = none
         level: u8,
         level1: u8,
         bind0_zone_id: u32,
-        bind0_x: f32, bind0_y: f32, bind0_z: f32, bind0_heading: f32,
+        bind0_x: f32,
+        bind0_y: f32,
+        bind0_z: f32,
+        bind0_heading: f32,
         deity: u32,
         intoxication: u32,
         points: u32,
         mana: u32,
         cur_hp: u32,
-        str_: u32, sta: u32, cha: u32, dex: u32,
-        int_: u32, agi: u32, wis: u32,
+        str_: u32,
+        sta: u32,
+        cha: u32,
+        dex: u32,
+        int_: u32,
+        agi: u32,
+        wis: u32,
         aa_ids: Vec<u32>,
         aa_values: Vec<u32>,
         // Player skill values, index = skill id. Populated by the eql profile
@@ -550,9 +655,14 @@ mod ffi {
         spell_slot_refresh: Vec<u32>,
         buff_spell_ids: Vec<i32>,
         buff_durations: Vec<i32>,
-        platinum: u32, gold: u32, silver: u32, copper: u32,
-        platinum_cursor: u32, gold_cursor: u32,
-        silver_cursor: u32, copper_cursor: u32,
+        platinum: u32,
+        gold: u32,
+        silver: u32,
+        copper: u32,
+        platinum_cursor: u32,
+        gold_cursor: u32,
+        silver_cursor: u32,
+        copper_cursor: u32,
         aa_spent: u32,
         aa_assigned: u32,
         aa_unspent: u32,
@@ -570,46 +680,79 @@ mod ffi {
         languages: Vec<u8>,
         zone_id: u16,
         zone_instance: u16,
-        x: f32, y: f32, z: f32, heading: f32,
+        x: f32,
+        y: f32,
+        z: f32,
+        heading: f32,
         stand_state: u16,
         anon: u16,
         guild_id: u32,
         guild_server_id: u32,
-        platinum_inventory: u32, gold_inventory: u32,
-        silver_inventory: u32, copper_inventory: u32,
-        platinum_bank: u32, gold_bank: u32,
-        silver_bank: u32, copper_bank: u32,
+        platinum_inventory: u32,
+        gold_inventory: u32,
+        silver_inventory: u32,
+        copper_inventory: u32,
+        platinum_bank: u32,
+        gold_bank: u32,
+        silver_bank: u32,
+        copper_bank: u32,
         platinum_shared: u32,
-        career_tribute: u32, current_tribute: u32,
-        current_rad_crystals: u32, career_rad_crystals: u32,
-        current_ebon_crystals: u32, career_ebon_crystals: u32,
+        career_tribute: u32,
+        current_tribute: u32,
+        current_rad_crystals: u32,
+        career_rad_crystals: u32,
+        current_ebon_crystals: u32,
+        career_ebon_crystals: u32,
         autosplit: u8,
-        ldon_guk_points: u32, ldon_mir_points: u32, ldon_mmc_points: u32,
-        ldon_ruj_points: u32, ldon_tak_points: u32, ldon_avail_points: u32,
+        ldon_guk_points: u32,
+        ldon_mir_points: u32,
+        ldon_mmc_points: u32,
+        ldon_ruj_points: u32,
+        ldon_tak_points: u32,
+        ldon_avail_points: u32,
     }
 
     // Stage A+8 — bitfield-laden / BitStream-packed opcodes.
     struct PlayerSelfPos {
         spawn_id: u16,
-        x: f32, y: f32, z: f32,
-        delta_x: f32, delta_y: f32, delta_z: f32,
-        heading: u16, delta_heading: i16, animation: i16,
+        x: f32,
+        y: f32,
+        z: f32,
+        delta_x: f32,
+        delta_y: f32,
+        delta_z: f32,
+        heading: u16,
+        delta_heading: i16,
+        animation: i16,
         pitch: u16,
         ok: bool,
     }
     struct PlayerSpawnPos {
-        spawn_id: u16, spawn_id2: u16,
-        x: i32, y: i32, z: i32,
-        delta_x: i32, delta_y: i32, delta_z: i32,
-        heading: u16, delta_heading: i16, animation: i16,
+        spawn_id: u16,
+        spawn_id2: u16,
+        x: i32,
+        y: i32,
+        z: i32,
+        delta_x: i32,
+        delta_y: i32,
+        delta_z: i32,
+        heading: u16,
+        delta_heading: i16,
+        animation: i16,
         pitch: u16,
         ok: bool,
     }
     struct NpcMove {
         spawn_id: u16,
-        x: i16, y: i16, z: i16, heading: i16,
-        delta_x: i16, delta_y: i16, delta_z: i16,
-        delta_heading: i8, animation: i16,
+        x: i16,
+        y: i16,
+        z: i16,
+        heading: i16,
+        delta_x: i16,
+        delta_y: i16,
+        delta_z: i16,
+        delta_heading: i8,
+        animation: i16,
         ok: bool,
     }
 
@@ -735,7 +878,10 @@ fn struct_size_overrides() -> Vec<ffi::StructSize> {
     #[cfg(not(feature = "backend-eql"))]
     let raw: Vec<(&'static str, u32)> = Vec::new();
     raw.into_iter()
-        .map(|(name, size)| ffi::StructSize { name: name.to_string(), size })
+        .map(|(name, size)| ffi::StructSize {
+            name: name.to_string(),
+            size,
+        })
         .collect()
 }
 
@@ -770,17 +916,29 @@ fn decode_mob_update(bytes: &[u8]) -> ffi::MobUpdate {
 
 fn decode_delete_spawn(bytes: &[u8]) -> ffi::DeleteSpawn {
     match backend::parse_delete_spawn(bytes) {
-        Ok(d) => ffi::DeleteSpawn { spawn_id: d.spawn_id, ok: true },
-        Err(_) => ffi::DeleteSpawn { spawn_id: 0, ok: false },
+        Ok(d) => ffi::DeleteSpawn {
+            spawn_id: d.spawn_id,
+            ok: true,
+        },
+        Err(_) => ffi::DeleteSpawn {
+            spawn_id: 0,
+            ok: false,
+        },
     }
 }
 
 fn decode_remove_spawn(bytes: &[u8]) -> ffi::RemoveSpawn {
     match backend::parse_remove_spawn(bytes) {
         Ok(r) => ffi::RemoveSpawn {
-            spawn_id: r.spawn_id, remove_spawn: r.remove_spawn, ok: true,
+            spawn_id: r.spawn_id,
+            remove_spawn: r.remove_spawn,
+            ok: true,
         },
-        Err(_) => ffi::RemoveSpawn { spawn_id: 0, remove_spawn: 0, ok: false },
+        Err(_) => ffi::RemoveSpawn {
+            spawn_id: 0,
+            remove_spawn: 0,
+            ok: false,
+        },
     }
 }
 
@@ -788,10 +946,16 @@ fn decode_remove_spawn(bytes: &[u8]) -> ffi::RemoveSpawn {
 fn decode_hp_update(bytes: &[u8]) -> ffi::HpUpdate {
     match backend::parse_hp_update(bytes) {
         Ok(h) => ffi::HpUpdate {
-            spawn_id: h.spawn_id, cur_hp: h.cur_hp, max_hp: h.max_hp, ok: true,
+            spawn_id: h.spawn_id,
+            cur_hp: h.cur_hp,
+            max_hp: h.max_hp,
+            ok: true,
         },
         Err(_) => ffi::HpUpdate {
-            spawn_id: 0, cur_hp: 0, max_hp: 0, ok: false,
+            spawn_id: 0,
+            cur_hp: 0,
+            max_hp: 0,
+            ok: false,
         },
     }
 }
@@ -801,15 +965,27 @@ fn decode_hp_update(bytes: &[u8]) -> ffi::HpUpdate {
 // is inert.
 #[cfg(feature = "backend-eql")]
 fn decode_hp_update(_bytes: &[u8]) -> ffi::HpUpdate {
-    ffi::HpUpdate { spawn_id: 0, cur_hp: 0, max_hp: 0, ok: false }
+    ffi::HpUpdate {
+        spawn_id: 0,
+        cur_hp: 0,
+        max_hp: 0,
+        ok: false,
+    }
 }
 
 fn stat_sync_err() -> ffi::StatSync {
     ffi::StatSync {
-        spawn_id: 0, wide: false,
-        has_hp: false, hp_cur: 0, hp_max: 0,
-        has_mana: false, mana_cur: 0, mana_max: 0,
-        has_end: false, end_cur: 0, end_max: 0,
+        spawn_id: 0,
+        wide: false,
+        has_hp: false,
+        hp_cur: 0,
+        hp_max: 0,
+        has_mana: false,
+        mana_cur: 0,
+        mana_max: 0,
+        has_end: false,
+        end_cur: 0,
+        end_max: 0,
         ok: false,
     }
 }
@@ -820,10 +996,17 @@ fn stat_sync_err() -> ffi::StatSync {
 fn decode_stat_sync(bytes: &[u8]) -> ffi::StatSync {
     match seq_backend_eql::parse_stat_sync(bytes) {
         Ok(s) => ffi::StatSync {
-            spawn_id: s.spawn_id, wide: s.wide,
-            has_hp: s.has_hp, hp_cur: s.hp_cur, hp_max: s.hp_max,
-            has_mana: s.has_mana, mana_cur: s.mana_cur, mana_max: s.mana_max,
-            has_end: s.has_end, end_cur: s.end_cur, end_max: s.end_max,
+            spawn_id: s.spawn_id,
+            wide: s.wide,
+            has_hp: s.has_hp,
+            hp_cur: s.hp_cur,
+            hp_max: s.hp_max,
+            has_mana: s.has_mana,
+            mana_cur: s.mana_cur,
+            mana_max: s.mana_max,
+            has_end: s.has_end,
+            end_cur: s.end_cur,
+            end_max: s.end_max,
             ok: true,
         },
         Err(_) => stat_sync_err(),
@@ -843,9 +1026,15 @@ pub struct EqlSelfTracker;
 fn self_stat_none() -> ffi::SelfStat {
     ffi::SelfStat {
         is_self: false,
-        has_hp: false, hp_cur: 0, hp_max: 0,
-        has_mana: false, mana_cur: 0, mana_max: 0,
-        has_end: false, end_cur: 0, end_max: 0,
+        has_hp: false,
+        hp_cur: 0,
+        hp_max: 0,
+        has_mana: false,
+        mana_cur: 0,
+        mana_max: 0,
+        has_end: false,
+        end_cur: 0,
+        end_max: 0,
     }
 }
 
@@ -853,9 +1042,15 @@ fn self_stat_none() -> ffi::SelfStat {
 fn self_stat_to_ffi(v: seq_backend_eql::SelfStat) -> ffi::SelfStat {
     ffi::SelfStat {
         is_self: v.is_self,
-        has_hp: v.has_hp, hp_cur: v.hp_cur, hp_max: v.hp_max,
-        has_mana: v.has_mana, mana_cur: v.mana_cur, mana_max: v.mana_max,
-        has_end: v.has_end, end_cur: v.end_cur, end_max: v.end_max,
+        has_hp: v.has_hp,
+        hp_cur: v.hp_cur,
+        hp_max: v.hp_max,
+        has_mana: v.has_mana,
+        mana_cur: v.mana_cur,
+        mana_max: v.mana_max,
+        has_end: v.has_end,
+        end_cur: v.end_cur,
+        end_max: v.end_max,
     }
 }
 
@@ -882,9 +1077,15 @@ impl EqlSelfTracker {
         let s = seq_backend_eql::StatSync {
             spawn_id: stat.spawn_id,
             wide: stat.wide,
-            has_hp: stat.has_hp, hp_cur: stat.hp_cur, hp_max: stat.hp_max,
-            has_mana: stat.has_mana, mana_cur: stat.mana_cur, mana_max: stat.mana_max,
-            has_end: stat.has_end, end_cur: stat.end_cur, end_max: stat.end_max,
+            has_hp: stat.has_hp,
+            hp_cur: stat.hp_cur,
+            hp_max: stat.hp_max,
+            has_mana: stat.has_mana,
+            mana_cur: stat.mana_cur,
+            mana_max: stat.mana_max,
+            has_end: stat.has_end,
+            end_cur: stat.end_cur,
+            end_max: stat.end_max,
         };
         self_stat_to_ffi(self.0.observe_stat_sync(&s))
     }
@@ -915,13 +1116,27 @@ fn eql_self_tracker_new() -> Box<EqlSelfTracker> {
 #[cfg(not(feature = "backend-eql"))]
 impl EqlSelfTracker {
     fn reset(&mut self) {}
-    fn self_id(&self) -> u32 { 0 }
-    fn observe_spawn(&mut self, _player_name: &str, _spawn_name: &str, _spawn_id: u32) -> u8 { 0 }
-    fn observe_stat_sync(&mut self, _stat: &ffi::StatSync) -> ffi::SelfStat { self_stat_none() }
-    fn take_pending_vitals(&mut self) -> ffi::SelfStat { self_stat_none() }
-    fn observe_self_pos(&mut self, _spawn_id: u32) -> u8 { 0 }
-    fn provisional_id(&self) -> u32 { 0 }
-    fn take_retired_provisional(&mut self) -> u32 { 0 }
+    fn self_id(&self) -> u32 {
+        0
+    }
+    fn observe_spawn(&mut self, _player_name: &str, _spawn_name: &str, _spawn_id: u32) -> u8 {
+        0
+    }
+    fn observe_stat_sync(&mut self, _stat: &ffi::StatSync) -> ffi::SelfStat {
+        self_stat_none()
+    }
+    fn take_pending_vitals(&mut self) -> ffi::SelfStat {
+        self_stat_none()
+    }
+    fn observe_self_pos(&mut self, _spawn_id: u32) -> u8 {
+        0
+    }
+    fn provisional_id(&self) -> u32 {
+        0
+    }
+    fn take_retired_provisional(&mut self) -> u32 {
+        0
+    }
 }
 
 // eql-only: OP_BeginCast (0x6cbd) — a spawn started casting a spell. live/test
@@ -930,15 +1145,27 @@ impl EqlSelfTracker {
 fn decode_begin_cast(bytes: &[u8]) -> ffi::BeginCast {
     match seq_backend_eql::parse_begin_cast(bytes) {
         Ok(c) => ffi::BeginCast {
-            caster_id: c.caster_id, spell_id: c.spell_id,
-            cast_time_ms: c.cast_time_ms, ok: true,
+            caster_id: c.caster_id,
+            spell_id: c.spell_id,
+            cast_time_ms: c.cast_time_ms,
+            ok: true,
         },
-        Err(_) => ffi::BeginCast { caster_id: 0, spell_id: 0, cast_time_ms: 0, ok: false },
+        Err(_) => ffi::BeginCast {
+            caster_id: 0,
+            spell_id: 0,
+            cast_time_ms: 0,
+            ok: false,
+        },
     }
 }
 #[cfg(not(feature = "backend-eql"))]
 fn decode_begin_cast(_bytes: &[u8]) -> ffi::BeginCast {
-    ffi::BeginCast { caster_id: 0, spell_id: 0, cast_time_ms: 0, ok: false }
+    ffi::BeginCast {
+        caster_id: 0,
+        spell_id: 0,
+        cast_time_ms: 0,
+        ok: false,
+    }
 }
 
 // eql-only: OP_Stance (0x0fab) / OP_Invocation (0x3b12) — 4B {u32 abilityId}.
@@ -946,13 +1173,22 @@ fn decode_begin_cast(_bytes: &[u8]) -> ffi::BeginCast {
 #[cfg(feature = "backend-eql")]
 fn decode_activate_ability(bytes: &[u8]) -> ffi::ActivateAbility {
     match seq_backend_eql::parse_activate_ability(bytes) {
-        Ok(id) => ffi::ActivateAbility { ability_id: id, ok: true },
-        Err(_) => ffi::ActivateAbility { ability_id: 0, ok: false },
+        Ok(id) => ffi::ActivateAbility {
+            ability_id: id,
+            ok: true,
+        },
+        Err(_) => ffi::ActivateAbility {
+            ability_id: 0,
+            ok: false,
+        },
     }
 }
 #[cfg(not(feature = "backend-eql"))]
 fn decode_activate_ability(_bytes: &[u8]) -> ffi::ActivateAbility {
-    ffi::ActivateAbility { ability_id: 0, ok: false }
+    ffi::ActivateAbility {
+        ability_id: 0,
+        ok: false,
+    }
 }
 
 // eql-only: OP_SendAATable (0x31ae) — one AA ability-rank definition. live/test
@@ -960,17 +1196,35 @@ fn decode_activate_ability(_bytes: &[u8]) -> ffi::ActivateAbility {
 #[cfg(feature = "backend-eql")]
 fn decode_aa_table_entry(bytes: &[u8]) -> ffi::AaTableEntry {
     match seq_backend_eql::parse_aa_table_entry(bytes) {
-        Ok(e) => ffi::AaTableEntry { desc_id: e.desc_id, title_sid: e.title_sid, ok: true },
-        Err(_) => ffi::AaTableEntry { desc_id: 0, title_sid: 0, ok: false },
+        Ok(e) => ffi::AaTableEntry {
+            desc_id: e.desc_id,
+            title_sid: e.title_sid,
+            ok: true,
+        },
+        Err(_) => ffi::AaTableEntry {
+            desc_id: 0,
+            title_sid: 0,
+            ok: false,
+        },
     }
 }
 #[cfg(not(feature = "backend-eql"))]
 fn decode_aa_table_entry(_bytes: &[u8]) -> ffi::AaTableEntry {
-    ffi::AaTableEntry { desc_id: 0, title_sid: 0, ok: false }
+    ffi::AaTableEntry {
+        desc_id: 0,
+        title_sid: 0,
+        ok: false,
+    }
 }
 
 fn loadout_swap_err() -> ffi::LoadoutSwap {
-    ffi::LoadoutSwap { spawn_id: 0, level: 0, class_: 0, race: 0, ok: false }
+    ffi::LoadoutSwap {
+        spawn_id: 0,
+        level: 0,
+        class_: 0,
+        race: 0,
+        ok: false,
+    }
 }
 
 // eql-only: OP_LoadoutSwap (0x7477). live/test have no such opcode, so their
@@ -979,7 +1233,11 @@ fn loadout_swap_err() -> ffi::LoadoutSwap {
 fn decode_loadout_swap(bytes: &[u8]) -> ffi::LoadoutSwap {
     match seq_backend_eql::parse_loadout_swap(bytes) {
         Ok(s) => ffi::LoadoutSwap {
-            spawn_id: s.spawn_id, level: s.level, class_: s.class_, race: s.race, ok: true,
+            spawn_id: s.spawn_id,
+            level: s.level,
+            class_: s.class_,
+            race: s.race,
+            ok: true,
         },
         Err(_) => loadout_swap_err(),
     }
@@ -991,8 +1249,13 @@ fn decode_loadout_swap(_bytes: &[u8]) -> ffi::LoadoutSwap {
 }
 
 const LOOT_TXN_NONE: ffi::LootTransaction = ffi::LootTransaction {
-    item_id: 0, slot: 0, corpse_id: 0, quantity: 0, sequence: 0,
-    coin_copper: 0, ok: false,
+    item_id: 0,
+    slot: 0,
+    corpse_id: 0,
+    quantity: 0,
+    sequence: 0,
+    coin_copper: 0,
+    ok: false,
 };
 
 // eql-only: OP_LootTransaction (0x7d1c) subcode-7 server confirmation.
@@ -1000,9 +1263,13 @@ const LOOT_TXN_NONE: ffi::LootTransaction = ffi::LootTransaction {
 fn decode_loot_transaction(bytes: &[u8]) -> ffi::LootTransaction {
     match seq_backend_eql::parse_loot_transaction(bytes) {
         Ok(t) => ffi::LootTransaction {
-            item_id: t.item_id, slot: t.slot, corpse_id: t.corpse_id,
-            quantity: t.quantity, sequence: t.sequence,
-            coin_copper: t.coin_copper, ok: true,
+            item_id: t.item_id,
+            slot: t.slot,
+            corpse_id: t.corpse_id,
+            quantity: t.quantity,
+            sequence: t.sequence,
+            coin_copper: t.coin_copper,
+            ok: true,
         },
         Err(_) => LOOT_TXN_NONE,
     }
@@ -1048,20 +1315,34 @@ fn decode_loot_drops(bytes: &[u8]) -> ffi::LootDrops {
         Ok(l) => ffi::LootDrops {
             corpse_id: l.corpse_id,
             corpse_name: l.corpse_name,
-            items: l.items.into_iter()
-                .map(|it| ffi::LootItem { name: it.name, icon: it.icon, item_id: it.item_id })
+            items: l
+                .items
+                .into_iter()
+                .map(|it| ffi::LootItem {
+                    name: it.name,
+                    icon: it.icon,
+                    item_id: it.item_id,
+                })
                 .collect(),
             ok: true,
         },
         Err(_) => ffi::LootDrops {
-            corpse_id: 0, corpse_name: String::new(), items: Vec::new(), ok: false,
+            corpse_id: 0,
+            corpse_name: String::new(),
+            items: Vec::new(),
+            ok: false,
         },
     }
 }
 
 #[cfg(not(feature = "backend-eql"))]
 fn decode_loot_drops(_bytes: &[u8]) -> ffi::LootDrops {
-    ffi::LootDrops { corpse_id: 0, corpse_name: String::new(), items: Vec::new(), ok: false }
+    ffi::LootDrops {
+        corpse_id: 0,
+        corpse_name: String::new(),
+        items: Vec::new(),
+        ok: false,
+    }
 }
 
 // eql-only: OP_LootMessage (0x7d46) personal loot text, reusing SpecialMessage.
@@ -1069,12 +1350,18 @@ fn decode_loot_drops(_bytes: &[u8]) -> ffi::LootDrops {
 fn decode_loot_message(bytes: &[u8]) -> ffi::SpecialMessage {
     match seq_backend_eql::parse_loot_message(bytes) {
         Ok(m) => ffi::SpecialMessage {
-            message_color: m.color, target: 0,
-            source: String::new(), message: m.text, ok: true,
+            message_color: m.color,
+            target: 0,
+            source: String::new(),
+            message: m.text,
+            ok: true,
         },
         Err(_) => ffi::SpecialMessage {
-            message_color: 0, target: 0,
-            source: String::new(), message: String::new(), ok: false,
+            message_color: 0,
+            target: 0,
+            source: String::new(),
+            message: String::new(),
+            ok: false,
         },
     }
 }
@@ -1082,8 +1369,11 @@ fn decode_loot_message(bytes: &[u8]) -> ffi::SpecialMessage {
 #[cfg(not(feature = "backend-eql"))]
 fn decode_loot_message(_bytes: &[u8]) -> ffi::SpecialMessage {
     ffi::SpecialMessage {
-        message_color: 0, target: 0,
-        source: String::new(), message: String::new(), ok: false,
+        message_color: 0,
+        target: 0,
+        source: String::new(),
+        message: String::new(),
+        ok: false,
     }
 }
 
@@ -1315,7 +1605,12 @@ fn decode_self_pos_breadcrumb(bytes: &[u8]) -> Vec<ffi::SelfPosPoint> {
     seq_backend_eql::parse_self_pos_breadcrumb(bytes)
         .points
         .into_iter()
-        .map(|p| ffi::SelfPosPoint { x: p.x, y: p.y, z: p.z, ts: p.ts })
+        .map(|p| ffi::SelfPosPoint {
+            x: p.x,
+            y: p.y,
+            z: p.z,
+            ts: p.ts,
+        })
         .collect()
 }
 
@@ -1360,9 +1655,15 @@ fn decode_ucs_channels(_bytes: &[u8]) -> Vec<String> {
 fn decode_mob_health(bytes: &[u8]) -> ffi::MobHealth {
     match backend::parse_mob_health(bytes) {
         Ok(m) => ffi::MobHealth {
-            spawn_id: m.spawn_id, hp_percent: m.hp_percent, ok: true,
+            spawn_id: m.spawn_id,
+            hp_percent: m.hp_percent,
+            ok: true,
         },
-        Err(_) => ffi::MobHealth { spawn_id: 0, hp_percent: 0, ok: false },
+        Err(_) => ffi::MobHealth {
+            spawn_id: 0,
+            hp_percent: 0,
+            ok: false,
+        },
     }
 }
 
@@ -1379,7 +1680,10 @@ fn decode_spawn_appearance(bytes: &[u8]) -> ffi::SpawnAppearance {
             ok: true,
         },
         Err(_) => ffi::SpawnAppearance {
-            spawn_id: 0, kind: 0, parameter: 0, ok: false,
+            spawn_id: 0,
+            kind: 0,
+            parameter: 0,
+            ok: false,
         },
     }
 }
@@ -1387,11 +1691,18 @@ fn decode_spawn_appearance(bytes: &[u8]) -> ffi::SpawnAppearance {
 fn decode_exp_update(bytes: &[u8]) -> ffi::ExpUpdate {
     match backend::parse_exp_update(bytes) {
         Ok(e) => ffi::ExpUpdate {
-            exp: e.exp, unknown0: e.unknown0, kind: e.kind, unknown1: e.unknown1,
+            exp: e.exp,
+            unknown0: e.unknown0,
+            kind: e.kind,
+            unknown1: e.unknown1,
             ok: true,
         },
         Err(_) => ffi::ExpUpdate {
-            exp: 0, unknown0: 0, kind: 0, unknown1: 0, ok: false,
+            exp: 0,
+            unknown0: 0,
+            kind: 0,
+            unknown1: 0,
+            ok: false,
         },
     }
 }
@@ -1399,11 +1710,18 @@ fn decode_exp_update(bytes: &[u8]) -> ffi::ExpUpdate {
 fn decode_level_update(bytes: &[u8]) -> ffi::LevelUpdate {
     match backend::parse_level_update(bytes) {
         Ok(l) => ffi::LevelUpdate {
-            level: l.level, level_old: l.level_old, exp: l.exp,
-            unknown0: l.unknown0, ok: true,
+            level: l.level,
+            level_old: l.level_old,
+            exp: l.exp,
+            unknown0: l.unknown0,
+            ok: true,
         },
         Err(_) => ffi::LevelUpdate {
-            level: 0, level_old: 0, exp: 0, unknown0: 0, ok: false,
+            level: 0,
+            level_old: 0,
+            exp: 0,
+            unknown0: 0,
+            ok: false,
         },
     }
 }
@@ -1411,36 +1729,64 @@ fn decode_level_update(bytes: &[u8]) -> ffi::LevelUpdate {
 fn decode_skill_update(bytes: &[u8]) -> ffi::SkillUpdate {
     match backend::parse_skill_update(bytes) {
         Ok(s) => ffi::SkillUpdate {
-            skill_id: s.skill_id, value: s.value, ok: true,
+            skill_id: s.skill_id,
+            value: s.value,
+            ok: true,
         },
-        Err(_) => ffi::SkillUpdate { skill_id: 0, value: 0, ok: false },
+        Err(_) => ffi::SkillUpdate {
+            skill_id: 0,
+            value: 0,
+            ok: false,
+        },
     }
 }
 
 fn decode_mana_change(bytes: &[u8]) -> ffi::ManaChange {
     match backend::parse_mana_change(bytes) {
         Ok(m) => ffi::ManaChange {
-            new_mana: m.new_mana, max_mana: m.max_mana, spell_id: m.spell_id, ok: true,
+            new_mana: m.new_mana,
+            max_mana: m.max_mana,
+            spell_id: m.spell_id,
+            ok: true,
         },
         Err(_) => ffi::ManaChange {
-            new_mana: 0, max_mana: 0, spell_id: 0, ok: false,
+            new_mana: 0,
+            max_mana: 0,
+            spell_id: 0,
+            ok: false,
         },
     }
 }
 
 fn decode_stamina(bytes: &[u8]) -> ffi::Stamina {
     match backend::parse_stamina(bytes) {
-        Ok(s) => ffi::Stamina { food: s.food, water: s.water, ok: true },
-        Err(_) => ffi::Stamina { food: 0, water: 0, ok: false },
+        Ok(s) => ffi::Stamina {
+            food: s.food,
+            water: s.water,
+            ok: true,
+        },
+        Err(_) => ffi::Stamina {
+            food: 0,
+            water: 0,
+            ok: false,
+        },
     }
 }
 
 fn decode_end_update(bytes: &[u8]) -> ffi::EndUpdate {
     match backend::parse_end_update(bytes) {
         Ok(e) => ffi::EndUpdate {
-            spawn_id: e.spawn_id, cur: e.cur, max: e.max, ok: true,
+            spawn_id: e.spawn_id,
+            cur: e.cur,
+            max: e.max,
+            ok: true,
         },
-        Err(_) => ffi::EndUpdate { spawn_id: 0, cur: 0, max: 0, ok: false },
+        Err(_) => ffi::EndUpdate {
+            spawn_id: 0,
+            cur: 0,
+            max: 0,
+            ok: false,
+        },
     }
 }
 
@@ -1448,11 +1794,18 @@ fn decode_consider(bytes: &[u8]) -> ffi::Consider {
     let parsed = backend::parse_consider(bytes);
     match parsed {
         Ok(c) => ffi::Consider {
-            player_id: c.player_id, target_id: c.target_id,
-            faction: c.faction, level: c.level, ok: true,
+            player_id: c.player_id,
+            target_id: c.target_id,
+            faction: c.faction,
+            level: c.level,
+            ok: true,
         },
         Err(_) => ffi::Consider {
-            player_id: 0, target_id: 0, faction: 0, level: 0, ok: false,
+            player_id: 0,
+            target_id: 0,
+            faction: 0,
+            level: 0,
+            ok: false,
         },
     }
 }
@@ -1476,21 +1829,40 @@ fn decode_spawn_rename(bytes: &[u8]) -> ffi::SpawnRename {
 
 fn decode_client_target(bytes: &[u8]) -> ffi::ClientTarget {
     match backend::parse_client_target(bytes) {
-        Ok(t) => ffi::ClientTarget { new_target: t.new_target, ok: true },
-        Err(_) => ffi::ClientTarget { new_target: 0, ok: false },
+        Ok(t) => ffi::ClientTarget {
+            new_target: t.new_target,
+            ok: true,
+        },
+        Err(_) => ffi::ClientTarget {
+            new_target: 0,
+            ok: false,
+        },
     }
 }
 
 fn decode_death(bytes: &[u8]) -> ffi::Death {
     match backend::parse_death(bytes) {
         Ok(d) => ffi::Death {
-            spawn_id: d.spawn_id, killer_id: d.killer_id, corpse_id: d.corpse_id,
-            kind: d.kind, spell_id: d.spell_id, zone_id: d.zone_id,
-            zone_instance: d.zone_instance, damage: d.damage, ok: true,
+            spawn_id: d.spawn_id,
+            killer_id: d.killer_id,
+            corpse_id: d.corpse_id,
+            kind: d.kind,
+            spell_id: d.spell_id,
+            zone_id: d.zone_id,
+            zone_instance: d.zone_instance,
+            damage: d.damage,
+            ok: true,
         },
         Err(_) => ffi::Death {
-            spawn_id: 0, killer_id: 0, corpse_id: 0, kind: 0, spell_id: 0,
-            zone_id: 0, zone_instance: 0, damage: 0, ok: false,
+            spawn_id: 0,
+            killer_id: 0,
+            corpse_id: 0,
+            kind: 0,
+            spell_id: 0,
+            zone_id: 0,
+            zone_instance: 0,
+            damage: 0,
+            ok: false,
         },
     }
 }
@@ -1498,22 +1870,39 @@ fn decode_death(bytes: &[u8]) -> ffi::Death {
 fn decode_click_object(bytes: &[u8]) -> ffi::ClickObject {
     match backend::parse_click_object(bytes) {
         Ok(c) => ffi::ClickObject {
-            drop_id: c.drop_id, spawn_id: c.spawn_id, ok: true,
+            drop_id: c.drop_id,
+            spawn_id: c.spawn_id,
+            ok: true,
         },
-        Err(_) => ffi::ClickObject { drop_id: 0, spawn_id: 0, ok: false },
+        Err(_) => ffi::ClickObject {
+            drop_id: 0,
+            spawn_id: 0,
+            ok: false,
+        },
     }
 }
 
 fn decode_illusion(bytes: &[u8]) -> ffi::Illusion {
     match backend::parse_illusion(bytes) {
         Ok(i) => ffi::Illusion {
-            spawn_id: i.spawn_id, name: i.name, race: i.race,
-            gender: i.gender, texture: i.texture, helm: i.helm, face: i.face,
+            spawn_id: i.spawn_id,
+            name: i.name,
+            race: i.race,
+            gender: i.gender,
+            texture: i.texture,
+            helm: i.helm,
+            face: i.face,
             ok: true,
         },
         Err(_) => ffi::Illusion {
-            spawn_id: 0, name: String::new(), race: 0, gender: 0,
-            texture: 0, helm: 0, face: 0, ok: false,
+            spawn_id: 0,
+            name: String::new(),
+            race: 0,
+            gender: 0,
+            texture: 0,
+            helm: 0,
+            face: 0,
+            ok: false,
         },
     }
 }
@@ -1528,15 +1917,23 @@ fn decode_buff(bytes: &[u8]) -> ffi::Buff {
             #[cfg(not(feature = "backend-eql"))]
             let change_type = 0u32;
             ffi::Buff {
-                spawn_id: b.spawn_id, spell_id: b.spell_id,
-                form: b.form, slot: b.slot, dur_ticks: b.dur_ticks,
+                spawn_id: b.spawn_id,
+                spell_id: b.spell_id,
+                form: b.form,
+                slot: b.slot,
+                dur_ticks: b.dur_ticks,
                 change_type,
                 ok: true,
             }
         }
         Err(_) => ffi::Buff {
-            spawn_id: 0, spell_id: 0, form: 0, slot: 0, dur_ticks: 0,
-            change_type: 0, ok: false,
+            spawn_id: 0,
+            spell_id: 0,
+            form: 0,
+            slot: 0,
+            dur_ticks: 0,
+            change_type: 0,
+            ok: false,
         },
     }
 }
@@ -1544,11 +1941,20 @@ fn decode_buff(bytes: &[u8]) -> ffi::Buff {
 fn decode_action2(bytes: &[u8]) -> ffi::Action2 {
     match backend::parse_action2(bytes) {
         Ok(a) => ffi::Action2 {
-            target: a.target, source: a.source, damage: a.damage,
-            spell: a.spell, kind: a.kind, ok: true,
+            target: a.target,
+            source: a.source,
+            damage: a.damage,
+            spell: a.spell,
+            kind: a.kind,
+            ok: true,
         },
         Err(_) => ffi::Action2 {
-            target: 0, source: 0, damage: 0, spell: 0, kind: 0, ok: false,
+            target: 0,
+            source: 0,
+            damage: 0,
+            spell: 0,
+            kind: 0,
+            ok: false,
         },
     }
 }
@@ -1564,14 +1970,32 @@ fn spawn_err() -> ffi::Spawn {
         last_name: String::new(),
         title: String::new(),
         suffix: String::new(),
-        spawn_id: 0, misc_data: 0, body_type: 0, race: 0,
-        deity: 0, guild_id: 0, guild_server_id: 0, class_: 0, class_mask: 0,
+        spawn_id: 0,
+        misc_data: 0,
+        body_type: 0,
+        race: 0,
+        deity: 0,
+        guild_id: 0,
+        guild_server_id: 0,
+        class_: 0,
+        class_mask: 0,
         pet_owner_id: 0,
         equip_data: [0; 45],
         pos_data: [0; 5],
-        level: 0, npc: 0, other_data: 0, char_properties: 0,
-        cur_hp: 0, holding: 0, state: 0, light: 0, is_mercenary: 0,
-        x: 0, y: 0, z: 0, max_hp: 0, heading: 0,
+        level: 0,
+        npc: 0,
+        other_data: 0,
+        char_properties: 0,
+        cur_hp: 0,
+        holding: 0,
+        state: 0,
+        light: 0,
+        is_mercenary: 0,
+        x: 0,
+        y: 0,
+        z: 0,
+        max_hp: 0,
+        heading: 0,
     }
 }
 
@@ -1606,7 +2030,11 @@ fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
             state: s.state,
             light: s.light,
             is_mercenary: s.is_mercenary,
-            x: 0, y: 0, z: 0, max_hp: 0, heading: 0,
+            x: 0,
+            y: 0,
+            z: 0,
+            max_hp: 0,
+            heading: 0,
         },
         Err(_) => spawn_err(),
     }
@@ -1655,11 +2083,20 @@ fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
 fn decode_wear_change(bytes: &[u8]) -> ffi::WearChange {
     match backend::parse_wear_change(bytes) {
         Ok(w) => ffi::WearChange {
-            spawn_id: w.spawn_id, subcommand: w.subcommand,
-            arg1: w.arg1, arg2: w.arg2, arg3: w.arg3, ok: true,
+            spawn_id: w.spawn_id,
+            subcommand: w.subcommand,
+            arg1: w.arg1,
+            arg2: w.arg2,
+            arg3: w.arg3,
+            ok: true,
         },
         Err(_) => ffi::WearChange {
-            spawn_id: 0, subcommand: 0, arg1: 0, arg2: 0, arg3: 0, ok: false,
+            spawn_id: 0,
+            subcommand: 0,
+            arg1: 0,
+            arg2: 0,
+            arg3: 0,
+            ok: false,
         },
     }
 }
@@ -1667,11 +2104,16 @@ fn decode_wear_change(bytes: &[u8]) -> ffi::WearChange {
 fn decode_zone_change(bytes: &[u8]) -> ffi::ZoneChange {
     match backend::parse_zone_change(bytes) {
         Ok(z) => ffi::ZoneChange {
-            name: z.name, zone_id: z.zone_id,
-            zone_instance: z.zone_instance, ok: true,
+            name: z.name,
+            zone_id: z.zone_id,
+            zone_instance: z.zone_instance,
+            ok: true,
         },
         Err(_) => ffi::ZoneChange {
-            name: String::new(), zone_id: 0, zone_instance: 0, ok: false,
+            name: String::new(),
+            zone_id: 0,
+            zone_instance: 0,
+            ok: false,
         },
     }
 }
@@ -1679,12 +2121,18 @@ fn decode_zone_change(bytes: &[u8]) -> ffi::ZoneChange {
 fn decode_dz_info(bytes: &[u8]) -> ffi::DzInfo {
     match backend::parse_dz_info(bytes) {
         Ok(d) => ffi::DzInfo {
-            new_dz: d.new_dz, max_players: d.max_players,
-            dz_name: d.dz_name, name: d.name, ok: true,
+            new_dz: d.new_dz,
+            max_players: d.max_players,
+            dz_name: d.dz_name,
+            name: d.name,
+            ok: true,
         },
         Err(_) => ffi::DzInfo {
-            new_dz: 0, max_players: 0,
-            dz_name: String::new(), name: String::new(), ok: false,
+            new_dz: 0,
+            max_players: 0,
+            dz_name: String::new(),
+            name: String::new(),
+            ok: false,
         },
     }
 }
@@ -1692,12 +2140,22 @@ fn decode_dz_info(bytes: &[u8]) -> ffi::DzInfo {
 fn decode_dz_switch_info(bytes: &[u8]) -> ffi::DzSwitch {
     match backend::parse_dz_switch_info(bytes) {
         Ok(s) => ffi::DzSwitch {
-            zone_id: s.zone_id, instance_id: s.instance_id, kind: s.kind,
-            x: s.x, y: s.y, z: s.z, ok: true,
+            zone_id: s.zone_id,
+            instance_id: s.instance_id,
+            kind: s.kind,
+            x: s.x,
+            y: s.y,
+            z: s.z,
+            ok: true,
         },
         Err(_) => ffi::DzSwitch {
-            zone_id: 0, instance_id: 0, kind: 0,
-            x: 0.0, y: 0.0, z: 0.0, ok: false,
+            zone_id: 0,
+            instance_id: 0,
+            kind: 0,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            ok: false,
         },
     }
 }
@@ -1705,10 +2163,16 @@ fn decode_dz_switch_info(bytes: &[u8]) -> ffi::DzSwitch {
 fn decode_start_cast(bytes: &[u8]) -> ffi::StartCast {
     match backend::parse_start_cast(bytes) {
         Ok(s) => ffi::StartCast {
-            slot: s.slot, spell_id: s.spell_id, target_id: s.target_id, ok: true,
+            slot: s.slot,
+            spell_id: s.spell_id,
+            target_id: s.target_id,
+            ok: true,
         },
         Err(_) => ffi::StartCast {
-            slot: 0, spell_id: 0, target_id: 0, ok: false,
+            slot: 0,
+            spell_id: 0,
+            target_id: 0,
+            ok: false,
         },
     }
 }
@@ -1716,11 +2180,20 @@ fn decode_start_cast(bytes: &[u8]) -> ffi::StartCast {
 fn decode_action(bytes: &[u8]) -> ffi::Action {
     match backend::parse_action(bytes) {
         Ok(a) => ffi::Action {
-            target: a.target, source: a.source, spell: a.spell,
-            level: a.level, kind: a.kind, ok: true,
+            target: a.target,
+            source: a.source,
+            spell: a.spell,
+            level: a.level,
+            kind: a.kind,
+            ok: true,
         },
         Err(_) => ffi::Action {
-            target: 0, source: 0, spell: 0, level: 0, kind: 0, ok: false,
+            target: 0,
+            source: 0,
+            spell: 0,
+            level: 0,
+            kind: 0,
+            ok: false,
         },
     }
 }
@@ -1728,11 +2201,20 @@ fn decode_action(bytes: &[u8]) -> ffi::Action {
 fn decode_action_alt(bytes: &[u8]) -> ffi::Action {
     match backend::parse_action_alt(bytes) {
         Ok(a) => ffi::Action {
-            target: a.target, source: a.source, spell: a.spell,
-            level: a.level, kind: a.kind, ok: true,
+            target: a.target,
+            source: a.source,
+            spell: a.spell,
+            level: a.level,
+            kind: a.kind,
+            ok: true,
         },
         Err(_) => ffi::Action {
-            target: 0, source: 0, spell: 0, level: 0, kind: 0, ok: false,
+            target: 0,
+            source: 0,
+            spell: 0,
+            level: 0,
+            kind: 0,
+            ok: false,
         },
     }
 }
@@ -1740,18 +2222,28 @@ fn decode_action_alt(bytes: &[u8]) -> ffi::Action {
 fn decode_group_disband(bytes: &[u8]) -> ffi::GroupDisband {
     match backend::parse_group_disband(bytes) {
         Ok(g) => ffi::GroupDisband {
-            yourname: g.yourname, membername: g.membername, ok: true,
+            yourname: g.yourname,
+            membername: g.membername,
+            ok: true,
         },
         Err(_) => ffi::GroupDisband {
-            yourname: String::new(), membername: String::new(), ok: false,
+            yourname: String::new(),
+            membername: String::new(),
+            ok: false,
         },
     }
 }
 
 fn decode_group_follow(bytes: &[u8]) -> ffi::GroupFollow {
     match backend::parse_group_follow(bytes) {
-        Ok(g) => ffi::GroupFollow { name: g.name, ok: true },
-        Err(_) => ffi::GroupFollow { name: String::new(), ok: false },
+        Ok(g) => ffi::GroupFollow {
+            name: g.name,
+            ok: true,
+        },
+        Err(_) => ffi::GroupFollow {
+            name: String::new(),
+            ok: false,
+        },
     }
 }
 
@@ -1764,12 +2256,20 @@ fn decode_group_roster(bytes: &[u8]) -> ffi::GroupRoster {
             names: g.members.join("\n"),
             ok: true,
         },
-        Err(_) => ffi::GroupRoster { group_id: 0, names: String::new(), ok: false },
+        Err(_) => ffi::GroupRoster {
+            group_id: 0,
+            names: String::new(),
+            ok: false,
+        },
     }
 }
 #[cfg(not(feature = "backend-eql"))]
 fn decode_group_roster(_bytes: &[u8]) -> ffi::GroupRoster {
-    ffi::GroupRoster { group_id: 0, names: String::new(), ok: false }
+    ffi::GroupRoster {
+        group_id: 0,
+        names: String::new(),
+        ok: false,
+    }
 }
 
 fn decode_group_member_list(bytes: &[u8]) -> ffi::GroupMemberList {
@@ -1792,10 +2292,18 @@ fn decode_group_member_list(bytes: &[u8]) -> ffi::GroupMemberList {
 fn decode_corpse_loc(bytes: &[u8]) -> ffi::CorpseLoc {
     match backend::parse_corpse_loc(bytes) {
         Ok(c) => ffi::CorpseLoc {
-            spawn_id: c.spawn_id, x: c.x, y: c.y, z: c.z, ok: true,
+            spawn_id: c.spawn_id,
+            x: c.x,
+            y: c.y,
+            z: c.z,
+            ok: true,
         },
         Err(_) => ffi::CorpseLoc {
-            spawn_id: 0, x: 0.0, y: 0.0, z: 0.0, ok: false,
+            spawn_id: 0,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            ok: false,
         },
     }
 }
@@ -1806,18 +2314,31 @@ fn decode_door(bytes: &[u8]) -> ffi::Door {
     match backend::parse_door(bytes) {
         Ok(d) => ffi::Door {
             name: d.name,
-            y: d.y, x: d.x, z: d.z, heading: d.heading,
-            incline: d.incline, size: d.size,
-            door_id: d.door_id, opentype: d.opentype,
-            spawnstate: d.spawnstate, invertstate: d.invertstate,
+            y: d.y,
+            x: d.x,
+            z: d.z,
+            heading: d.heading,
+            incline: d.incline,
+            size: d.size,
+            door_id: d.door_id,
+            opentype: d.opentype,
+            spawnstate: d.spawnstate,
+            invertstate: d.invertstate,
             zone_point: d.zone_point,
             ok: true,
         },
         Err(_) => ffi::Door {
             name: String::new(),
-            y: 0.0, x: 0.0, z: 0.0, heading: 0.0,
-            incline: 0, size: 0,
-            door_id: 0, opentype: 0, spawnstate: 0, invertstate: 0,
+            y: 0.0,
+            x: 0.0,
+            z: 0.0,
+            heading: 0.0,
+            incline: 0,
+            size: 0,
+            door_id: 0,
+            opentype: 0,
+            spawnstate: 0,
+            invertstate: 0,
             zone_point: 0,
             ok: false,
         },
@@ -1829,14 +2350,20 @@ fn decode_ground_spawn(bytes: &[u8]) -> ffi::GroundSpawn {
         Ok(g) => ffi::GroundSpawn {
             drop_id: g.drop_id,
             id_file: g.id_file,
-            heading: g.heading, y: g.y, x: g.x, z: g.z,
+            heading: g.heading,
+            y: g.y,
+            x: g.x,
+            z: g.z,
             bytes_consumed: g.bytes_consumed,
             ok: true,
         },
         Err(_) => ffi::GroundSpawn {
             drop_id: 0,
             id_file: String::new(),
-            heading: 0.0, y: 0.0, x: 0.0, z: 0.0,
+            heading: 0.0,
+            y: 0.0,
+            x: 0.0,
+            z: 0.0,
             bytes_consumed: 0,
             ok: false,
         },
@@ -1847,14 +2374,22 @@ fn decode_zone_point(bytes: &[u8]) -> ffi::ZonePoint {
     match backend::parse_zone_point(bytes) {
         Ok(p) => ffi::ZonePoint {
             zone_trigger: p.zone_trigger,
-            y: p.y, x: p.x, z: p.z, heading: p.heading,
-            zone_id: p.zone_id, zone_instance: p.zone_instance,
+            y: p.y,
+            x: p.x,
+            z: p.z,
+            heading: p.heading,
+            zone_id: p.zone_id,
+            zone_instance: p.zone_instance,
             ok: true,
         },
         Err(_) => ffi::ZonePoint {
             zone_trigger: 0,
-            y: 0.0, x: 0.0, z: 0.0, heading: 0.0,
-            zone_id: 0, zone_instance: 0,
+            y: 0.0,
+            x: 0.0,
+            z: 0.0,
+            heading: 0.0,
+            zone_id: 0,
+            zone_instance: 0,
             ok: false,
         },
     }
@@ -1864,20 +2399,27 @@ fn decode_simple_message(bytes: &[u8]) -> ffi::SimpleMessage {
     match backend::parse_simple_message(bytes) {
         Ok(m) => ffi::SimpleMessage {
             message_format: m.message_format,
-            message_color:  m.message_color,
+            message_color: m.message_color,
             ok: true,
         },
         Err(_) => ffi::SimpleMessage {
-            message_format: 0, message_color: 0, ok: false,
+            message_format: 0,
+            message_color: 0,
+            ok: false,
         },
     }
 }
 
 fn formatted_message_err() -> ffi::FormattedMessage {
     ffi::FormattedMessage {
-        message_format: 0, message_color: 0,
-        spell_id: 0, msg_type: 0, spawn_id: 0, format_id: 0,
-        args: Vec::new(), ok: false,
+        message_format: 0,
+        message_color: 0,
+        spell_id: 0,
+        msg_type: 0,
+        spawn_id: 0,
+        format_id: 0,
+        args: Vec::new(),
+        ok: false,
     }
 }
 
@@ -1888,9 +2430,13 @@ fn decode_formatted_message(bytes: &[u8]) -> ffi::FormattedMessage {
     match backend::parse_formatted_message(bytes) {
         Ok(m) => ffi::FormattedMessage {
             message_format: m.message_format,
-            message_color:  m.message_color,
-            spell_id: 0, msg_type: 0, spawn_id: 0, format_id: 0,
-            args: Vec::new(), ok: true,
+            message_color: m.message_color,
+            spell_id: 0,
+            msg_type: 0,
+            spawn_id: 0,
+            format_id: 0,
+            args: Vec::new(),
+            ok: true,
         },
         Err(_) => formatted_message_err(),
     }
@@ -1906,7 +2452,7 @@ fn decode_formatted_message(bytes: &[u8]) -> ffi::FormattedMessage {
     match backend::parse_formatted_message(bytes) {
         Ok(m) => ffi::FormattedMessage {
             message_format: m.format_id,
-            message_color:  m.msg_color,
+            message_color: m.msg_color,
             spell_id: 0,
             msg_type: 0,
             spawn_id: 0,
@@ -1976,15 +2522,22 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
             level: p.level,
             level1: p.level1,
             bind0_zone_id: p.bind0_zone_id,
-            bind0_x: p.bind0_x, bind0_y: p.bind0_y,
-            bind0_z: p.bind0_z, bind0_heading: p.bind0_heading,
+            bind0_x: p.bind0_x,
+            bind0_y: p.bind0_y,
+            bind0_z: p.bind0_z,
+            bind0_heading: p.bind0_heading,
             deity: p.deity,
             intoxication: p.intoxication,
             points: p.points,
             mana: p.mana,
             cur_hp: p.cur_hp,
-            str_: p.str_, sta: p.sta, cha: p.cha, dex: p.dex,
-            int_: p.int_, agi: p.agi, wis: p.wis,
+            str_: p.str_,
+            sta: p.sta,
+            cha: p.cha,
+            dex: p.dex,
+            int_: p.int_,
+            agi: p.agi,
+            wis: p.wis,
             aa_ids: p.aa_ids,
             aa_values: p.aa_values,
             skills: p.skills,
@@ -1995,10 +2548,14 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
             spell_slot_refresh: p.spell_slot_refresh,
             buff_spell_ids: p.buff_spell_ids,
             buff_durations: p.buff_durations,
-            platinum: p.platinum, gold: p.gold,
-            silver: p.silver, copper: p.copper,
-            platinum_cursor: p.platinum_cursor, gold_cursor: p.gold_cursor,
-            silver_cursor: p.silver_cursor, copper_cursor: p.copper_cursor,
+            platinum: p.platinum,
+            gold: p.gold,
+            silver: p.silver,
+            copper: p.copper,
+            platinum_cursor: p.platinum_cursor,
+            gold_cursor: p.gold_cursor,
+            silver_cursor: p.silver_cursor,
+            copper_cursor: p.copper_cursor,
             aa_spent: p.aa_spent,
             aa_assigned: p.aa_assigned,
             aa_unspent: p.aa_unspent,
@@ -2014,7 +2571,10 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
             languages: p.languages,
             zone_id: p.zone_id,
             zone_instance: p.zone_instance,
-            x: p.x, y: p.y, z: p.z, heading: p.heading,
+            x: p.x,
+            y: p.y,
+            z: p.z,
+            heading: p.heading,
             stand_state: p.stand_state,
             anon: p.anon,
             guild_id: p.guild_id,
@@ -2023,8 +2583,10 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
             gold_inventory: p.gold_inventory,
             silver_inventory: p.silver_inventory,
             copper_inventory: p.copper_inventory,
-            platinum_bank: p.platinum_bank, gold_bank: p.gold_bank,
-            silver_bank: p.silver_bank, copper_bank: p.copper_bank,
+            platinum_bank: p.platinum_bank,
+            gold_bank: p.gold_bank,
+            silver_bank: p.silver_bank,
+            copper_bank: p.copper_bank,
             platinum_shared: p.platinum_shared,
             career_tribute: p.career_tribute,
             current_tribute: p.current_tribute,
@@ -2044,11 +2606,31 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
             ok: false,
             bytes_consumed: 0,
             checksum: 0,
-            gender: 0, race: 0, class_: 0, class_mask: 0, stance: 0, invocation: 0, level: 0, level1: 0,
+            gender: 0,
+            race: 0,
+            class_: 0,
+            class_mask: 0,
+            stance: 0,
+            invocation: 0,
+            level: 0,
+            level1: 0,
             bind0_zone_id: 0,
-            bind0_x: 0.0, bind0_y: 0.0, bind0_z: 0.0, bind0_heading: 0.0,
-            deity: 0, intoxication: 0, points: 0, mana: 0, cur_hp: 0,
-            str_: 0, sta: 0, cha: 0, dex: 0, int_: 0, agi: 0, wis: 0,
+            bind0_x: 0.0,
+            bind0_y: 0.0,
+            bind0_z: 0.0,
+            bind0_heading: 0.0,
+            deity: 0,
+            intoxication: 0,
+            points: 0,
+            mana: 0,
+            cur_hp: 0,
+            str_: 0,
+            sta: 0,
+            cha: 0,
+            dex: 0,
+            int_: 0,
+            agi: 0,
+            wis: 0,
             aa_ids: Vec::new(),
             aa_values: Vec::new(),
             skills: Vec::new(),
@@ -2059,31 +2641,59 @@ fn decode_player_profile(bytes: &[u8]) -> ffi::PlayerProfile {
             spell_slot_refresh: Vec::new(),
             buff_spell_ids: Vec::new(),
             buff_durations: Vec::new(),
-            platinum: 0, gold: 0, silver: 0, copper: 0,
-            platinum_cursor: 0, gold_cursor: 0,
-            silver_cursor: 0, copper_cursor: 0,
-            aa_spent: 0, aa_assigned: 0, aa_unspent: 0,
-            endurance: 0, exp_aa: 0,
+            platinum: 0,
+            gold: 0,
+            silver: 0,
+            copper: 0,
+            platinum_cursor: 0,
+            gold_cursor: 0,
+            silver_cursor: 0,
+            copper_cursor: 0,
+            aa_spent: 0,
+            aa_assigned: 0,
+            aa_unspent: 0,
+            endurance: 0,
+            exp_aa: 0,
             name: String::new(),
             last_name: String::new(),
-            birthday_time: 0, account_create_date: 0,
-            last_save_time: 0, time_played_min: 0, expansions: 0,
+            birthday_time: 0,
+            account_create_date: 0,
+            last_save_time: 0,
+            time_played_min: 0,
+            expansions: 0,
             languages: Vec::new(),
-            zone_id: 0, zone_instance: 0,
-            x: 0.0, y: 0.0, z: 0.0, heading: 0.0,
-            stand_state: 0, anon: 0,
-            guild_id: 0, guild_server_id: 0,
-            platinum_inventory: 0, gold_inventory: 0,
-            silver_inventory: 0, copper_inventory: 0,
-            platinum_bank: 0, gold_bank: 0,
-            silver_bank: 0, copper_bank: 0,
+            zone_id: 0,
+            zone_instance: 0,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            heading: 0.0,
+            stand_state: 0,
+            anon: 0,
+            guild_id: 0,
+            guild_server_id: 0,
+            platinum_inventory: 0,
+            gold_inventory: 0,
+            silver_inventory: 0,
+            copper_inventory: 0,
+            platinum_bank: 0,
+            gold_bank: 0,
+            silver_bank: 0,
+            copper_bank: 0,
             platinum_shared: 0,
-            career_tribute: 0, current_tribute: 0,
-            current_rad_crystals: 0, career_rad_crystals: 0,
-            current_ebon_crystals: 0, career_ebon_crystals: 0,
+            career_tribute: 0,
+            current_tribute: 0,
+            current_rad_crystals: 0,
+            career_rad_crystals: 0,
+            current_ebon_crystals: 0,
+            career_ebon_crystals: 0,
             autosplit: 0,
-            ldon_guk_points: 0, ldon_mir_points: 0, ldon_mmc_points: 0,
-            ldon_ruj_points: 0, ldon_tak_points: 0, ldon_avail_points: 0,
+            ldon_guk_points: 0,
+            ldon_mir_points: 0,
+            ldon_mmc_points: 0,
+            ldon_ruj_points: 0,
+            ldon_tak_points: 0,
+            ldon_avail_points: 0,
         },
     }
 }
@@ -2093,19 +2703,23 @@ fn decode_new_zone(bytes: &[u8]) -> ffi::NewZone {
     match parsed {
         Ok(z) => ffi::NewZone {
             short_name: z.short_name,
-            long_name:  z.long_name,
-            zonefile:   z.zonefile,
+            long_name: z.long_name,
+            zonefile: z.zonefile,
             zone_exp_multiplier: z.zone_exp_multiplier,
-            safe_y: z.safe_y, safe_x: z.safe_x, safe_z: z.safe_z,
+            safe_y: z.safe_y,
+            safe_x: z.safe_x,
+            safe_z: z.safe_z,
             zone_id: z.zone_id,
             ok: true,
         },
         Err(_) => ffi::NewZone {
             short_name: String::new(),
-            long_name:  String::new(),
-            zonefile:   String::new(),
+            long_name: String::new(),
+            zonefile: String::new(),
             zone_exp_multiplier: 0.0,
-            safe_y: 0.0, safe_x: 0.0, safe_z: 0.0,
+            safe_y: 0.0,
+            safe_x: 0.0,
+            safe_z: 0.0,
             zone_id: 0,
             ok: false,
         },
@@ -2119,17 +2733,30 @@ fn decode_player_self_pos(bytes: &[u8]) -> ffi::PlayerSelfPos {
     match parsed {
         Ok(p) => ffi::PlayerSelfPos {
             spawn_id: p.spawn_id,
-            x: p.x, y: p.y, z: p.z,
-            delta_x: p.delta_x, delta_y: p.delta_y, delta_z: p.delta_z,
-            heading: p.heading, delta_heading: p.delta_heading,
-            animation: p.animation, pitch: p.pitch,
+            x: p.x,
+            y: p.y,
+            z: p.z,
+            delta_x: p.delta_x,
+            delta_y: p.delta_y,
+            delta_z: p.delta_z,
+            heading: p.heading,
+            delta_heading: p.delta_heading,
+            animation: p.animation,
+            pitch: p.pitch,
             ok: true,
         },
         Err(_) => ffi::PlayerSelfPos {
             spawn_id: 0,
-            x: 0.0, y: 0.0, z: 0.0,
-            delta_x: 0.0, delta_y: 0.0, delta_z: 0.0,
-            heading: 0, delta_heading: 0, animation: 0, pitch: 0,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            delta_x: 0.0,
+            delta_y: 0.0,
+            delta_z: 0.0,
+            heading: 0,
+            delta_heading: 0,
+            animation: 0,
+            pitch: 0,
             ok: false,
         },
     }
@@ -2138,18 +2765,33 @@ fn decode_player_self_pos(bytes: &[u8]) -> ffi::PlayerSelfPos {
 fn decode_player_spawn_pos(bytes: &[u8]) -> ffi::PlayerSpawnPos {
     match backend::parse_player_spawn_pos(bytes) {
         Ok(p) => ffi::PlayerSpawnPos {
-            spawn_id: p.spawn_id, spawn_id2: p.spawn_id2,
-            x: p.x, y: p.y, z: p.z,
-            delta_x: p.delta_x, delta_y: p.delta_y, delta_z: p.delta_z,
-            heading: p.heading, delta_heading: p.delta_heading,
-            animation: p.animation, pitch: p.pitch,
+            spawn_id: p.spawn_id,
+            spawn_id2: p.spawn_id2,
+            x: p.x,
+            y: p.y,
+            z: p.z,
+            delta_x: p.delta_x,
+            delta_y: p.delta_y,
+            delta_z: p.delta_z,
+            heading: p.heading,
+            delta_heading: p.delta_heading,
+            animation: p.animation,
+            pitch: p.pitch,
             ok: true,
         },
         Err(_) => ffi::PlayerSpawnPos {
-            spawn_id: 0, spawn_id2: 0,
-            x: 0, y: 0, z: 0,
-            delta_x: 0, delta_y: 0, delta_z: 0,
-            heading: 0, delta_heading: 0, animation: 0, pitch: 0,
+            spawn_id: 0,
+            spawn_id2: 0,
+            x: 0,
+            y: 0,
+            z: 0,
+            delta_x: 0,
+            delta_y: 0,
+            delta_z: 0,
+            heading: 0,
+            delta_heading: 0,
+            animation: 0,
+            pitch: 0,
             ok: false,
         },
     }
@@ -2159,16 +2801,28 @@ fn decode_npc_move_update(bytes: &[u8]) -> ffi::NpcMove {
     match backend::parse_npc_move_update(bytes) {
         Ok(n) => ffi::NpcMove {
             spawn_id: n.spawn_id,
-            x: n.x, y: n.y, z: n.z, heading: n.heading,
-            delta_x: n.delta_x, delta_y: n.delta_y, delta_z: n.delta_z,
-            delta_heading: n.delta_heading, animation: n.animation,
+            x: n.x,
+            y: n.y,
+            z: n.z,
+            heading: n.heading,
+            delta_x: n.delta_x,
+            delta_y: n.delta_y,
+            delta_z: n.delta_z,
+            delta_heading: n.delta_heading,
+            animation: n.animation,
             ok: true,
         },
         Err(_) => ffi::NpcMove {
             spawn_id: 0,
-            x: 0, y: 0, z: 0, heading: 0,
-            delta_x: 0, delta_y: 0, delta_z: 0,
-            delta_heading: 0, animation: 0,
+            x: 0,
+            y: 0,
+            z: 0,
+            heading: 0,
+            delta_x: 0,
+            delta_y: 0,
+            delta_z: 0,
+            delta_heading: 0,
+            animation: 0,
             ok: false,
         },
     }

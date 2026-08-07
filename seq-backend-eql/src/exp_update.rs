@@ -30,10 +30,10 @@ pub fn parse_exp_update(bytes: &[u8]) -> Result<ExpUpdate, ExpUpdateError> {
     let raw: expUpdateStruct =
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const expUpdateStruct) };
     Ok(ExpUpdate {
-        exp:       unsafe { std::ptr::addr_of!(raw.exp).read_unaligned() },
-        unknown0:  unsafe { std::ptr::addr_of!(raw.unknown0004).read_unaligned() },
-        kind:      unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
-        unknown1:  unsafe { std::ptr::addr_of!(raw.unknown0012).read_unaligned() },
+        exp: unsafe { std::ptr::addr_of!(raw.exp).read_unaligned() },
+        unknown0: unsafe { std::ptr::addr_of!(raw.unknown0004).read_unaligned() },
+        kind: unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
+        unknown1: unsafe { std::ptr::addr_of!(raw.unknown0012).read_unaligned() },
     })
 }
 

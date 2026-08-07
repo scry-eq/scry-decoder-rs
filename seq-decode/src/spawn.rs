@@ -75,11 +75,26 @@ impl Default for Spawn {
             last_name: String::new(),
             title: String::new(),
             suffix: String::new(),
-            spawn_id: 0, misc_data: 0, body_type: 0, race: 0, deity: 0,
-            guild_id: 0, guild_server_id: 0, class_: 0, pet_owner_id: 0,
-            equip_data: [0; 45], pos_data: [0; 5],
-            level: 0, npc: 0, other_data: 0, char_properties: 0,
-            cur_hp: 0, holding: 0, state: 0, light: 0, is_mercenary: 0,
+            spawn_id: 0,
+            misc_data: 0,
+            body_type: 0,
+            race: 0,
+            deity: 0,
+            guild_id: 0,
+            guild_server_id: 0,
+            class_: 0,
+            pet_owner_id: 0,
+            equip_data: [0; 45],
+            pos_data: [0; 5],
+            level: 0,
+            npc: 0,
+            other_data: 0,
+            char_properties: 0,
+            cur_hp: 0,
+            holding: 0,
+            state: 0,
+            light: 0,
+            is_mercenary: 0,
         }
     }
 }
@@ -87,8 +102,8 @@ impl Default for Spawn {
 /// Bits in `otherData` — needed to drive the two conditional reads
 /// (aura strings, optional title/suffix). Mirrors
 /// `everquest.h:1093-1100`.
-const OTHER_DATA_AURA:       u8 = 1 << 2;
-const OTHER_DATA_HAS_TITLE:  u8 = 1 << 4;
+const OTHER_DATA_AURA: u8 = 1 << 2;
+const OTHER_DATA_HAS_TITLE: u8 = 1 << 4;
 const OTHER_DATA_HAS_SUFFIX: u8 = 1 << 5;
 
 fn bytes_to_string(src: &[u8]) -> String {
@@ -103,9 +118,9 @@ pub fn parse_spawn(bytes: &[u8]) -> Result<Spawn, SpawnError> {
     out.name = bytes_to_string(name);
 
     out.spawn_id = c.read_u32_le()?;
-    out.level    = c.read_u8()?;
+    out.level = c.read_u8()?;
     c.skip(16)?;
-    out.npc       = c.read_u8()?;
+    out.npc = c.read_u8()?;
     out.misc_data = c.read_u32_le()?;
     out.other_data = c.read_u8()?;
     c.skip(8)?; // unknown3, unknown4
@@ -140,13 +155,13 @@ pub fn parse_spawn(bytes: &[u8]) -> Result<Spawn, SpawnError> {
     out.cur_hp = c.read_u8()?;
     c.skip(35)?; // facestyle, walk/run speeds, unknown5
 
-    out.race            = c.read_u32_le()?;
-    out.holding         = c.read_u8()?;
-    out.deity           = c.read_u32_le()?;
-    out.guild_id        = c.read_u32_le()?;
+    out.race = c.read_u32_le()?;
+    out.holding = c.read_u8()?;
+    out.deity = c.read_u32_le()?;
+    out.guild_id = c.read_u32_le()?;
     out.guild_server_id = c.read_u32_le()?;
     // guildstatus disappeared 2018-11-14; the daemon hard-codes 0.
-    out.class_          = c.read_u32_le()?;
+    out.class_ = c.read_u32_le()?;
 
     c.skip(1)?;
     out.state = c.read_u8()?;
@@ -170,17 +185,13 @@ pub fn parse_spawn(bytes: &[u8]) -> Result<Spawn, SpawnError> {
     c.skip(if out.npc == 1 { 49 } else { 37 })?;
 
     let race = out.race;
-    let read_full_equip = out.npc == 0
-        || race <= 12
-        || race == 128
-        || race == 130
-        || race == 330
-        || race == 522;
+    let read_full_equip =
+        out.npc == 0 || race <= 12 || race == 128 || race == 130 || race == 330 || race == 522;
     if read_full_equip {
         c.skip(36)?; // equipment colors
         for slot in 0..9 {
             let base = slot * 5;
-            out.equip_data[base    ] = c.read_u32_le()?; // itemId
+            out.equip_data[base] = c.read_u32_le()?; // itemId
             out.equip_data[base + 1] = c.read_u32_le()?; // equip3
             out.equip_data[base + 2] = c.read_u32_le()?; // equip2
             out.equip_data[base + 3] = c.read_u32_le()?; // equip1
@@ -190,7 +201,7 @@ pub fn parse_spawn(bytes: &[u8]) -> Result<Spawn, SpawnError> {
         c.skip(20)?;
         for slot in [7usize, 8] {
             let base = slot * 5;
-            out.equip_data[base    ] = c.read_u32_le()?;
+            out.equip_data[base] = c.read_u32_le()?;
             out.equip_data[base + 1] = c.read_u32_le()?;
             out.equip_data[base + 2] = c.read_u32_le()?;
             out.equip_data[base + 3] = c.read_u32_le()?;
@@ -250,36 +261,36 @@ mod tests {
     fn happy_path_npc_no_aura_no_title() {
         let mut buf: Vec<u8> = Vec::new();
         buf.extend_from_slice(b"a goblin\0");
-        buf.extend_from_slice(&123u32.to_le_bytes());      // spawnId
-        buf.push(40);                                       // level
-        buf.extend_from_slice(&[0; 16]);                    // skip
-        buf.push(1);                                        // NPC
+        buf.extend_from_slice(&123u32.to_le_bytes()); // spawnId
+        buf.push(40); // level
+        buf.extend_from_slice(&[0; 16]); // skip
+        buf.push(1); // NPC
         buf.extend_from_slice(&0xCAFEBABEu32.to_le_bytes()); // miscData
-        buf.push(0);                                        // otherData (no aura/title/suffix)
-        buf.extend_from_slice(&[0; 8]);                     // unknown3/4
-        buf.push(2);                                        // charProperties
-        // 2 u32 reads — first is bodytype, second discarded
+        buf.push(0); // otherData (no aura/title/suffix)
+        buf.extend_from_slice(&[0; 8]); // unknown3/4
+        buf.push(2); // charProperties
+                     // 2 u32 reads — first is bodytype, second discarded
         buf.extend_from_slice(&21u32.to_le_bytes());
         buf.extend_from_slice(&99u32.to_le_bytes());
-        buf.push(95);                                       // curHp
-        buf.extend_from_slice(&[0; 35]);                    // facestyle/speeds/unknown5
-        buf.extend_from_slice(&50u32.to_le_bytes());        // race (>12, not in special list)
-        buf.push(7);                                        // holding
-        buf.extend_from_slice(&3u32.to_le_bytes());         // deity
-        buf.extend_from_slice(&111u32.to_le_bytes());       // guildID
-        buf.extend_from_slice(&222u32.to_le_bytes());       // guildServerID
-        buf.extend_from_slice(&5u32.to_le_bytes());         // class_
-        buf.push(0);                                        // skip 1
-        buf.push(11);                                       // state
-        buf.push(2);                                        // light
-        buf.push(0);                                        // skip 1
-        buf.extend_from_slice(b"\0");                       // empty lastName
-        buf.extend_from_slice(&[0; 2]);                     // skip 2
-        buf.extend_from_slice(&777u32.to_le_bytes());       // petOwnerId
-        buf.extend_from_slice(&[0; 49]);                    // NPC=1 skip
-        // Abridged equipment (race=50 NPC=1, not in special list).
+        buf.push(95); // curHp
+        buf.extend_from_slice(&[0; 35]); // facestyle/speeds/unknown5
+        buf.extend_from_slice(&50u32.to_le_bytes()); // race (>12, not in special list)
+        buf.push(7); // holding
+        buf.extend_from_slice(&3u32.to_le_bytes()); // deity
+        buf.extend_from_slice(&111u32.to_le_bytes()); // guildID
+        buf.extend_from_slice(&222u32.to_le_bytes()); // guildServerID
+        buf.extend_from_slice(&5u32.to_le_bytes()); // class_
+        buf.push(0); // skip 1
+        buf.push(11); // state
+        buf.push(2); // light
+        buf.push(0); // skip 1
+        buf.extend_from_slice(b"\0"); // empty lastName
+        buf.extend_from_slice(&[0; 2]); // skip 2
+        buf.extend_from_slice(&777u32.to_le_bytes()); // petOwnerId
+        buf.extend_from_slice(&[0; 49]); // NPC=1 skip
+                                         // Abridged equipment (race=50 NPC=1, not in special list).
         buf.extend_from_slice(&[0; 20]); // skip 20
-        // slot 7 + slot 8 = 10 u32s
+                                         // slot 7 + slot 8 = 10 u32s
         for v in [70u32, 71, 72, 73, 74, 80, 81, 82, 83, 84] {
             buf.extend_from_slice(&v.to_le_bytes());
         }
@@ -288,7 +299,7 @@ mod tests {
             buf.extend_from_slice(&v.to_le_bytes());
         }
         buf.extend_from_slice(&[0; 8]); // unknowns
-        buf.push(1);                    // isMercenary
+        buf.push(1); // isMercenary
         buf.extend_from_slice(&[0; 66]); // tail unknowns
 
         let s = parse_spawn(&buf).unwrap();
@@ -316,7 +327,10 @@ mod tests {
                 assert_eq!(s.equip_data[i * 5 + k], 0, "slot {} field {}", i, k);
             }
         }
-        assert_eq!(&s.equip_data[35..45], &[70, 71, 72, 73, 74, 80, 81, 82, 83, 84]);
+        assert_eq!(
+            &s.equip_data[35..45],
+            &[70, 71, 72, 73, 74, 80, 81, 82, 83, 84]
+        );
         assert_eq!(s.pos_data, [1, 2, 3, 4, 5]);
         assert_eq!(s.is_mercenary, 1);
         assert_eq!(s.bytes_consumed as usize, buf.len());
@@ -326,29 +340,29 @@ mod tests {
     fn full_equipment_branch_via_pc() {
         // NPC=0 forces the full-equipment branch (skip 36 + 9 slots).
         let mut buf: Vec<u8> = Vec::new();
-        buf.extend_from_slice(b"\0");                       // empty name
-        buf.extend_from_slice(&1u32.to_le_bytes());         // spawnId
-        buf.push(60);                                       // level
+        buf.extend_from_slice(b"\0"); // empty name
+        buf.extend_from_slice(&1u32.to_le_bytes()); // spawnId
+        buf.push(60); // level
         buf.extend_from_slice(&[0; 16]);
-        buf.push(0);                                        // NPC=0 (player)
-        buf.extend_from_slice(&[0; 4]);                     // miscData
+        buf.push(0); // NPC=0 (player)
+        buf.extend_from_slice(&[0; 4]); // miscData
         buf.push(OTHER_DATA_HAS_TITLE | OTHER_DATA_HAS_SUFFIX);
         buf.extend_from_slice(&[0; 8]);
-        buf.push(0);                                        // charProperties (=0 so no bodytype loop)
-        buf.push(100);                                      // curHp
+        buf.push(0); // charProperties (=0 so no bodytype loop)
+        buf.push(100); // curHp
         buf.extend_from_slice(&[0; 35]);
-        buf.extend_from_slice(&12u32.to_le_bytes());        // race (<=12 → would match anyway)
-        buf.push(0);                                        // holding
-        buf.extend_from_slice(&[0; 16]);                    // deity, guildID, guildServerID, class_
+        buf.extend_from_slice(&12u32.to_le_bytes()); // race (<=12 → would match anyway)
+        buf.push(0); // holding
+        buf.extend_from_slice(&[0; 16]); // deity, guildID, guildServerID, class_
         buf.push(0);
         buf.push(0);
         buf.push(0);
         buf.push(0);
-        buf.extend_from_slice(b"\0");                       // empty lastName
+        buf.extend_from_slice(b"\0"); // empty lastName
         buf.extend_from_slice(&[0; 2]);
-        buf.extend_from_slice(&[0; 4]);                     // petOwnerId
-        buf.extend_from_slice(&[0; 37]);                    // NPC!=1 → skip 37
-        // Full equip: 36 skip + 45 u32
+        buf.extend_from_slice(&[0; 4]); // petOwnerId
+        buf.extend_from_slice(&[0; 37]); // NPC!=1 → skip 37
+                                         // Full equip: 36 skip + 45 u32
         buf.extend_from_slice(&[0; 36]);
         for slot in 0..9 {
             for k in 0..5 {
@@ -371,7 +385,7 @@ mod tests {
         // First slot fields = (0, 1, 2, 3, 4); slot 8 = (800..804).
         assert_eq!(&s.equip_data[..5], &[0, 1, 2, 3, 4]);
         assert_eq!(&s.equip_data[40..45], &[800, 801, 802, 803, 804]);
-        assert_eq!(s.title,  "My Title");
+        assert_eq!(s.title, "My Title");
         assert_eq!(s.suffix, "the Suffixed");
     }
 
@@ -385,15 +399,15 @@ mod tests {
         let mut buf: Vec<u8> = vec![0; prefix_len];
         buf[0] = 0; // empty name (single NUL)
         buf[1 + 4 + 1 + 16] = 0; // NPC
-        // otherData byte sits at offset (1+4+1+16+1+4) = 27
+                                 // otherData byte sits at offset (1+4+1+16+1+4) = 27
         buf[27] = OTHER_DATA_AURA;
         // Append aura's 3 strings + 50 bytes
         buf.extend_from_slice(b"a\0b\0c\0");
         buf.extend_from_slice(&[0; 50]);
         // Append minimal valid tail so the parser doesn't EOF on
         // unrelated reads.
-        buf.push(0);                          // charProperties
-        buf.push(0);                          // curHp
+        buf.push(0); // charProperties
+        buf.push(0); // curHp
         buf.extend_from_slice(&[0; 35]);
         buf.extend_from_slice(&0u32.to_le_bytes()); // race
         buf.push(0);
@@ -402,8 +416,8 @@ mod tests {
         buf.extend_from_slice(b"\0");
         buf.extend_from_slice(&[0; 2]);
         buf.extend_from_slice(&[0; 4]);
-        buf.extend_from_slice(&[0; 37]);    // NPC=0 → 37
-        // race=0 ⇒ <=12 ⇒ full equip
+        buf.extend_from_slice(&[0; 37]); // NPC=0 → 37
+                                         // race=0 ⇒ <=12 ⇒ full equip
         buf.extend_from_slice(&[0; 36 + 45 * 4]);
         buf.extend_from_slice(&[0; 6 * 4]);
         buf.extend_from_slice(&[0; 8]);

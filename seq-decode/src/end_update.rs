@@ -30,8 +30,8 @@ pub fn parse_end_update(bytes: &[u8]) -> Result<EndUpdate, EndUpdateError> {
         unsafe { std::ptr::read_unaligned(bytes.as_ptr() as *const endUpdateStruct) };
     Ok(EndUpdate {
         spawn_id: unsafe { std::ptr::addr_of!(raw.spawn_id).read_unaligned() },
-        cur:      unsafe { std::ptr::addr_of!(raw.cur).read_unaligned() },
-        max:      unsafe { std::ptr::addr_of!(raw.max).read_unaligned() },
+        cur: unsafe { std::ptr::addr_of!(raw.cur).read_unaligned() },
+        max: unsafe { std::ptr::addr_of!(raw.max).read_unaligned() },
     })
 }
 

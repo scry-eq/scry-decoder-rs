@@ -12,7 +12,7 @@ pub const PAYLOAD_LEN: usize = std::mem::size_of::<actionStruct>();
 pub struct Action {
     pub target: u16,
     pub source: u16,
-    pub spell: u16,   // unsigned: modern spell IDs exceed 32767
+    pub spell: u16, // unsigned: modern spell IDs exceed 32767
     pub level: u8,
     pub kind: u8,
 }
@@ -32,9 +32,9 @@ pub fn parse_action(bytes: &[u8]) -> Result<Action, ActionError> {
     Ok(Action {
         target: unsafe { std::ptr::addr_of!(raw.target).read_unaligned() },
         source: unsafe { std::ptr::addr_of!(raw.source).read_unaligned() },
-        spell:  unsafe { std::ptr::addr_of!(raw.spell).read_unaligned() },
-        level:  unsafe { std::ptr::addr_of!(raw.level).read_unaligned() },
-        kind:   unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
+        spell: unsafe { std::ptr::addr_of!(raw.spell).read_unaligned() },
+        level: unsafe { std::ptr::addr_of!(raw.level).read_unaligned() },
+        kind: unsafe { std::ptr::addr_of!(raw.type_).read_unaligned() },
     })
 }
 
@@ -53,7 +53,7 @@ mod tests {
         let mut buf = [0u8; PAYLOAD_LEN];
         buf[0..2].copy_from_slice(&100u16.to_le_bytes());
         buf[2..4].copy_from_slice(&200u16.to_le_bytes());
-        buf[4..6].copy_from_slice(&40000u16.to_le_bytes());  // > 32767
+        buf[4..6].copy_from_slice(&40000u16.to_le_bytes()); // > 32767
         buf[12] = 65;
         buf[56] = 0xe7;
         let a = parse_action(&buf).unwrap();

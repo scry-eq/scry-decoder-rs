@@ -61,9 +61,7 @@ fn read_u16_le(bytes: &[u8], at: usize) -> u16 {
     u16::from_le_bytes([bytes[at], bytes[at + 1]])
 }
 
-pub fn parse_player_spawn_pos(
-    bytes: &[u8],
-) -> Result<PlayerSpawnPos, PlayerSpawnPosError> {
+pub fn parse_player_spawn_pos(bytes: &[u8]) -> Result<PlayerSpawnPos, PlayerSpawnPosError> {
     if bytes.len() != PAYLOAD_LEN {
         return Err(PlayerSpawnPosError::BadLength(bytes.len()));
     }
