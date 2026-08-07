@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn no_blob_is_no_args() {
-        assert!(parse_formatted_message_args(&vec![0u8; HEADER_LEN]).is_empty());
+        assert!(parse_formatted_message_args(&[0u8; HEADER_LEN]).is_empty());
     }
 
     #[test]

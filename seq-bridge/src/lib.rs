@@ -28,6 +28,10 @@ use seq_decode as backend;
 #[cfg(feature = "backend-eql")]
 use seq_backend_eql as backend;
 
+// cxx expands `-> Box<T>` entries into code using an API stabilized after the
+// workspace's declared rust-version (1.75). It's generated, so there is nothing
+// here to rewrite; the toolchain we actually build with is `stable`.
+#[allow(clippy::incompatible_msrv)]
 #[cxx::bridge(namespace = "seq::rust")]
 mod ffi {
     /// Decoded `OP_MobUpdate` payload. `ok` is the discriminator: when
@@ -1365,8 +1369,8 @@ fn decode_mob_health(bytes: &[u8]) -> ffi::MobHealth {
 fn decode_spawn_appearance(bytes: &[u8]) -> ffi::SpawnAppearance {
     match backend::parse_spawn_appearance(bytes) {
         Ok(a) => ffi::SpawnAppearance {
-            spawn_id: u32::from(a.spawn_id),
-            kind: u32::from(a.kind),
+            spawn_id: a.spawn_id,
+            kind: a.kind,
             // Live's current wire carries no value field; eql's still does.
             #[cfg(feature = "backend-eql")]
             parameter: a.parameter,

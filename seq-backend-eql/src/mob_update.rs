@@ -89,6 +89,10 @@ mod tests {
     // each coordinate at its own offset so a future regeneration cannot re-shift
     // them. Distinct values per axis so a transpose fails loudly — the 07/28
     // rewrite put x and y the wrong way round and nothing here caught it.
+    // identity_op: the `<< 0` is the bit POSITION of the first field, parallel to
+    // `<< 19` and `<< 45` — the asserts below cite those ranges. Folding it away
+    // would hide where the pack starts.
+    #[allow(clippy::identity_op)]
     #[test]
     fn each_coordinate_reads_from_its_own_field() {
         let mut bytes = [0u8; 14];

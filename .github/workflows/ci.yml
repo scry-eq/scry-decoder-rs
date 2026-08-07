@@ -26,12 +26,19 @@ jobs:
           # every crate's own unit tests (seq-backend-eql's included).
           - backend: live
             test: cargo test --workspace
+            clippy: cargo clippy --workspace --all-targets
           # seq-decode's parsers against the test struct mirror — the pairing
           # --workspace never compiles.
           - backend: test
             test: cargo test -p seq-decode --no-default-features --features backend-test
+            clippy: >-
+              cargo clippy -p seq-decode -p seq-bridge
+              --no-default-features --features backend-test --all-targets
           - backend: eql
             test: cargo test -p seq-backend-eql
+            clippy: >-
+              cargo clippy -p seq-bridge
+              --no-default-features --features backend-eql --all-targets
     steps:
       - uses: actions/checkout@v5
 
@@ -40,6 +47,13 @@ jobs:
 
       - name: test
         run: ${{ matrix.test }}
+
+      # The workspace sets `[workspace.lints.rust] warnings = "deny"`, which
+      # covers clippy lints too — so an unclean tree breaks `cargo clippy` for
+      # everyone, not just CI. Run it per backend: the feature-gated FFI arms in
+      # seq-bridge are only linted under the feature that enables them.
+      - name: clippy
+        run: ${{ matrix.clippy }}
 
       # Release, because that is the profile the daemon links through Corrosion
       # (thin LTO + codegen-units=1 — a debug build passing doesn't prove it).

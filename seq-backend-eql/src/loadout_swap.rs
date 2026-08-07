@@ -3,10 +3,10 @@
 //! Sent when a player switches loadouts (the Legends multiclass class/level
 //! change). No OP_PlayerProfile follows, so this is the only source for the new
 //! identity. Two variants share one header + record layout:
-//!   * self  (~118 KB): the acting client's own refresh, with a serialized
-//!            inventory tail (unparsed here);
+//!   * self (~118 KB): the acting client's own refresh, with a serialized
+//!     inventory tail (unparsed here);
 //!   * broadcast (~490 B): the server tells nearby clients about ANY in-range
-//!            player's swap — same header + record, no inventory tail.
+//!     player's swap — same header + record, no inventory tail.
 //!
 //! Header: `u32 spawnId | u8 | u16 innerLen | <record> | <inventory tail>`.
 //! `innerLen` covers the header (7 bytes) + the embedded record, which is

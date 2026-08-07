@@ -576,17 +576,17 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
     }
 }
 
-/// `OP_ClientUpdate` (Legends) C>S: IEEE-float position + heading.
-/// **post-2026-07-29 layout** (42B; see `player_self_pos.rs` for the derivation
-/// and its evidence): spawnId u16 @2, gameY@10, gameX@22, gameZ@34, heading the
-/// low 11 bits at @26. The velocities are not located this patch and read 0.
-///
-/// Worth knowing when a future patch rotates this again: the 07/29 body is close
-/// to the **pre-07/14** 42B form, which also carried spawnId@2 and gameY@10 (it
-/// had gameX@18 / z@30, i.e. those two sit 4 bytes later now). The 38B bodies
-/// that ran between 07/14 and 07/29 were the outlier — they dropped the spawnId
-/// entirely. So on the next rotation, check the older 42B layout before assuming
-/// a from-scratch rearrangement.
+// `OP_ClientUpdate` (Legends) C>S: IEEE-float position + heading.
+// post-2026-07-29 layout (42B; see `player_self_pos.rs` for the derivation
+// and its evidence): spawnId u16 @2, gameY@10, gameX@22, gameZ@34, heading the
+// low 11 bits at @26. The velocities are not located this patch and read 0.
+//
+// Worth knowing when a future patch rotates this again: the 07/29 body is close
+// to the pre-07/14 42B form, which also carried spawnId@2 and gameY@10 (it
+// had gameX@18 / z@30, i.e. those two sit 4 bytes later now). The 38B bodies
+// that ran between 07/14 and 07/29 were the outlier — they dropped the spawnId
+// entirely. So on the next rotation, check the older 42B layout before assuming
+// a from-scratch rearrangement.
 // `parse_player_self_pos` lives in `player_self_pos.rs` (re-exported above) — one
 // parser that validates against its own `PAYLOAD_LEN`, the SAME const the
 // `playerSelfPosStruct` size override reads, so the SZC gate and the parser can
@@ -959,13 +959,14 @@ pub fn parse_begin_cast(b: &[u8]) -> Result<BeginCast, DecodeError> {
 }
 
 /// eql `OP_SendAATable` (0x31ae, S>C): one AA ability-rank definition, burst at
-/// zone-in (one record per packet; variable length 130..346B = a 37B fixed head
-/// + a variable prereq/effect tail). Only the fixed head is needed. Layout
-/// matches Live's `aaInfoStruct`: `descID`@0 (== the profile's `aa_array[].AA`,
-/// the per-rank id) and `titleSID`@13 (a dbstr type-1 id shared by every rank of
-/// an AA — the daemon resolves it to the display name). Verified against 15/15
-/// owned AAs in the fight capture (titleSID@13 → dbstr type-1 gives the correct
-/// names: Packrat, Fury of Magic, Destructive Fury, Mnemonic Retention, …).
+/// zone-in (one record per packet; variable length 130..346B = a 37B fixed
+/// head + a variable prereq/effect tail). Only the fixed head is needed.
+/// Layout matches Live's `aaInfoStruct`: `descID`@0 (== the profile's
+/// `aa_array[].AA`, the per-rank id) and `titleSID`@13 (a dbstr type-1 id
+/// shared by every rank of an AA — the daemon resolves it to the display
+/// name). Verified against 15/15 owned AAs in the fight capture (titleSID@13 →
+/// dbstr type-1 gives the correct names: Packrat, Fury of Magic, Destructive
+/// Fury, Mnemonic Retention, …).
 pub struct AaTableEntry {
     pub desc_id: u32,
     pub title_sid: u32,
@@ -1197,11 +1198,15 @@ pub struct BuffList {
 /// and on every buff change, with real server-side remaining durations (the
 /// patch calls it "the one that makes it work"). Layout (validated 26/26 across
 /// the upperguk capture, cursor lands exactly on the packet end):
-///   `u32 spawnId | u32 (seq/timestamp) | u8 flag=1 | u8 count | u8[5] pad`
+///
+/// ```text
+/// u32 spawnId | u32 (seq/timestamp) | u8 flag=1 | u8 count | u8[5] pad
 /// then `count` records, each:
-///   `{ u32 spellId, u32 =1, i32 remainingTicks, u32 =0 }`  (16 fixed bytes)
+///   { u32 spellId, u32 =1, i32 remainingTicks, u32 =0 }   (16 fixed bytes)
 ///   + NUL-terminated caster name (latin1; empty for self-cast)
-///   + slot: `u32` BETWEEN records, `u16` on the FINAL record.
+///   + slot: u32 BETWEEN records, u16 on the FINAL record.
+/// ```
+///
 /// `remainingTicks <= 0` is permanent. The cursor-lands-on-end check is the
 /// structural canary (a layout drift rejects the whole packet).
 pub fn parse_buff_list(b: &[u8]) -> Result<BuffList, DecodeError> {

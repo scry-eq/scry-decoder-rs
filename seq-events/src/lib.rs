@@ -181,6 +181,7 @@ pub enum Event {
     ///   * mana/endurance are the local player's only, and only when `wide` —
     ///     the narrow form is a u8 percent with a synthesized max of 100, which
     ///     is useless as a max.
+    ///
     /// eql has no standalone endurance opcode, so this is its sole endurance feed.
     StatSync {
         spawn_id: u32,

@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn decodes_the_facing_as_a_compass_value() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        let w = u32::from(HEADING_UNITS) / 4 | (0x1F_FFFFu32 << 11);
+        let w = (u32::from(HEADING_UNITS) / 4) | (0x1F_FFFFu32 << 11);
         buf[38..42].copy_from_slice(&w.to_le_bytes());
         let p = parse_player_self_pos(&buf).unwrap();
         assert_eq!(p.heading, HEADING_UNITS / 4);

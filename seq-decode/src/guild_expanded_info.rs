@@ -81,7 +81,7 @@ mod tests {
         b[0..4].copy_from_slice(&ACTION_RANK_NAME.to_le_bytes());
         b[OFF_GUILD_ID..OFF_GUILD_ID + 4].copy_from_slice(&guild_id.to_le_bytes());
         b[OFF_RANK_INDEX..OFF_RANK_INDEX + 4].copy_from_slice(&rank_index.to_le_bytes());
-        let n = name.as_bytes().len().min(RANK_NAME_MAX - 1);
+        let n = name.len().min(RANK_NAME_MAX - 1);
         b[OFF_RANK_NAME..OFF_RANK_NAME + n].copy_from_slice(&name.as_bytes()[..n]);
         b
     }
