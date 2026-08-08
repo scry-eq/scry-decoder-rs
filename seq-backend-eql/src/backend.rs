@@ -479,18 +479,20 @@ fn loot_drops(bytes: &[u8]) -> Decoded {
     }
 }
 
-// OP_LootTransaction: only the subcode-7 server confirmation carries the sale
-// coin; the other subcodes (3/5/6) ride the same id but surface nothing.
+// OP_LootTransaction: the subcode-7 confirmation carries an item's sale coin
+// and the subcode-5 record the corpse's coin pile; the request/ack subcodes
+// (3/6) ride the same id but surface nothing.
 fn loot_transaction(bytes: &[u8]) -> Decoded {
-    use crate::loot_transaction::LootTransactionError::NotConfirm;
+    use crate::loot_transaction::LootTransactionError::Unhandled;
     match crate::loot_transaction::parse_loot_transaction(bytes) {
         Ok(t) => Decoded::One(Event::LootTransaction {
             corpse_id: t.corpse_id,
             item_id: t.item_id,
             quantity: t.quantity,
             coin_copper: t.coin_copper,
+            from_corpse: t.from_corpse,
         }),
-        Err(NotConfirm(_)) => Decoded::Ignored,
+        Err(Unhandled(_)) => Decoded::Ignored,
         Err(_) => Decoded::Malformed,
     }
 }

@@ -197,6 +197,8 @@ mod ffi {
         quantity: u32,
         sequence: u32,
         coin_copper: u32,
+        // Subcode-5 corpse pile; the item fields are 0.
+        from_corpse: bool,
         ok: bool,
     }
     struct MoneyUpdate {
@@ -1255,10 +1257,12 @@ const LOOT_TXN_NONE: ffi::LootTransaction = ffi::LootTransaction {
     quantity: 0,
     sequence: 0,
     coin_copper: 0,
+    from_corpse: false,
     ok: false,
 };
 
-// eql-only: OP_LootTransaction (0x7d1c) subcode-7 server confirmation.
+// eql-only: OP_LootTransaction (0xbe5b) subcode-7 item confirmation or
+// subcode-5 corpse coin pile.
 #[cfg(feature = "backend-eql")]
 fn decode_loot_transaction(bytes: &[u8]) -> ffi::LootTransaction {
     match seq_backend_eql::parse_loot_transaction(bytes) {
@@ -1269,6 +1273,7 @@ fn decode_loot_transaction(bytes: &[u8]) -> ffi::LootTransaction {
             quantity: t.quantity,
             sequence: t.sequence,
             coin_copper: t.coin_copper,
+            from_corpse: t.from_corpse,
             ok: true,
         },
         Err(_) => LOOT_TXN_NONE,

@@ -345,14 +345,16 @@ pub enum Event {
     /// A single skill's new value (OP_SkillUpdate) — the consumer updates that
     /// skill id in the player's skill map.
     SkillUpdate { skill_id: u32, value: u32 },
-    /// A corpse-loot confirmation (OP_LootTransaction subcode 7). `coin_copper`
-    /// is the auto-sale proceeds (0 when the loot produced none) — the consumer
-    /// adds it to the running money total, like the daemon's adjustMoney.
+    /// A corpse-loot event (OP_LootTransaction): an item confirmation carrying
+    /// auto-sale proceeds, or the corpse's coin pile (`from_corpse`, item
+    /// fields 0). Both are acquired coin — add `coin_copper` to the running
+    /// total either way, like the daemon's adjustMoney.
     LootTransaction {
         corpse_id: u32,
         item_id: u32,
         quantity: u32,
         coin_copper: u32,
+        from_corpse: bool,
     },
     /// A corpse's loot window (OP_LootDrops) — the lootable items on a corpse.
     LootDrops {
