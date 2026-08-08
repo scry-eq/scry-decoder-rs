@@ -1,4 +1,4 @@
-//! OP_LootDrops (0x6768): corpse loot window.
+//! OP_LootDrops: corpse loot window.
 //! `{u16, u32=900, u32 corpseId@6, u32 count@10, NUL-term corpse name@14, then
 //! `count` item entries}`. Per entry: field[2]@+8 = item icon id, name = the
 //! 0x12-wrapped item link past the shared 197-hex header.

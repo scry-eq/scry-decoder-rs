@@ -1,4 +1,4 @@
-//! Parser for eql `OP_SpawnDoor` (0x71ca) — payload is `count * 132` bytes.
+//! Parser for eql `OP_SpawnDoor` — payload is `count * 132` bytes.
 //!
 //! EQ Legends door rows are 132 bytes, not Live's 136 (`sizeof(doorStruct)`):
 //! the first 88 bytes are byte-identical to Live's layout — `name[32]`,

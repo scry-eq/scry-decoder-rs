@@ -1,5 +1,4 @@
-//! `OP_LootTransaction` (id 0xbe5b as of the 2026-08-05 patch): a
-//! subcode-multiplexed corpse-loot channel. The client requests a loot action
+//! `OP_LootTransaction`: a subcode-multiplexed corpse-loot channel. The client requests a loot action
 //! and the server confirms it.
 //!
 //! Observed subcodes (u16 @0):

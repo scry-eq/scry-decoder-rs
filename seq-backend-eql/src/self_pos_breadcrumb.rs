@@ -1,5 +1,5 @@
-//! Parser for `OP_SelfPosEQL` (0x4fb6, C>S) — the local player's position-history
-//! breadcrumb. Distinct from the 38-byte live `OP_ClientUpdate` (0x5188): this is
+//! Parser for `OP_SelfPosEQL` (C>S) — the local player's position-history
+//! breadcrumb. Distinct from the 38-byte live `OP_ClientUpdate`: this is
 //! a batched movement journal, not a per-frame update. Cracked 2026-07-17 against
 //! the run-south-then-west `/loc` capture (all 3 points exact; see
 //! OPCODES_LEGENDS.md and [[project_eql_two_self_pos_opcodes]]).

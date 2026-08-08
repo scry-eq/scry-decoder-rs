@@ -1,4 +1,4 @@
-//! Parser for `OP_GroupMemberList` (0x312a) — the modern group roster
+//! Parser for `OP_GroupMemberList` — the modern group roster
 //! broadcast. The slot-0 (leader) record has variable, capture-dependent width
 //! (individually null-padded name + assist-name fields), so rather than a fixed
 //! struct we scan forward for printable-ASCII name runs — every non-empty run

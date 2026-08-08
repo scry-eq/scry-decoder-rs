@@ -1,4 +1,4 @@
-//! OP_LootMessage (0x7d46): personal auto-loot/sell text.
+//! OP_LootMessage: personal auto-loot/sell text.
 //! `{u32 color@0, NUL-term text@4}`; the text embeds `\x12`-wrapped links.
 
 use thiserror::Error;

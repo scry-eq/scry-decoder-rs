@@ -1,4 +1,4 @@
-//! `OP_MoneyUpdate` (0x6414): the authoritative carried purse, 20B
+//! `OP_MoneyUpdate`: the authoritative carried purse, 20B
 //! `{u32 platinum@0, u32 gold@4, u32 silver@8, u32 copper@12, u32=0@16}`.
 //!
 //! Denominations are NOT normalized on the wire — 101 silver / 281 copper have
@@ -9,8 +9,8 @@
 //! zone-in (and occasionally between), but NOT per coin-earning event, so it is
 //! a resync rather than a live feed.
 //!
-//! 0x6414 is the post-2026-07-14 id. The pre-patch id (0x4d77) now carries an
-//! unrelated 12B 60s heartbeat — see OP_Unknown4 in the opcode table. Layout
+//! The pre-2026-07-14 id now carries an unrelated 12B 60s heartbeat — see
+//! OP_Unknown4 in the opcode table. Layout
 //! credit: Xerxes (legacy showeq moneyUpdateEQL).
 
 use thiserror::Error;
@@ -56,7 +56,7 @@ pub fn parse_money_update(bytes: &[u8]) -> Result<MoneyUpdate, MoneyUpdateError>
 mod tests {
     use super::*;
 
-    // Verbatim 0x6414 payload from a live capture; the same character's profile
+    // Verbatim OP_MoneyUpdate payload from a live capture; the same character's profile
     // reported 9275p 10g 25s 47c at that moment.
     const CAPTURED: [u8; 20] = [
         0x3b, 0x24, 0x00, 0x00, // 9275 platinum
@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn rejects_the_12b_heartbeat_payload() {
-        // 0x4d77's payload, which this parser previously mistook for money.
+        // OP_Unknown4's payload, which this parser previously mistook for money.
         assert_eq!(
             parse_money_update(&[0u8; 12]),
             Err(MoneyUpdateError::BadLength(12))

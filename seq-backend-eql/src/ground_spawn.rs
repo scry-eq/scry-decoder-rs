@@ -1,11 +1,11 @@
-//! Parser for eql's `OP_GroundSpawn` (id 0x7e02, 2026-07-14 rotation).
+//! Parser for eql's `OP_GroundSpawn` (2026-07-14 rotation).
 //!
-//! The 07/14 patch moved the ground-object broadcast to 0x7e02 (the old 0x6360
-//! 32B placement record is superseded). 0x7e02 fires S>C to spawn the zone's
+//! The 07/14 patch moved the ground-object broadcast here (the older 32B
+//! placement record is superseded). It fires S>C to spawn the zone's
 //! GROUND OBJECTS: static interactable placeables (forge/tradeskill containers,
 //! decorative racks, rocks) AND pickup-able ground-loot items (the earring) —
 //! NOT personal combat loot, which is instanced in EQL and never on the ground.
-//! (0x6360 only fired on a manual drop.) The handler is DIR_Server, so the C>S
+//! (The older record only fired on a manual drop.) The handler is DIR_Server, so the C>S
 //! mouse-drop request on the same id is filtered out.
 //!
 //! Variable-length; the actorDef model name is embedded, so the fixed fields sit
@@ -37,8 +37,8 @@
 //! and cannot settle it.
 //! `id_file` now carries the actorDef model string (e.g. `IT63_ACTORDEF`);
 //! resolving it to the real item name ("Pearl Earring") means correlating the
-//! itemId with the preceding ~1KB item-def (OP_ItemPacket 0x4d7e) — a future
-//! refinement. Position derived from the earring drop (matches the old 0x6360
+//! itemId with the preceding ~1KB item-def (OP_ItemPacket) — a future
+//! refinement. Position derived from the earring drop (matches the older
 //! reading 598/569/-685) + 47 combat-loot records across the fight capture.
 
 use thiserror::Error;
@@ -100,7 +100,7 @@ pub fn parse_ground_spawn(bytes: &[u8]) -> Result<GroundSpawn, GroundSpawnError>
     Ok(GroundSpawn {
         drop_id,
         id_file,
-        heading: 0.0, // no heading in the 0x7e02 record
+        heading: 0.0, // no heading in the record
         y,
         x,
         z,
@@ -112,7 +112,7 @@ pub fn parse_ground_spawn(bytes: &[u8]) -> Result<GroundSpawn, GroundSpawnError>
 mod tests {
     use super::*;
 
-    /// Build a 0x7e02 record: dropId, NUL-term name, 28 bytes of fixed fields,
+    /// Build a record: dropId, NUL-term name, 28 bytes of fixed fields,
     /// then the position floats IN WIRE ORDER (y, x, z) + a trailing u32.
     fn pkt(drop: u32, name: &str, wire_y: f32, wire_x: f32, wire_z: f32) -> Vec<u8> {
         let mut b = Vec::new();

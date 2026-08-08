@@ -425,7 +425,7 @@ fn aa_exp(bytes: &[u8]) -> Decoded {
     })
 }
 
-// OP_MoneyUpdate (0x6414) = the authoritative carried purse (un-normalized coins).
+// OP_MoneyUpdate = the authoritative carried purse (un-normalized coins).
 fn money(bytes: &[u8]) -> Decoded {
     match crate::money_update::parse_money_update(bytes) {
         Ok(m) => Decoded::One(Event::Money {

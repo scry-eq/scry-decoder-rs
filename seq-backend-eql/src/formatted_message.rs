@@ -1,4 +1,4 @@
-//! Parser for `OP_FormattedMessage` (EQL id 0x15d0, 2026-07-14 rotation).
+//! Parser for `OP_FormattedMessage` (2026-07-14 rotation).
 //!
 //! The 07/14 patch rotated the id (3c0a -> 15d0) AND changed the layout to the
 //! stock length-prefixed form (the old 3c0a decoder read a flat spellId@0/

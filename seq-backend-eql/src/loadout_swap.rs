@@ -1,4 +1,4 @@
-//! EQ Legends loadout swap (OP_LoadoutSwap, 0x7477).
+//! EQ Legends loadout swap (OP_LoadoutSwap).
 //!
 //! Sent when a player switches loadouts (the Legends multiclass class/level
 //! change). No OP_PlayerProfile follows, so this is the only source for the new
@@ -10,7 +10,7 @@
 //!
 //! Header: `u32 spawnId | u8 | u16 innerLen | <record> | <inventory tail>`.
 //! `innerLen` covers the header (7 bytes) + the embedded record, which is
-//! byte-identical to the OP_ZoneEntry (0x4606) spawn record — so we reuse this
+//! byte-identical to the OP_ZoneEntry spawn record — so we reuse this
 //! crate's `parse_spawn` (eql's ZoneEntry parser; same canonical name as Live's
 //! `seq-decode` twin, different impl) on `data[7..innerLen]` and surface the
 //! fields that change on a swap (level + class), plus the header spawnId for

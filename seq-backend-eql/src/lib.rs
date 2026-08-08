@@ -8,6 +8,10 @@
 //! layouts. `seq-bridge`'s `backend-eql` feature routes every `decode_*` here —
 //! there is no eql → seq-decode edge.
 //!
+//! Cite opcodes by NAME, never by id — EQL rotates ids nearly every patch, and
+//! `showeq-daemon/conf/eql/opcodes.toml` is the only map. Retired ids may be
+//! named AS history.
+//!
 //! Two kinds of module live here:
 //!   * eql's OWN byte-offset parsers for the opcodes whose Legends wire diverges
 //!     from Live — `parse_spawn` / `parse_player_profile` / `parse_player_self_pos`
@@ -124,7 +128,7 @@ pub use loot_message::{parse_loot_message, LootMessage, LootMessageError};
 pub use loot_transaction::{parse_loot_transaction, LootTransaction, LootTransactionError};
 pub use money_update::{parse_money_update, MoneyUpdate, MoneyUpdateError};
 // Vendored 18B `hpNpcUpdateStruct` parser: eql never sees Live's fixed HP
-// struct (0x2735 is the multiplexed stat channel decoded by `parse_stat_sync`
+// struct (OP_StatSync is the multiplexed stat channel decoded by `parse_stat_sync`
 // below), so the shared `decode_hp_update` FFI is stubbed inert for eql in the
 // bridge. Retained only so the module stays byte-identical to the Live fork.
 pub use hp_update::{parse_hp_update, HpUpdate, HpUpdateError};
@@ -383,7 +387,7 @@ fn read_profile_name_and_tail(b: &[u8], p0: usize, prof: &mut PlayerProfile) -> 
     Some(())
 }
 
-/// `OP_PlayerProfile` (Legends, id 0x62f0 post-patch) S>C. Two parts:
+/// `OP_PlayerProfile` (Legends) S>C. Two parts:
 ///
 /// 1. Identity header, fixed offsets (patch-VERIFIED against a known char —
 ///    race DarkElf=6 @21, level 12 @33): gender u8 @20, race u32 @21, class u32
@@ -610,7 +614,7 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
 // never disagree on the size (they diverged once — 42 vs 38 — and silently masked
 // the self-position, see OPCODES_LEGENDS.md 2026-07-14).
 
-/// `OP_NewZone` (Legends, id 0x1dbf) S>C, ~340B, once per zone-in. Carries the
+/// `OP_NewZone` (Legends) S>C, ~340B, once per zone-in. Carries the
 /// CURRENT zone as packed NUL-terminated text — `short_name` then `long_name`
 /// (then a zonefile repeat + binary tail we ignore). The daemon drives
 /// `ZoneMgr::setZoneByName(short, long)` directly, so no classic-id table is
@@ -732,7 +736,7 @@ fn pos19_word(w: u32) -> i16 {
     (raw >> 3) as i16
 }
 
-/// `OP_ZoneSpawns` (Legends, id 0x4606) S>C, one per spawn. Full front walk,
+/// `OP_ZoneSpawns` (Legends) S>C, one per spawn. Full front walk,
 /// ported 1:1 from the community patch's `SpawnShell::fillSpawnStruct` (verified
 /// against a 1617-record eql corpus). Supersedes the old tail-anchored partial,
 /// which assumed a fixed 95-byte tail and so mis-read position and dropped
@@ -967,7 +971,7 @@ pub fn parse_consider(b: &[u8]) -> Result<Consider, DecodeError> {
 /// Sourced from the pinned `eqstructs` sizes so a size and its decoder move
 /// together. (live/test diverge from nothing; the bridge ships them an empty
 /// list.)
-/// eql `OP_BeginCast` (0x6cbd, S>C, 19B): a spawn started casting a spell.
+/// eql `OP_BeginCast` (S>C, 19B): a spawn started casting a spell.
 /// Wire layout validated across 3127 fight-capture packets: spellId u32@0,
 /// casterSpawnId u16@4, castTime_ms u16@6 (cast times 0/2010/4500/5000ms;
 /// spell ids include 74023 > u16, so spellId MUST be read as u32). The stock
@@ -989,7 +993,7 @@ pub fn parse_begin_cast(b: &[u8]) -> Result<BeginCast, DecodeError> {
     })
 }
 
-/// eql `OP_SendAATable` (0x31ae, S>C): one AA ability-rank definition, burst at
+/// eql `OP_SendAATable` (S>C): one AA ability-rank definition, burst at
 /// zone-in (one record per packet; variable length 130..346B = a 37B fixed
 /// head + a variable prereq/effect tail). Only the fixed head is needed.
 /// Layout matches Live's `aaInfoStruct`: `descID`@0 (== the profile's
@@ -1015,7 +1019,7 @@ pub fn parse_aa_table_entry(b: &[u8]) -> Result<AaTableEntry, DecodeError> {
     })
 }
 
-/// eql OP_Stance (0x0fab) / OP_Invocation (0x3b12), S>C echo (authoritative): a
+/// eql OP_Stance / OP_Invocation, S>C echo (authoritative): a
 /// swappable stance or invocation was activated. 4B payload = a single u32
 /// ability id @0 (a stable client enum; the daemon resolves it to a name). The
 /// opcode id distinguishes stance from invocation; the payload shape is shared.
@@ -1080,23 +1084,23 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
             "skillIncStruct",
             core::mem::size_of::<eqstructs::skillIncStruct>() as u32,
         ),
-        // OP_Stamina (0x3b0c, 07/14): stock 8B staminaStruct {u32 food, u32 water};
+        // OP_Stamina (07/14): stock 8B staminaStruct {u32 food, u32 water};
         // capture-verified food/water tick down together. Pinned so the gate is eql-owned.
         (
             "staminaStruct",
             core::mem::size_of::<eqstructs::staminaStruct>() as u32,
         ),
-        // OP_Illusion (0x2e7d, 07/14): 332B spawnIllusionStruct — the /*0336*/
+        // OP_Illusion (07/14): 332B spawnIllusionStruct — the /*0336*/
         // offset marker in everquest.h is stale; eql's pinned copy is 332 (fires
         // 332x33 in the fight capture). parse_illusion.
         (
             "spawnIllusionStruct",
             core::mem::size_of::<eqstructs::spawnIllusionStruct>() as u32,
         ),
-        // OP_TimeOfDay (0x0b7f): 8B timeOfDayStruct {u8 hour/min/day/month,u16 year};
+        // OP_TimeOfDay: 8B timeOfDayStruct {u8 hour/min/day/month,u16 year};
         // no pinned eql binding, literal capture-confirmed size (fires 8x12).
         ("timeOfDayStruct", 8),
-        // OP_InspectAnswer (0x6a04): 1956B inspectDataStruct; not seen in the fight
+        // OP_InspectAnswer: 1956B inspectDataStruct; not seen in the fight
         // capture (inspect is passive) — size from the struct def.
         ("inspectDataStruct", 1956),
         (
@@ -1123,7 +1127,7 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
             "actionAltStruct",
             core::mem::size_of::<eqstructs::actionAltStruct>() as u32,
         ),
-        // OP_SimpleMessage (0x50a7, 07/12 rotation): stock 12B {u32 eqstrId, u32
+        // OP_SimpleMessage (07/12 rotation): stock 12B {u32 eqstrId, u32
         // color, u32 0}; pinned binding so the gate tracks eql's own copy.
         (
             "simpleMessageStruct",
@@ -1131,7 +1135,7 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         ),
         // No pinned eql binding (eql reuses the shared decode) — capture-confirmed size:
         ("playerSelfPosStruct", player_self_pos::PAYLOAD_LEN as u32), // OP_ClientUpdate C>S self-pos: 42B post-07/29 (was 38B); floats Y@10/X@22/Z@34, spawnId@2, heading@26
-        ("altExpUpdateStruct", 12), // OP_AAExpUpdate (0x42d1): u32 altexp, u32 aaUnspent, u32 tail
+        ("altExpUpdateStruct", 12), // OP_AAExpUpdate: u32 altexp, u32 aaUnspent, u32 tail
         // eql door rows are 132B (Live doorStruct is 136B); OP_SpawnDoor gates
         // SZC_Modulus on this and newDoorSpawns strides via door_stride().
         ("doorStruct", spawn_door::PAYLOAD_LEN as u32),
@@ -1157,16 +1161,16 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
         // 07/14 remap SZC_Match opcodes; no pinned eql binding, gate = eql WIRE size.
         // OP_BeginCast: eql wire is 19B (spellId u16@0, spawnId u16@4, castTime u16@6 —
         // Xerxes-confirmed), NOT the stock 15B beginCastStruct; gate at 19 so SZC_Match passes.
-        ("beginCastStruct", 19),        // OP_BeginCast (0x6cbd)
-        ("consentResponseStruct", 193), // OP_ConsentResponse (0x2265) + OP_DenyResponse (0x05fc)
-        ("GuildMemberUpdate", 88),      // OP_GuildMemberUpdate (0x0717)
-        // OP_Stance (0x0fab) + OP_Invocation (0x3b12): 4B {u32 abilityId}. Same
+        ("beginCastStruct", 19),        // OP_BeginCast
+        ("consentResponseStruct", 193), // OP_ConsentResponse + OP_DenyResponse
+        ("GuildMemberUpdate", 88),      // OP_GuildMemberUpdate
+        // OP_Stance + OP_Invocation: 4B {u32 abilityId}. Same
         // struct/size for both; the opcode id picks stance vs invocation.
         ("activateAbilityStruct", 4),
     ]
 }
 
-/// eql `OP_HPUpdate` (0x2735) — the multiplexed stat-sync channel, fully
+/// eql `OP_HPUpdate` — the multiplexed stat-sync channel, fully
 /// decoded from the community f-patch's `SpawnShell::spawnStatEQL` (6378 wide
 /// packets across the pcap library, zero layout exceptions).
 ///
@@ -1262,7 +1266,7 @@ pub fn parse_stat_sync(b: &[u8]) -> Result<StatSync, DecodeError> {
     Ok(out)
 }
 
-/// One decoded record from `OP_BuffList` (0x77ae). `remaining_ticks <= 0` means
+/// One decoded record from `OP_BuffList`. `remaining_ticks <= 0` means
 /// a permanent buff (no timer). `slot` is the buff-window slot index.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuffListEntry {
@@ -1276,7 +1280,7 @@ pub struct BuffListEntry {
     pub caster: String,
 }
 
-/// A decoded `OP_BuffList` (0x77ae): the authoritative active-buff list for one
+/// A decoded `OP_BuffList`: the authoritative active-buff list for one
 /// spawn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuffList {
@@ -1284,7 +1288,7 @@ pub struct BuffList {
     pub entries: Vec<BuffListEntry>,
 }
 
-/// eql `OP_BuffList` (0x77ae) — a per-spawn active-buff list, sent at zone-in
+/// eql `OP_BuffList` — a per-spawn active-buff list, sent at zone-in
 /// and on every buff change, with real server-side remaining durations (the
 /// patch calls it "the one that makes it work"). Layout (validated 26/26 across
 /// the upperguk capture, cursor lands exactly on the packet end):
@@ -1513,7 +1517,7 @@ mod tests {
 
     #[test]
     fn new_zone_reads_packed_names() {
-        // 0x1dbf layout: short\0 long\0 <binary tail we ignore>.
+        // OP_NewZone layout: short\0 long\0 <binary tail we ignore>.
         let mut b = Vec::new();
         b.extend_from_slice(b"guktop\0");
         b.extend_from_slice(b"The City of Guk\0");
