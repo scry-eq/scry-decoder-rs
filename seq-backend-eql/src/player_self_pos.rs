@@ -153,6 +153,14 @@ pub fn parse_player_self_pos(bytes: &[u8]) -> Result<PlayerSelfPos, PlayerSelfPo
     // ±3.6, the right magnitude for the ±2.26 units/tick of a full run); the
     // capture has too little sustained movement to tell which maps to which
     // axis.
+    //
+    // TO RESOLVE IT, the capture matters more than the analysis: run SOUTH,
+    // then run WEST, with /loc as ground truth, so each axis moves in isolation
+    // and the per-axis field separates from its neighbours. A normal
+    // wander-around capture cannot settle it — every candidate moves at once.
+    // (That recipe is the salvaged half of a July derivation which produced
+    // deltaY@6 / deltaX@22 / deltaZ@3; those OFFSETS are dead — this body has
+    // been rearranged twice since, on 08/04 and 08/05 — but the method stands.)
     let heading = (read_u32_le(bytes, 38) & 0x7FF) as u16;
 
     Ok(PlayerSelfPos {
