@@ -11,7 +11,7 @@
 
 use seq_events::{
     heading_deg, Backend, BuffEntry, Decoded, Dir, DoorInfo, Event, GuildRosterMember,
-    LootItemInfo, Pos, ProfileInfo, SpawnInfo, ZoneInfo,
+    ItemTemplate, LootItemInfo, Pos, ProfileInfo, SpawnInfo, ZoneInfo,
 };
 
 /// The EverQuest Legends backend (this crate's own parsers).
@@ -60,6 +60,7 @@ impl Backend for EqlBackend {
             "OP_Stance" => stance(bytes),
             "OP_Invocation" => invocation(bytes),
             "OP_GuildMemberList" => guild_roster(bytes),
+            "OP_ItemPacket" => item_packet(bytes),
             "OP_GuildMOTD" => guild_motd(bytes),
             "OP_ExpandedGuildInfo" => expanded_guild_info(bytes),
             "OP_InspectAnswer" => inspect_answer(bytes),
@@ -689,6 +690,30 @@ fn guild_motd(bytes: &[u8]) -> Decoded {
     }
 }
 
+fn item_packet(bytes: &[u8]) -> Decoded {
+    // The C>S half is a 0-byte REQUEST that triggers the bulk reply; it carries
+    // nothing to decode, so let it fall through as Malformed rather than
+    // emitting an empty ItemSet a consumer would apply as "you own nothing".
+    match crate::item_packet::parse_item_packet(bytes) {
+        Ok(set) if !set.items.is_empty() => Decoded::One(Event::ItemSet {
+            items: set
+                .items
+                .into_iter()
+                .map(|i| ItemTemplate {
+                    serial: i.serial,
+                    name: i.name,
+                    lore_name: i.lore_name,
+                    item_id: i.item_id,
+                    icon: i.icon,
+                    slot_mask: i.slot_mask,
+                    stats: i.stats,
+                })
+                .collect(),
+        }),
+        _ => Decoded::Malformed,
+    }
+}
+
 fn guild_roster(bytes: &[u8]) -> Decoded {
     // eql wire diverges from the stock struct (wider header, multiclass mask in
     // the class slot, a rank field, a trailing zone id). The bridge's cxx path
@@ -989,6 +1014,27 @@ mod tests {
     fn inspect_answer_truncated_is_malformed() {
         assert_eq!(
             EqlBackend.decode("OP_InspectAnswer", Dir::ServerToClient, &[0u8; 100]),
+            Decoded::Malformed
+        );
+    }
+
+    #[test]
+    fn item_packet_is_routed() {
+        // A truncated payload reaches the parser (Malformed), proving the arm is
+        // wired rather than falling through to Unhandled.
+        assert_eq!(
+            EqlBackend.decode("OP_ItemPacket", Dir::ServerToClient, &[0u8; 4]),
+            Decoded::Malformed
+        );
+    }
+
+    #[test]
+    fn item_packet_request_does_not_wipe_the_cache() {
+        // The C>S half is a 0-byte REQUEST. It must NOT decode to an empty
+        // ItemSet: the event is authoritative-replacing, so a consumer would
+        // apply that as "you own nothing".
+        assert_eq!(
+            EqlBackend.decode("OP_ItemPacket", Dir::ClientToServer, &[]),
             Decoded::Malformed
         );
     }

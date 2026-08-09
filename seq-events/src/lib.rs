@@ -124,6 +124,33 @@ pub struct GuildInZone {
     pub name: String,
 }
 
+/// One item the character owns (see [`Event::ItemSet`]).
+///
+/// `serial` is a per-INSTANCE id, so two copies of the same item type share an
+/// `item_id` but never a `serial` — key a cache on `item_id` for templates and
+/// on `serial` only when you mean this exact copy.
+///
+/// `stats` is DELIBERATELY UNLABELLED. The wire carries a fixed grid of signed
+/// columns, but several items repeat a value across columns, so the
+/// STR/STA/AGI/… order cannot be inferred from captures alone, and Live's
+/// `ItemStatIndex` order must not be assumed to carry over. Splitting it into
+/// named fields before that is pinned would mislabel silently — the exact
+/// failure a plausible-looking zero causes elsewhere in this crate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ItemTemplate {
+    pub serial: String,
+    pub name: String,
+    /// Usually equal to `name`; a CONTAINER carries its description here.
+    pub lore_name: String,
+    pub item_id: u32,
+    pub icon: u32,
+    /// Standard EQ slot bitmask; 0 = not equippable. Worn-slot indices are bit
+    /// positions in this mask.
+    pub slot_mask: u32,
+    /// Raw signed stat columns — see the note above before naming any of them.
+    pub stats: Vec<i32>,
+}
+
 /// One row of the guild roster (see [`Event::GuildRoster`]). `class` is the
 /// primary (lowest set bit of `class_mask`); `banker`/`alt` are the two flags
 /// split from the wire's packed field. `zone_id` 0 = offline; `last_on` is unix
@@ -265,6 +292,17 @@ pub enum Event {
         guild_id: u32,
         members: Vec<GuildRosterMember>,
     },
+    /// Every item the character owns, with its template data (OP_ItemPacket).
+    ///
+    /// Authoritative and REPLACING, like [`Event::GuildRoster`]: the server
+    /// answers a request with the whole set, so a consumer replaces its cache
+    /// rather than merging. An empty `items` means the parse found no records
+    /// and should be ignored, not treated as "you own nothing".
+    ///
+    /// This is the only source of an item's stats — loot events carry name and
+    /// icon but nothing more, and the player profile carries no item data at
+    /// all.
+    ItemSet { items: Vec<ItemTemplate> },
     /// The guild message of the day (OP_GuildMOTD). `message`/`sender` are empty
     /// when the guild has none set. The wire carries no guild id — the MOTD is
     /// implicitly the local player's guild — so the consumer stamps it from the
