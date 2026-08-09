@@ -706,6 +706,7 @@ fn item_packet(bytes: &[u8]) -> Decoded {
                     item_id: i.item_id,
                     icon: i.icon,
                     slot_mask: i.slot_mask,
+                    container_id: i.container_id,
                     stats: i.stats,
                 })
                 .collect(),

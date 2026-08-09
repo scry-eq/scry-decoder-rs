@@ -144,9 +144,13 @@ pub struct ItemTemplate {
     pub lore_name: String,
     pub item_id: u32,
     pub icon: u32,
-    /// Standard EQ slot bitmask; 0 = not equippable. Worn-slot indices are bit
-    /// positions in this mask.
+    /// Standard EQ slot bitmask; 0 = not equippable. This is where the item
+    /// COULD go — see `container_id` for where it IS.
     pub slot_mask: u32,
+    /// Which container holds it (33 Exaltation, 37 activated key ring, 39
+    /// equipment key ring, 1 carried inventory; 0 and 25 unidentified). Group by
+    /// this to separate the storage spaces.
+    pub container_id: u32,
     /// Raw signed stat columns — see the note above before naming any of them.
     pub stats: Vec<i32>,
 }

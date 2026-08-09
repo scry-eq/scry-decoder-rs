@@ -56,6 +56,9 @@ const STAT_COLUMNS: usize = 14;
 /// Name sits at a fixed offset because the serial ahead of it is fixed-width.
 const NAME_OFFSET: usize = 123;
 const SERIAL_LEN: usize = 16;
+/// Container id, immediately after the serial + NUL. Record-relative, unlike
+/// every FIELD_* above, which are relative to the post-strings block.
+const RECORD_CONTAINER: usize = 21;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ItemTemplate {
@@ -68,6 +71,14 @@ pub struct ItemTemplate {
     pub lore_name: String,
     pub item_id: u32,
     pub icon: u32,
+    /// Which container holds this item. Six values observed; three confirmed by
+    /// exact match against the in-game Storage UI: 33 Exaltation, 37 activated
+    /// key ring, 39 equipment key ring. Also 1 = carried inventory; 0 and 25 are
+    /// unidentified.
+    ///
+    /// This is WHERE THE ITEM IS. `slot_mask` below is where it COULD go — they
+    /// answer different questions and neither substitutes for the other.
+    pub container_id: u32,
     /// Standard EQ slot bitmask: bit2 head, bit3 face, bits1|4 ears, bit5 neck,
     /// bit6 shoulders, bit7 arms, bit8 back, bits9|10 wrists, bit11 range,
     /// bit12 hands, bit13 primary, bit14 secondary, bits15|16 fingers,
@@ -143,6 +154,8 @@ pub fn parse_item_packet(b: &[u8]) -> Result<ItemSet, ItemPacketError> {
 
         // A record whose field block runs past the buffer is truncated; skip it
         // rather than emitting zeros that look like real stats.
+        let container_id = u32_at(b, lo + RECORD_CONTAINER).unwrap_or(0);
+
         let (Some(item_id), Some(slot_mask), Some(icon)) = (
             u32_at(b, tail + FIELD_ITEM_ID),
             u32_at(b, tail + FIELD_SLOT_MASK),
@@ -169,6 +182,7 @@ pub fn parse_item_packet(b: &[u8]) -> Result<ItemSet, ItemPacketError> {
             item_id,
             icon,
             slot_mask,
+            container_id,
             stats,
         });
     }
@@ -183,10 +197,23 @@ mod tests {
     /// Build one record with the real geometry: serial, the 106-byte gap, the
     /// two strings, then the field block.
     fn record(serial: &[u8; 16], name: &str, lore: &str, id: u32, slot: u32, icon: u32) -> Vec<u8> {
+        record_in(serial, name, lore, id, slot, icon, 39)
+    }
+
+    fn record_in(
+        serial: &[u8; 16],
+        name: &str,
+        lore: &str,
+        id: u32,
+        slot: u32,
+        icon: u32,
+        container: u32,
+    ) -> Vec<u8> {
         let mut r = Vec::new();
         r.extend_from_slice(serial);
         r.push(0);
         r.resize(NAME_OFFSET, 0); // pad to the fixed name offset
+        r[RECORD_CONTAINER..RECORD_CONTAINER + 4].copy_from_slice(&container.to_le_bytes());
         r.extend_from_slice(name.as_bytes());
         r.push(0);
         r.extend_from_slice(lore.as_bytes());
@@ -236,6 +263,7 @@ mod tests {
         assert_eq!(crown.item_id, 1239);
         assert_eq!(crown.slot_mask, 4, "head");
         assert_eq!(crown.serial, "iGS000e0002i4G00");
+        assert_eq!(crown.container_id, 39, "equipment key ring");
     }
 
     /// The name offset is fixed, but the FIELD BLOCK is not — it follows two
