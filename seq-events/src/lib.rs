@@ -390,7 +390,15 @@ pub enum Event {
     },
     /// Auto-loot / sell narration (OP_LootMessage), e.g. "You looted a …" —
     /// `text` is already link-cleaned; the consumer shows it as general chat.
-    LootMessage { color: u32, text: String },
+    /// `item_id`/`item_name` come off the link header, 0/empty when the line
+    /// carries no item link — authoritative, so a consumer recording loot never
+    /// has to recover the item from the prose.
+    LootMessage {
+        color: u32,
+        text: String,
+        item_id: u32,
+        item_name: String,
+    },
     /// A player chat message (OP_CommonMessage). `channel` is the MessageType
     /// (0=Guild 2=Group 3=Shout 4=Auction 5=OOC 7=Tell 8=Say 15=Raid). `target`
     /// is meaningful only for tells; `chat_color`/`channel_name` are 0/empty for

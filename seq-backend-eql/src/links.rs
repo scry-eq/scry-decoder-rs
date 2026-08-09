@@ -15,6 +15,23 @@ pub fn item_id_from_link(body: &[u8]) -> u32 {
         .unwrap_or(0)
 }
 
+/// The first ITEM link's `(id, name)`. Spell links (caret args) are skipped, so
+/// a line that mentions a spell before an item still yields the item. `None`
+/// when the text carries no item link.
+pub fn first_item_link(s: &str) -> Option<(u32, String)> {
+    let mut rest = s;
+    while let Some(open) = rest.find('\u{12}') {
+        let body = &rest[open + 1..];
+        let close = body.find('\u{12}')?;
+        let link = &body[..close];
+        if !link.contains('^') {
+            return Some((item_id_from_link(link.as_bytes()), link_name(link)));
+        }
+        rest = &body[close + 1..];
+    }
+    None
+}
+
 /// Replace each `\x12 … \x12` span with its name. Spell links carry caret args
 /// (`fmt^id^..^'Name`) — keep the trailing name; item links are a fixed hex
 /// header + name — skip the header.
@@ -67,5 +84,49 @@ mod tests {
     #[test]
     fn plain_passthrough() {
         assert_eq!(clean_links("no links here"), "no links here");
+    }
+
+    // Header with a real leading id: 002D56 = 11606 (a wire-verified Lady Vox
+    // loot id), padded out to the fixed link width.
+    fn linked(id_hex: &str, name: &str) -> String {
+        format!(
+            "\u{12}{}{}{}\u{12}",
+            id_hex,
+            "0".repeat(ITEM_LINK_HEX - id_hex.len()),
+            name
+        )
+    }
+
+    #[test]
+    fn first_item_link_reads_id_and_name() {
+        let s = format!(
+            "You looted a {} from a corpse",
+            linked("002D56", "Fine Steel")
+        );
+        assert_eq!(first_item_link(&s), Some((11606, "Fine Steel".to_string())));
+    }
+
+    #[test]
+    fn first_item_link_skips_a_spell_link() {
+        let s = format!(
+            "\u{12}63^3686^0^1^'Blood of Pain\u{12} then {}",
+            linked("02446E", "Mote")
+        );
+        assert_eq!(first_item_link(&s), Some((148_590, "Mote".to_string())));
+    }
+
+    #[test]
+    fn first_item_link_absent() {
+        assert_eq!(first_item_link("You receive no loot"), None);
+        // Spell-only line: no item link to find.
+        assert_eq!(
+            first_item_link("\u{12}63^3686^0^1^'Blood of Pain\u{12}"),
+            None
+        );
+    }
+
+    #[test]
+    fn first_item_link_ignores_an_unterminated_link() {
+        assert_eq!(first_item_link("broken \u{12}002D56 no close"), None);
     }
 }

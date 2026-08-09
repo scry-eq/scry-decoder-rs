@@ -370,6 +370,8 @@ fn loot_message(bytes: &[u8]) -> Decoded {
         Ok(m) => Decoded::One(Event::LootMessage {
             color: m.color,
             text: m.text,
+            item_id: m.item_id,
+            item_name: m.item_name,
         }),
         Err(_) => Decoded::Malformed,
     }
