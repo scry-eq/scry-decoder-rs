@@ -125,7 +125,7 @@ mod ffi {
         max_hp: i32,
         ok: bool,
     }
-    // eql OP_HPUpdate (0x2735) is a multiplexed stat-sync channel, not Live's
+    // eql OP_HPUpdate is a multiplexed stat-sync channel, not Live's
     // fixed HP struct — decoded via decode_stat_sync. `wide` gates the real
     // cur/max (vs percent) forms; `has_*` mark which stats the packet carried.
     struct StatSync {
@@ -157,7 +157,7 @@ mod ffi {
         end_cur: i64,
         end_max: i64,
     }
-    // eql OP_BeginCast (0x6cbd, S>C): a spawn started casting. spell_id/caster_id
+    // eql OP_BeginCast (S>C): a spawn started casting. spell_id/caster_id
     // are resolved to names daemon-side; cast_time_ms drives the web cast timer.
     struct BeginCast {
         caster_id: u32,
@@ -165,14 +165,14 @@ mod ffi {
         cast_time_ms: u32,
         ok: bool,
     }
-    // eql OP_Stance (0x0fab) / OP_Invocation (0x3b12), S>C: 4B {u32 abilityId}.
+    // eql OP_Stance / OP_Invocation, S>C: 4B {u32 abilityId}.
     // The daemon resolves ability_id to a display name (stance vs invocation
     // table picked by the opcode). ok=false = wrong-size payload.
     struct ActivateAbility {
         ability_id: u32,
         ok: bool,
     }
-    // eql OP_SendAATable (0x31ae, S>C): one AA ability-rank definition per packet
+    // eql OP_SendAATable (S>C): one AA ability-rank definition per packet
     // (burst at zone-in). desc_id == the profile's per-rank aa id; title_sid is a
     // dbstr type-1 id the daemon resolves to the AA display name. ok=false = short.
     struct AaTableEntry {
@@ -180,7 +180,7 @@ mod ffi {
         title_sid: u32,
         ok: bool,
     }
-    // eql OP_LoadoutSwap (0x7477): a player's multiclass loadout change. Only
+    // eql OP_LoadoutSwap: a player's multiclass loadout change. Only
     // the identity fields that change on a swap are surfaced; spawn_id is the
     // header id of the player who swapped (self or a nearby tracked spawn).
     struct LoadoutSwap {
@@ -345,7 +345,7 @@ mod ffi {
         public_note: String,
         zone_id: u16,
     }
-    // One record of eql OP_BuffList (0x77ae). Returned as a flat Vec (empty on
+    // One record of eql OP_BuffList. Returned as a flat Vec (empty on
     // decode failure); every entry repeats spawn_id so the C++ side can filter
     // to the player without a wrapper struct. remaining_ticks <= 0 = permanent.
     struct BuffListEntry {
@@ -357,7 +357,7 @@ mod ffi {
         // with the ones the player put on it; only this tells them apart.
         caster: String,
     }
-    // One point in the EQL self-position breadcrumb (OP_SelfPosEQL 0x4fb6). Game
+    // One point in the EQL self-position breadcrumb (OP_SelfPosEQL). Game
     // coords (not screen-negated); `ts` is a per-sample monotonic timer. Ordered
     // oldest -> newest. An empty Vec = decode failed / not the breadcrumb.
     struct SelfPosPoint {
@@ -564,7 +564,7 @@ mod ffi {
     }
     // OP_FormattedMessage. `message_format`/`message_color` are the stock
     // Live header (format id + chat colour). The remaining fields are the
-    // EQL 0x3c0a enrichment and stay zero/empty on live/test: that channel
+    // EQL enrichment and stay zero/empty on live/test: that channel
     // diverges (format id @9, not @5) and multiplexes a spell id, a
     // message-class discriminator, the actor spawn id, and a pre-split
     // NUL-delimited arg list the stock header can't represent. On eql,
@@ -962,7 +962,7 @@ fn decode_hp_update(bytes: &[u8]) -> ffi::HpUpdate {
     }
 }
 
-// eql: OP_HPUpdate (0x2735) is the multiplexed stat-sync channel, decoded via
+// eql: OP_HPUpdate is the multiplexed stat-sync channel, decoded via
 // decode_stat_sync — Live's fixed HP struct never appears, so this shared FFI
 // is inert.
 #[cfg(feature = "backend-eql")]
@@ -1141,7 +1141,7 @@ impl EqlSelfTracker {
     }
 }
 
-// eql-only: OP_BeginCast (0x6cbd) — a spawn started casting a spell. live/test
+// eql-only: OP_BeginCast — a spawn started casting a spell. live/test
 // have no such opcode wired, so their build gets an inert stub.
 #[cfg(feature = "backend-eql")]
 fn decode_begin_cast(bytes: &[u8]) -> ffi::BeginCast {
@@ -1170,7 +1170,7 @@ fn decode_begin_cast(_bytes: &[u8]) -> ffi::BeginCast {
     }
 }
 
-// eql-only: OP_Stance (0x0fab) / OP_Invocation (0x3b12) — 4B {u32 abilityId}.
+// eql-only: OP_Stance / OP_Invocation — 4B {u32 abilityId}.
 // live/test have no such opcode wired, so their build gets an inert stub.
 #[cfg(feature = "backend-eql")]
 fn decode_activate_ability(bytes: &[u8]) -> ffi::ActivateAbility {
@@ -1193,7 +1193,7 @@ fn decode_activate_ability(_bytes: &[u8]) -> ffi::ActivateAbility {
     }
 }
 
-// eql-only: OP_SendAATable (0x31ae) — one AA ability-rank definition. live/test
+// eql-only: OP_SendAATable — one AA ability-rank definition. live/test
 // have no such opcode wired, so their build gets an inert stub.
 #[cfg(feature = "backend-eql")]
 fn decode_aa_table_entry(bytes: &[u8]) -> ffi::AaTableEntry {
@@ -1229,7 +1229,7 @@ fn loadout_swap_err() -> ffi::LoadoutSwap {
     }
 }
 
-// eql-only: OP_LoadoutSwap (0x7477). live/test have no such opcode, so their
+// eql-only: OP_LoadoutSwap. live/test have no such opcode, so their
 // build gets an inert stub.
 #[cfg(feature = "backend-eql")]
 fn decode_loadout_swap(bytes: &[u8]) -> ffi::LoadoutSwap {
@@ -1261,7 +1261,7 @@ const LOOT_TXN_NONE: ffi::LootTransaction = ffi::LootTransaction {
     ok: false,
 };
 
-// eql-only: OP_LootTransaction (0xbe5b) subcode-7 item confirmation or
+// eql-only: OP_LootTransaction subcode-7 item confirmation or
 // subcode-5 corpse coin pile.
 #[cfg(feature = "backend-eql")]
 fn decode_loot_transaction(bytes: &[u8]) -> ffi::LootTransaction {
@@ -1293,7 +1293,7 @@ const MONEY_NONE: ffi::MoneyUpdate = ffi::MoneyUpdate {
     ok: false,
 };
 
-// eql-only: OP_MoneyUpdate (0x6414) carried purse, four denominations.
+// eql-only: OP_MoneyUpdate carried purse, four denominations.
 #[cfg(feature = "backend-eql")]
 fn decode_money_update(bytes: &[u8]) -> ffi::MoneyUpdate {
     match seq_backend_eql::parse_money_update(bytes) {
@@ -1313,7 +1313,7 @@ fn decode_money_update(_bytes: &[u8]) -> ffi::MoneyUpdate {
     MONEY_NONE
 }
 
-// eql-only: OP_LootDrops (0x6768) corpse loot window.
+// eql-only: OP_LootDrops corpse loot window.
 #[cfg(feature = "backend-eql")]
 fn decode_loot_drops(bytes: &[u8]) -> ffi::LootDrops {
     match seq_backend_eql::parse_loot_drops(bytes) {
@@ -1350,7 +1350,7 @@ fn decode_loot_drops(_bytes: &[u8]) -> ffi::LootDrops {
     }
 }
 
-// eql-only: OP_LootMessage (0x7d46) personal loot text, reusing SpecialMessage.
+// eql-only: OP_LootMessage personal loot text, reusing SpecialMessage.
 #[cfg(feature = "backend-eql")]
 fn decode_loot_message(bytes: &[u8]) -> ffi::SpecialMessage {
     match seq_backend_eql::parse_loot_message(bytes) {
@@ -1577,7 +1577,7 @@ fn decode_guild_roster(bytes: &[u8]) -> Vec<ffi::GuildRosterRow> {
     }
 }
 
-// eql-only: OP_BuffList (0x77ae) — the authoritative per-spawn active-buff list.
+// eql-only: OP_BuffList — the authoritative per-spawn active-buff list.
 // Flattened to a Vec (empty = decode failed / not present). live/test stub empty.
 #[cfg(feature = "backend-eql")]
 fn decode_buff_list(bytes: &[u8]) -> Vec<ffi::BuffListEntry> {
@@ -1602,7 +1602,7 @@ fn decode_buff_list(_bytes: &[u8]) -> Vec<ffi::BuffListEntry> {
     Vec::new()
 }
 
-// eql-only: OP_SelfPosEQL (0x4fb6) — the local player's position-history
+// eql-only: OP_SelfPosEQL — the local player's position-history
 // breadcrumb, flattened to ordered points (empty = decode failed / not present).
 // live/test stub empty.
 #[cfg(feature = "backend-eql")]
@@ -2447,7 +2447,7 @@ fn decode_formatted_message(bytes: &[u8]) -> ffi::FormattedMessage {
     }
 }
 
-// eql: 0x15d0 (07/14) carries a stock length-prefixed FormattedMessage —
+// eql: OP_FormattedMessage carries a stock length-prefixed body —
 // formatId@5, msgType/colour@9, length-prefixed args@13 (see the parser). The
 // args are already positional (empty slots dropped, links cleaned); the daemon
 // interpolates via EQStr::formatMessage(format_id, args). message_format/
