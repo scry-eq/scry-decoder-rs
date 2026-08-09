@@ -201,6 +201,30 @@ mod ffi {
         from_corpse: bool,
         ok: bool,
     }
+    // One durable loot row from EqlLootTracker. `source` is "message" (what the
+    // player acquired), "window" (corpse contents) or "coin" (a pile); 0 stands
+    // in for SQL NULL on the id/icon columns. `sequence` is the confirmation's
+    // monotonic counter — the host dedups acquisitions on it, since more than
+    // one recorder may be watching the same capture.
+    struct LootRow {
+        ts: i64,
+        source: String,
+        item_name: String,
+        item_id: u32,
+        icon: u32,
+        qty: u32,
+        mob_name: String,
+        mob_norm: String,
+        corpse_id: u32,
+        zone_short: String,
+        zone_base: String,
+        instance: String,
+        sold: bool,
+        money_copper: u32,
+        disposition: String,
+        looter: String,
+        sequence: u32,
+    }
     struct MoneyUpdate {
         platinum: u32,
         gold: u32,
@@ -793,6 +817,40 @@ mod ffi {
         // Non-zero when a real (name-matched) adoption has superseded a
         // provisional id: drop whatever was synthesised for it.
         fn take_retired_provisional(self: &mut EqlSelfTracker) -> u32;
+        // One acquisition spans two packets (narration, then confirmation), so
+        // recording needs cross-packet memory — same reasoning as the self
+        // tracker above. One instance per session; inert on live/test. Each
+        // method returns the rows that COMPLETED on this event, usually none.
+        type EqlLootTracker;
+        fn eql_loot_tracker_new() -> Box<EqlLootTracker>;
+        fn reset(self: &mut EqlLootTracker);
+        fn set_looter(self: &mut EqlLootTracker, looter: &str);
+        fn set_zone(self: &mut EqlLootTracker, zone_short: &str) -> Vec<LootRow>;
+        fn on_loot_message(
+            self: &mut EqlLootTracker,
+            color: u32,
+            text: &str,
+            item_id: u32,
+            item_name: &str,
+            ts: i64,
+        ) -> Vec<LootRow>;
+        // Takes the decoded confirmation straight from decode_loot_transaction.
+        fn on_loot_transaction(
+            self: &mut EqlLootTracker,
+            t: &LootTransaction,
+            ts: i64,
+        ) -> Vec<LootRow>;
+        fn on_loot_drop_item(
+            self: &mut EqlLootTracker,
+            corpse_id: u32,
+            corpse_name: &str,
+            item_name: &str,
+            icon: u32,
+            item_id: u32,
+            ts: i64,
+        ) -> Vec<LootRow>;
+        // Emit a narration that never got its confirmation (shutdown, zone-out).
+        fn flush(self: &mut EqlLootTracker) -> Vec<LootRow>;
         fn decode_loadout_swap(bytes: &[u8]) -> LoadoutSwap;
         fn decode_money_update(bytes: &[u8]) -> MoneyUpdate;
         fn decode_loot_transaction(bytes: &[u8]) -> LootTransaction;
@@ -1138,6 +1196,140 @@ impl EqlSelfTracker {
     }
     fn take_retired_provisional(&mut self) -> u32 {
         0
+    }
+}
+
+// Loot recording state. Same shape as EqlSelfTracker above: the host owns one
+// per session and only forwards packets; all the pairing lives in the backend
+// so every host inherits identical behaviour.
+#[cfg(feature = "backend-eql")]
+pub struct EqlLootTracker(seq_backend_eql::LootTracker);
+#[cfg(not(feature = "backend-eql"))]
+pub struct EqlLootTracker;
+
+#[cfg(feature = "backend-eql")]
+fn eql_loot_tracker_new() -> Box<EqlLootTracker> {
+    Box::new(EqlLootTracker(seq_backend_eql::LootTracker::new()))
+}
+
+#[cfg(feature = "backend-eql")]
+fn loot_rows_to_ffi(rows: Vec<seq_backend_eql::LootRow>) -> Vec<ffi::LootRow> {
+    rows.into_iter()
+        .map(|r| ffi::LootRow {
+            ts: r.ts,
+            source: r.source.as_str().to_string(),
+            item_name: r.item_name,
+            item_id: r.item_id,
+            icon: r.icon,
+            qty: r.qty,
+            mob_name: r.mob_name,
+            mob_norm: r.mob_norm,
+            corpse_id: r.corpse_id,
+            zone_short: r.zone_short,
+            zone_base: r.zone_base,
+            instance: r.instance,
+            sold: r.sold,
+            money_copper: r.money_copper,
+            disposition: r.disposition,
+            looter: r.looter,
+            sequence: r.sequence,
+        })
+        .collect()
+}
+
+#[cfg(feature = "backend-eql")]
+impl EqlLootTracker {
+    fn reset(&mut self) {
+        self.0.reset();
+    }
+    fn set_looter(&mut self, looter: &str) {
+        self.0.set_looter(looter);
+    }
+    fn set_zone(&mut self, zone_short: &str) -> Vec<ffi::LootRow> {
+        loot_rows_to_ffi(self.0.set_zone(zone_short))
+    }
+    fn on_loot_message(
+        &mut self,
+        color: u32,
+        text: &str,
+        item_id: u32,
+        item_name: &str,
+        ts: i64,
+    ) -> Vec<ffi::LootRow> {
+        loot_rows_to_ffi(self.0.on_loot_message(color, text, item_id, item_name, ts))
+    }
+    fn on_loot_transaction(&mut self, t: &ffi::LootTransaction, ts: i64) -> Vec<ffi::LootRow> {
+        loot_rows_to_ffi(self.0.on_loot_transaction(
+            t.corpse_id,
+            t.item_id,
+            t.quantity,
+            t.coin_copper,
+            t.from_corpse,
+            t.sequence,
+            ts,
+        ))
+    }
+    fn on_loot_drop_item(
+        &mut self,
+        corpse_id: u32,
+        corpse_name: &str,
+        item_name: &str,
+        icon: u32,
+        item_id: u32,
+        ts: i64,
+    ) -> Vec<ffi::LootRow> {
+        loot_rows_to_ffi(self.0.on_loot_drop_item(
+            corpse_id,
+            corpse_name,
+            item_name,
+            icon,
+            item_id,
+            ts,
+        ))
+    }
+    fn flush(&mut self) -> Vec<ffi::LootRow> {
+        loot_rows_to_ffi(self.0.flush())
+    }
+}
+
+#[cfg(not(feature = "backend-eql"))]
+fn eql_loot_tracker_new() -> Box<EqlLootTracker> {
+    Box::new(EqlLootTracker)
+}
+
+#[cfg(not(feature = "backend-eql"))]
+impl EqlLootTracker {
+    fn reset(&mut self) {}
+    fn set_looter(&mut self, _looter: &str) {}
+    fn set_zone(&mut self, _zone_short: &str) -> Vec<ffi::LootRow> {
+        Vec::new()
+    }
+    fn on_loot_message(
+        &mut self,
+        _color: u32,
+        _text: &str,
+        _item_id: u32,
+        _item_name: &str,
+        _ts: i64,
+    ) -> Vec<ffi::LootRow> {
+        Vec::new()
+    }
+    fn on_loot_transaction(&mut self, _t: &ffi::LootTransaction, _ts: i64) -> Vec<ffi::LootRow> {
+        Vec::new()
+    }
+    fn on_loot_drop_item(
+        &mut self,
+        _corpse_id: u32,
+        _corpse_name: &str,
+        _item_name: &str,
+        _icon: u32,
+        _item_id: u32,
+        _ts: i64,
+    ) -> Vec<ffi::LootRow> {
+        Vec::new()
+    }
+    fn flush(&mut self) -> Vec<ffi::LootRow> {
+        Vec::new()
     }
 }
 

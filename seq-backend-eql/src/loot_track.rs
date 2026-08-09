@@ -373,46 +373,49 @@ impl LootTracker {
         vec![r]
     }
 
-    /// A corpse's loot window: the drop-table view. Dedups per corpse+item so
-    /// reopening a corpse does not double-count, and teaches item ids.
-    pub fn on_loot_drops(
+    /// One item from a corpse's loot window: the drop-table view. Dedups per
+    /// corpse+item so reopening a corpse does not double-count, and teaches the
+    /// item id so a later narration carrying no link can still resolve it.
+    ///
+    /// Per item rather than per window because the cxx bridge cannot pass a
+    /// slice of tuples; both hosts already iterate the window's items anyway.
+    pub fn on_loot_drop_item(
         &mut self,
         corpse_id: u32,
         corpse_name: &str,
-        items: &[(String, u32, u32)], // (name, icon, item_id)
+        item_name: &str,
+        icon: u32,
+        item_id: u32,
         ts: i64,
     ) -> Vec<LootRow> {
-        let mut out = Vec::new();
-        let mob_norm = normalize_mob(corpse_name);
-        for (name, icon, item_id) in items {
-            if *item_id != 0 {
-                self.item_id_by_name.insert(name.clone(), *item_id);
-            }
-            let key = format!("{corpse_id}\u{1}{name}");
-            if !self.seen_window.insert(key) {
-                continue;
-            }
-            out.push(LootRow {
-                ts,
-                source: LootSource::Window,
-                item_name: name.clone(),
-                item_id: *item_id,
-                icon: *icon,
-                qty: 1,
-                mob_name: corpse_name.to_string(),
-                mob_norm: mob_norm.clone(),
-                corpse_id,
-                zone_short: self.zone_short.clone(),
-                zone_base: self.zone_base.clone(),
-                instance: self.instance.clone(),
-                sold: false,
-                money_copper: 0,
-                disposition: String::new(),
-                looter: self.looter.clone(),
-                sequence: 0,
-            });
+        if item_id != 0 {
+            self.item_id_by_name.insert(item_name.to_string(), item_id);
         }
-        out
+        if !self
+            .seen_window
+            .insert(format!("{corpse_id}\u{1}{item_name}"))
+        {
+            return Vec::new();
+        }
+        vec![LootRow {
+            ts,
+            source: LootSource::Window,
+            item_name: item_name.to_string(),
+            item_id,
+            icon,
+            qty: 1,
+            mob_name: corpse_name.to_string(),
+            mob_norm: normalize_mob(corpse_name),
+            corpse_id,
+            zone_short: self.zone_short.clone(),
+            zone_base: self.zone_base.clone(),
+            instance: self.instance.clone(),
+            sold: false,
+            money_copper: 0,
+            disposition: String::new(),
+            looter: self.looter.clone(),
+            sequence: 0,
+        }]
     }
 
     /// Emit a narration that never received its confirmation. Hosts call this
@@ -584,14 +587,22 @@ mod tests {
     #[test]
     fn window_rows_dedup_per_corpse_and_teach_item_ids() {
         let mut t = tracker_in_zone();
-        let items = vec![("Diamond Dust".to_string(), 1075u32, 16884u32)];
-        assert_eq!(t.on_loot_drops(11613, "an ice giant", &items, 100).len(), 1);
+        let row = t.on_loot_drop_item(11613, "an ice giant", "Diamond Dust", 1075, 16884, 100);
+        assert_eq!(row.len(), 1);
+        assert_eq!(row[0].source, LootSource::Window);
+        assert_eq!(row[0].icon, 1075);
         // Reopening the same corpse re-sends the list.
         assert!(t
-            .on_loot_drops(11613, "an ice giant", &items, 101)
+            .on_loot_drop_item(11613, "an ice giant", "Diamond Dust", 1075, 16884, 101)
             .is_empty());
+        // A different corpse with the same item is a distinct row.
+        assert_eq!(
+            t.on_loot_drop_item(11614, "an ice giant", "Diamond Dust", 1075, 16884, 102)
+                .len(),
+            1
+        );
         // A narration with no link picks the id up from the window.
-        t.on_loot_message(LOOT_COLOR, HOARD, 0, "", 102);
+        t.on_loot_message(LOOT_COLOR, HOARD, 0, "", 103);
         assert_eq!(t.flush()[0].item_id, 16884);
     }
 
