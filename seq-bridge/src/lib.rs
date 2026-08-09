@@ -201,6 +201,16 @@ mod ffi {
         from_corpse: bool,
         ok: bool,
     }
+    // eql OP_LootMessage: the personal loot narration. item_id/item_name come
+    // off the link header (0/empty when the line carries no item link) and are
+    // authoritative — a consumer never has to recover the item from the prose.
+    struct LootMessage {
+        color: u32,
+        text: String,
+        item_id: u32,
+        item_name: String,
+        ok: bool,
+    }
     // One durable loot row from EqlLootTracker. `source` is "message" (what the
     // player acquired), "window" (corpse contents) or "coin" (a pile); 0 stands
     // in for SQL NULL on the id/icon columns. `sequence` is the confirmation's
@@ -905,7 +915,7 @@ mod ffi {
         fn decode_simple_message(bytes: &[u8]) -> SimpleMessage;
         fn decode_formatted_message(bytes: &[u8]) -> FormattedMessage;
         fn decode_special_message(bytes: &[u8]) -> SpecialMessage;
-        fn decode_loot_message(bytes: &[u8]) -> SpecialMessage;
+        fn decode_loot_message(bytes: &[u8]) -> LootMessage;
         fn decode_channel_message(bytes: &[u8]) -> ChannelMessage;
         fn decode_new_zone(bytes: &[u8]) -> NewZone;
         fn decode_player_profile(bytes: &[u8]) -> PlayerProfile;
@@ -1544,34 +1554,32 @@ fn decode_loot_drops(_bytes: &[u8]) -> ffi::LootDrops {
 
 // eql-only: OP_LootMessage personal loot text, reusing SpecialMessage.
 #[cfg(feature = "backend-eql")]
-fn decode_loot_message(bytes: &[u8]) -> ffi::SpecialMessage {
+fn decode_loot_message(bytes: &[u8]) -> ffi::LootMessage {
     match seq_backend_eql::parse_loot_message(bytes) {
-        Ok(m) => ffi::SpecialMessage {
-            message_color: m.color,
-            target: 0,
-            source: String::new(),
-            message: m.text,
+        Ok(m) => ffi::LootMessage {
+            color: m.color,
+            text: m.text,
+            item_id: m.item_id,
+            item_name: m.item_name,
             ok: true,
         },
-        Err(_) => ffi::SpecialMessage {
-            message_color: 0,
-            target: 0,
-            source: String::new(),
-            message: String::new(),
-            ok: false,
-        },
+        Err(_) => loot_message_none(),
+    }
+}
+
+fn loot_message_none() -> ffi::LootMessage {
+    ffi::LootMessage {
+        color: 0,
+        text: String::new(),
+        item_id: 0,
+        item_name: String::new(),
+        ok: false,
     }
 }
 
 #[cfg(not(feature = "backend-eql"))]
-fn decode_loot_message(_bytes: &[u8]) -> ffi::SpecialMessage {
-    ffi::SpecialMessage {
-        message_color: 0,
-        target: 0,
-        source: String::new(),
-        message: String::new(),
-        ok: false,
-    }
+fn decode_loot_message(_bytes: &[u8]) -> ffi::LootMessage {
+    loot_message_none()
 }
 
 #[cfg(not(feature = "backend-eql"))]
