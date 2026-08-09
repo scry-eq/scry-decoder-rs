@@ -130,12 +130,11 @@ pub struct GuildInZone {
 /// `item_id` but never a `serial` — key a cache on `item_id` for templates and
 /// on `serial` only when you mean this exact copy.
 ///
-/// `stats` is DELIBERATELY UNLABELLED. The wire carries a fixed grid of signed
-/// columns, but several items repeat a value across columns, so the
-/// STR/STA/AGI/… order cannot be inferred from captures alone, and Live's
-/// `ItemStatIndex` order must not be assumed to carry over. Splitting it into
-/// named fields before that is pinned would mislabel silently — the exact
-/// failure a plausible-looking zero causes elsewhere in this crate.
+/// The stat order was pinned against a real in-game tooltip, NOT inferred: six
+/// of the seven land exactly, and the seventh (CHA) reads one lower because the
+/// tooltip was displaying modified rather than base values. The five resists
+/// keep slot order, since the tooltipped item carries the same value in all
+/// five and nothing yet distinguishes them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemTemplate {
     pub serial: String,
@@ -151,8 +150,16 @@ pub struct ItemTemplate {
     /// equipment key ring, 1 carried inventory; 0 and 25 unidentified). Group by
     /// this to separate the storage spaces.
     pub container_id: u32,
-    /// Raw signed stat columns — see the note above before naming any of them.
+    /// `[STR, STA, AGI, DEX, CHA, INT, WIS]`, signed. BASE values: an in-game
+    /// tooltip showing "modified" numbers read one higher on CHA.
     pub stats: Vec<i32>,
+    /// Five resists. Internal ORDER unverified — the one tooltipped item has 3
+    /// in all five, so nothing distinguishes them. Do not relabel on a guess.
+    pub resists: Vec<i32>,
+    pub hp: i32,
+    pub mana: i32,
+    pub endurance: i32,
+    pub ac: i32,
 }
 
 /// One row of the guild roster (see [`Event::GuildRoster`]). `class` is the

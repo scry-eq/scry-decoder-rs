@@ -719,6 +719,11 @@ fn item_packet(bytes: &[u8]) -> Decoded {
                     slot_mask: i.slot_mask,
                     container_id: i.container_id,
                     stats: i.stats,
+                    resists: i.resists,
+                    hp: i.hp,
+                    mana: i.mana,
+                    endurance: i.endurance,
+                    ac: i.ac,
                 })
                 .collect(),
         }),

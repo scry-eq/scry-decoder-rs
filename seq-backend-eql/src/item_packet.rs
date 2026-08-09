@@ -47,11 +47,24 @@ use thiserror::Error;
 const FIELD_ITEM_ID: usize = 8;
 const FIELD_SLOT_MASK: usize = 20;
 const FIELD_ICON: usize = 28;
-/// Signed i32 grid. Not 4-byte aligned to the block start — read on a block
-/// aligned grid the values land in the HIGH half of each u32 and decode as
-/// garbage (655360 rather than 10).
-const FIELD_STATS: usize = 46;
-const STAT_COLUMNS: usize = 14;
+/// The stat block is a grid of 4-byte SLOTS whose value is an **i16 at slot+2**.
+/// Reading a slot as a u32 yields `value << 16` — 655360 instead of 10 — which
+/// is plausible enough to ship unnoticed, so read i16 at the +2.
+const SLOT_STRIDE: usize = 4;
+const SLOT_VALUE: usize = 2;
+
+/// Slot indices, confirmed against an in-game tooltip (Loam Encrusted Cloak) and
+/// cross-checked by item semantics across 270 records.
+const SLOT_RESISTS: usize = 8;
+const RESIST_COUNT: usize = 5;
+const SLOT_STATS: usize = 14;
+const STAT_COUNT: usize = 7;
+const SLOT_HP: usize = 21;
+const SLOT_MANA: usize = 22;
+const SLOT_ENDURANCE: usize = 23;
+const SLOT_AC: usize = 24;
+/// Highest slot read, so a truncation check covers the whole block.
+const SLOT_MAX: usize = SLOT_AC;
 
 /// Name sits at a fixed offset because the serial ahead of it is fixed-width.
 const NAME_OFFSET: usize = 123;
@@ -84,8 +97,21 @@ pub struct ItemTemplate {
     /// bit12 hands, bit13 primary, bit14 secondary, bits15|16 fingers,
     /// bit17 chest, bit18 legs, bit19 feet, bit20 waist. 0 = not equippable.
     pub slot_mask: u32,
-    /// Raw stat columns, signed. UNLABELLED on purpose — see the module docs.
+    /// `[STR, STA, AGI, DEX, CHA, INT, WIS]` — the proto's order.
+    ///
+    /// Confirmed against a tooltip: STR 2, AGI 8, INT 1 land exactly, with STA,
+    /// DEX and WIS zero as displayed. CHA is the one caveat — the wire reads 3
+    /// where the tooltip showed 4, and that tooltip had its "Unmodified" box
+    /// UNCHECKED, so it was showing modified values. Treat these as BASE stats.
     pub stats: Vec<i32>,
+    /// Five resists. Their internal ORDER is unverified: the one item with a
+    /// tooltip carries 3 in all five, so nothing distinguishes them yet. Emitted
+    /// in slot order; do not relabel without an item whose resists differ.
+    pub resists: Vec<i32>,
+    pub hp: i32,
+    pub mana: i32,
+    pub endurance: i32,
+    pub ac: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -124,8 +150,13 @@ fn cstr_at(b: &[u8], o: usize) -> Option<(String, usize)> {
     Some((String::from_utf8_lossy(&b[o..end]).into_owned(), end + 1))
 }
 
-fn i32_at(b: &[u8], o: usize) -> Option<i32> {
-    Some(i32::from_le_bytes(b.get(o..o + 4)?.try_into().ok()?))
+fn i16_at(b: &[u8], o: usize) -> Option<i16> {
+    Some(i16::from_le_bytes(b.get(o..o + 2)?.try_into().ok()?))
+}
+
+/// Slot `j` sits at `tail + 4j`, and its value is the i16 two bytes in.
+fn slot_offset(tail: usize, j: usize) -> usize {
+    tail + j * SLOT_STRIDE + SLOT_VALUE
 }
 
 fn u32_at(b: &[u8], o: usize) -> Option<u32> {
@@ -164,16 +195,16 @@ pub fn parse_item_packet(b: &[u8]) -> Result<ItemSet, ItemPacketError> {
             continue;
         };
 
-        // Require the WHOLE stat block. A partial read would hand the consumer a
-        // short vector that reads as "these stats are zero" — the same
-        // plausible-zeros failure this parser exists to avoid. Real records are
-        // >=1056B, so only a clipped payload ever trips this.
-        let Some(stats) = (0..STAT_COLUMNS)
-            .map(|j| i32_at(b, tail + FIELD_STATS + j * 4))
-            .collect::<Option<Vec<i32>>>()
-        else {
+        // Require the WHOLE stat block. A partial read would hand the consumer
+        // zeros that read as real values — the failure this parser exists to
+        // avoid. Real records are >=1056B, so only a clipped payload trips this.
+        if slot_offset(tail, SLOT_MAX) + 2 > b.len() {
             continue;
-        };
+        }
+
+        let slot = |j: usize| i32::from(i16_at(b, slot_offset(tail, j)).unwrap_or(0));
+        let stats = (0..STAT_COUNT).map(|k| slot(SLOT_STATS + k)).collect();
+        let resists = (0..RESIST_COUNT).map(|k| slot(SLOT_RESISTS + k)).collect();
 
         items.push(ItemTemplate {
             serial,
@@ -184,6 +215,11 @@ pub fn parse_item_packet(b: &[u8]) -> Result<ItemSet, ItemPacketError> {
             slot_mask,
             container_id,
             stats,
+            resists,
+            hp: slot(SLOT_HP),
+            mana: slot(SLOT_MANA),
+            endurance: slot(SLOT_ENDURANCE),
+            ac: slot(SLOT_AC),
         });
     }
 
@@ -219,12 +255,13 @@ mod tests {
         r.extend_from_slice(lore.as_bytes());
         r.push(0);
         let tail = r.len();
-        r.resize(tail + FIELD_STATS + STAT_COLUMNS * 4 + 8, 0);
+        r.resize(tail + (SLOT_MAX + 4) * SLOT_STRIDE, 0);
         r[tail + FIELD_ITEM_ID..tail + FIELD_ITEM_ID + 4].copy_from_slice(&id.to_le_bytes());
         r[tail + FIELD_SLOT_MASK..tail + FIELD_SLOT_MASK + 4].copy_from_slice(&slot.to_le_bytes());
         r[tail + FIELD_ICON..tail + FIELD_ICON + 4].copy_from_slice(&icon.to_le_bytes());
-        // one negative stat, to pin the signedness
-        r[tail + FIELD_STATS..tail + FIELD_STATS + 4].copy_from_slice(&(-5i32).to_le_bytes());
+        // A negative STR, to pin the signedness and the slot arithmetic.
+        let o = slot_offset(tail, SLOT_STATS);
+        r[o..o + 2].copy_from_slice(&(-5i16).to_le_bytes());
         r
     }
 
@@ -264,6 +301,8 @@ mod tests {
         assert_eq!(crown.slot_mask, 4, "head");
         assert_eq!(crown.serial, "iGS000e0002i4G00");
         assert_eq!(crown.container_id, 39, "equipment key ring");
+        assert_eq!(crown.stats.len(), STAT_COUNT);
+        assert_eq!(crown.resists.len(), RESIST_COUNT);
     }
 
     /// The name offset is fixed, but the FIELD BLOCK is not — it follows two
@@ -301,7 +340,7 @@ mod tests {
             1,
         ));
         let set = parse_item_packet(&b).unwrap();
-        assert_eq!(set.items[0].stats[0], -5, "stat columns carry negatives");
+        assert_eq!(set.items[0].stats[0], -5, "STR is signed");
     }
 
     #[test]
@@ -344,8 +383,68 @@ mod tests {
             .iter()
             .all(|i| !i.name.is_empty() && i.item_id > 0));
         // Stat columns are fixed-width for every record.
-        assert!(set.items.iter().all(|i| i.stats.len() == STAT_COLUMNS));
+        assert!(set.items.iter().all(|i| i.stats.len() == STAT_COUNT));
+        assert!(set.items.iter().all(|i| i.resists.len() == RESIST_COUNT));
         eprintln!("parsed {} items from {}", set.items.len(), path);
+    }
+
+    /// The mapping, pinned against a real in-game tooltip (Loam Encrusted
+    /// Cloak: AC 5, Mana 5, STR 2, AGI 8, INT 1, five resists at 3).
+    #[test]
+    fn slots_map_to_the_named_fields() {
+        let mut r = record(
+            b"iGS000e0002S4000",
+            "Loam Encrusted Cloak",
+            "x",
+            1646,
+            256,
+            660,
+        );
+        let tail = r.len() - (SLOT_MAX + 4) * SLOT_STRIDE;
+        let mut put = |j: usize, v: i16| {
+            let o = slot_offset(tail, j);
+            r[o..o + 2].copy_from_slice(&v.to_le_bytes());
+        };
+        for k in 0..RESIST_COUNT {
+            put(SLOT_RESISTS + k, 3);
+        }
+        put(SLOT_STATS, 2); // STR
+        put(SLOT_STATS + 2, 8); // AGI
+        put(SLOT_STATS + 5, 1); // INT
+        put(SLOT_MANA, 5);
+        put(SLOT_AC, 5);
+
+        let mut b = 0u32.to_le_bytes().to_vec();
+        b.extend(r);
+        let it = &parse_item_packet(&b).unwrap().items[0];
+
+        assert_eq!(
+            it.stats,
+            vec![2, 0, 8, 0, 0, 1, 0],
+            "STR STA AGI DEX CHA INT WIS"
+        );
+        assert_eq!(it.resists, vec![3; RESIST_COUNT]);
+        assert_eq!(it.ac, 5);
+        assert_eq!(it.mana, 5);
+        assert_eq!(it.hp, 0, "the cloak has none");
+        assert_eq!(it.endurance, 0);
+    }
+
+    /// A slot read as u32 yields `value << 16` (655360 for 10). The value is an
+    /// i16 at slot+2, and getting that wrong produces numbers plausible enough
+    /// to ship.
+    #[test]
+    fn a_slot_value_is_an_i16_two_bytes_in() {
+        let mut r = record(b"iGS000e0002S4000", "X", "x", 1, 0, 1);
+        let tail = r.len() - (SLOT_MAX + 4) * SLOT_STRIDE;
+        let o = slot_offset(tail, SLOT_AC);
+        r[o..o + 2].copy_from_slice(&10i16.to_le_bytes());
+        // The slot's first two bytes stay zero, so a u32 read would see 10<<16.
+        assert_eq!(&r[o - 2..o], &[0, 0]);
+
+        let mut b = 0u32.to_le_bytes().to_vec();
+        b.extend(r);
+        assert_eq!(parse_item_packet(&b).unwrap().items[0].ac, 10);
     }
 
     #[test]
