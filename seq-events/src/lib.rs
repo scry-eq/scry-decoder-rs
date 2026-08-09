@@ -296,6 +296,14 @@ pub enum Event {
         guild_id: u32,
         members: Vec<GuildRosterMember>,
     },
+    /// The world->zone handoff (OP_ZoneServerInfo): which zone server the client
+    /// was just told to connect to.
+    ///
+    /// A REPORT, not a routing input. scry feeds every UDP flow to the SOE layer
+    /// and lets each decode on its own merits, so it needs no port binding —
+    /// consuming this to reintroduce one would give that up. Surface it, do not
+    /// route on it.
+    ZoneServerInfo { host: String, port: u32 },
     /// Every item the character owns, with its template data (OP_ItemPacket).
     ///
     /// Authoritative and REPLACING, like [`Event::GuildRoster`]: the server

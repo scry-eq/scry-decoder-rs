@@ -61,6 +61,7 @@ impl Backend for EqlBackend {
             "OP_Invocation" => invocation(bytes),
             "OP_GuildMemberList" => guild_roster(bytes),
             "OP_ItemPacket" => item_packet(bytes),
+            "OP_ZoneServerInfo" => zone_server_info(bytes),
             "OP_GuildMOTD" => guild_motd(bytes),
             "OP_ExpandedGuildInfo" => expanded_guild_info(bytes),
             "OP_InspectAnswer" => inspect_answer(bytes),
@@ -690,6 +691,16 @@ fn guild_motd(bytes: &[u8]) -> Decoded {
     }
 }
 
+fn zone_server_info(bytes: &[u8]) -> Decoded {
+    match crate::zone_server_info::parse_zone_server_info(bytes) {
+        Ok(z) => Decoded::One(Event::ZoneServerInfo {
+            host: z.host,
+            port: u32::from(z.port),
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
 fn item_packet(bytes: &[u8]) -> Decoded {
     // The C>S half is a 0-byte REQUEST that triggers the bulk reply; it carries
     // nothing to decode, so let it fall through as Malformed rather than
@@ -1015,6 +1026,26 @@ mod tests {
     fn inspect_answer_truncated_is_malformed() {
         assert_eq!(
             EqlBackend.decode("OP_InspectAnswer", Dir::ServerToClient, &[0u8; 100]),
+            Decoded::Malformed
+        );
+    }
+
+    #[test]
+    fn zone_server_info_is_routed() {
+        let mut p = vec![0u8; 130];
+        let host = b"lvseqns-livz07.everquestlegends.com";
+        p[..host.len()].copy_from_slice(host);
+        p[128..].copy_from_slice(&3229u16.to_le_bytes());
+        assert_eq!(
+            EqlBackend.decode("OP_ZoneServerInfo", Dir::ServerToClient, &p),
+            Decoded::One(Event::ZoneServerInfo {
+                host: "lvseqns-livz07.everquestlegends.com".into(),
+                port: 3229,
+            })
+        );
+        // Short payload reaches the parser rather than falling through.
+        assert_eq!(
+            EqlBackend.decode("OP_ZoneServerInfo", Dir::ServerToClient, &[0u8; 4]),
             Decoded::Malformed
         );
     }

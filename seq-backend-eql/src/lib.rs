@@ -98,6 +98,7 @@ pub mod ucs_chat;
 pub mod wear_change;
 pub mod zone_change;
 pub mod zone_point;
+pub mod zone_server_info;
 
 // Full public-API mirror of seq-decode, so seq-bridge can alias this crate in
 // place of seq-decode for the shared decoders (identical fn + struct names).
