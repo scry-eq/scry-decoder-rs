@@ -71,6 +71,7 @@ pub mod links;
 pub mod loadout_swap;
 pub mod loot_drops;
 pub mod loot_message;
+pub mod loot_track;
 pub mod loot_transaction;
 pub mod mana_change;
 pub mod mob_health;
@@ -125,6 +126,7 @@ pub use group_follow::{parse_group_follow, GroupFollow, GroupFollowError};
 pub use group_roster::{parse_group_roster, GroupRoster, GroupRosterError};
 pub use loot_drops::{parse_loot_drops, LootDrops, LootDropsError};
 pub use loot_message::{parse_loot_message, LootMessage, LootMessageError};
+pub use loot_track::{LootRow, LootSource, LootTracker};
 pub use loot_transaction::{parse_loot_transaction, LootTransaction, LootTransactionError};
 pub use money_update::{parse_money_update, MoneyUpdate, MoneyUpdateError};
 // Vendored 18B `hpNpcUpdateStruct` parser: eql never sees Live's fixed HP
