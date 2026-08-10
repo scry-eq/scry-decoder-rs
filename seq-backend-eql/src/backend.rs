@@ -701,32 +701,38 @@ fn zone_server_info(bytes: &[u8]) -> Decoded {
     }
 }
 
+/// Shared by OP_ItemPacket and the loadout-swap tail — one construction, so the
+/// two can never drift into describing items differently.
+fn item_set_event(set: crate::item_packet::ItemSet) -> Event {
+    Event::ItemSet {
+        items: set
+            .items
+            .into_iter()
+            .map(|i| ItemTemplate {
+                serial: i.serial,
+                name: i.name,
+                lore_name: i.lore_name,
+                item_id: i.item_id,
+                icon: i.icon,
+                slot_mask: i.slot_mask,
+                container_id: i.container_id,
+                stats: i.stats,
+                resists: i.resists,
+                hp: i.hp,
+                mana: i.mana,
+                endurance: i.endurance,
+                ac: i.ac,
+            })
+            .collect(),
+    }
+}
+
 fn item_packet(bytes: &[u8]) -> Decoded {
     // The C>S half is a 0-byte REQUEST that triggers the bulk reply; it carries
     // nothing to decode, so let it fall through as Malformed rather than
     // emitting an empty ItemSet a consumer would apply as "you own nothing".
     match crate::item_packet::parse_item_packet(bytes) {
-        Ok(set) if !set.items.is_empty() => Decoded::One(Event::ItemSet {
-            items: set
-                .items
-                .into_iter()
-                .map(|i| ItemTemplate {
-                    serial: i.serial,
-                    name: i.name,
-                    lore_name: i.lore_name,
-                    item_id: i.item_id,
-                    icon: i.icon,
-                    slot_mask: i.slot_mask,
-                    container_id: i.container_id,
-                    stats: i.stats,
-                    resists: i.resists,
-                    hp: i.hp,
-                    mana: i.mana,
-                    endurance: i.endurance,
-                    ac: i.ac,
-                })
-                .collect(),
-        }),
+        Ok(set) if !set.items.is_empty() => Decoded::One(item_set_event(set)),
         _ => Decoded::Malformed,
     }
 }
@@ -849,15 +855,36 @@ fn loadout_swap(bytes: &[u8]) -> Decoded {
         // next position update resurrects the id as an "Unknown" placeholder.
         // Consumers upsert on SpawnAdded, so this is idempotent when the spawn
         // is still tracked. Matches upstream's fix (legends 7612d72).
-        Ok(l) => Decoded::Many(vec![
-            spawn_event(&l.record),
-            Event::LoadoutSwap {
-                spawn_id: l.spawn_id,
-                level: l.level as u32,
-                class: l.class_,
-                race: l.race,
-            },
-        ]),
+        Ok(l) => {
+            let mut out = vec![
+                spawn_event(&l.record),
+                Event::LoadoutSwap {
+                    spawn_id: l.spawn_id,
+                    level: l.level as u32,
+                    class: l.class_,
+                    race: l.race,
+                },
+            ];
+
+            // The SELF variant carries a serialized inventory tail in the same
+            // record format OP_ItemPacket uses — confirmed on a captured swap:
+            // 307705 bytes holding 234 items, parsed by the same walk. A
+            // broadcast has no tail (tail_len 0), so nearby players' swaps add
+            // nothing here. No swap follows with an OP_ItemPacket, so without
+            // this a self swap would leave the item cache describing the
+            // PREVIOUS loadout.
+            let tail = crate::loadout_swap::tail_of(bytes);
+
+            if !tail.is_empty() {
+                if let Ok(set) = crate::item_packet::parse_item_packet(tail) {
+                    if !set.items.is_empty() {
+                        out.push(item_set_event(set));
+                    }
+                }
+            }
+
+            Decoded::Many(out)
+        }
         Err(_) => Decoded::Malformed,
     }
 }
@@ -1052,6 +1079,28 @@ mod tests {
         assert_eq!(
             EqlBackend.decode("OP_ZoneServerInfo", Dir::ServerToClient, &[0u8; 4]),
             Decoded::Malformed
+        );
+    }
+
+    #[test]
+    fn a_self_loadout_swap_also_yields_its_item_set() {
+        // Header + a minimal ZoneEntry-ish record will not parse, so this pins
+        // the SHAPE via tail_of: a payload longer than innerLen has a tail, a
+        // broadcast does not. The end-to-end proof is the captured swap (234
+        // items out of a 307705-byte tail), which cannot ship as a fixture.
+        let mut p = vec![0u8; 64];
+        p[5..7].copy_from_slice(&64u16.to_le_bytes());
+        assert!(
+            crate::loadout_swap::tail_of(&p).is_empty(),
+            "broadcast: no tail"
+        );
+
+        let mut p2 = vec![0u8; 200];
+        p2[5..7].copy_from_slice(&64u16.to_le_bytes());
+        assert_eq!(
+            crate::loadout_swap::tail_of(&p2).len(),
+            136,
+            "self: tail present"
         );
     }
 

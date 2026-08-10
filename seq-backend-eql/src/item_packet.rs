@@ -183,6 +183,15 @@ pub fn parse_item_packet(b: &[u8]) -> Result<ItemSet, ItemPacketError> {
             continue;
         };
 
+        // A serial with no name at +123 is a REFERENCE, not a record. The
+        // loadout-swap tail carries both: a short reference list ahead of the
+        // full records, each entry just a serial. Without this guard those
+        // parse as items with an empty name that DUPLICATE a real record's
+        // serial — 236 "records" for 234 real ones on a captured tail.
+        if name.is_empty() {
+            continue;
+        }
+
         // A record whose field block runs past the buffer is truncated; skip it
         // rather than emitting zeros that look like real stats.
         let container_id = u32_at(b, lo + RECORD_CONTAINER).unwrap_or(0);
