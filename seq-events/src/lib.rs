@@ -75,6 +75,8 @@ pub struct ProfileInfo {
     /// skills by another path, so it's empty there). `0xFFFFFFFF` = the skill is
     /// unavailable to this class; the consumer filters those (and 0) out.
     pub skills: Vec<u32>,
+    /// EQL multiclass bitmask (bit N = class N). 0 on non-multiclass wires.
+    pub class_mask: u32,
     /// Base stats — the loadout roll (race + primary + additional classes),
     /// not gear-inclusive totals. 0 where a backend doesn't surface them.
     pub str_: u32,

@@ -589,6 +589,7 @@ fn player_profile(bytes: &[u8]) -> Decoded {
             aa_values: p.aa_values,
             aa_spent: p.aa_spent,
             skills: p.skills,
+            class_mask: p.class_mask,
             str_: p.str_,
             sta: p.sta,
             cha: p.cha,
