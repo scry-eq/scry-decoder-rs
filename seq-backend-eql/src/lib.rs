@@ -420,10 +420,8 @@ pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
         level: b[33],
         ..Default::default()
     };
-    // Base stats at a FIXED offset: 7 u32 in Live's charProfileStruct order
-    // (STR/STA/CHA/DEX/INT/AGI/WIS), Live's 956 block landing 6 bytes later.
-    // These are the loadout's BASE stats — race + primary + the two additional
-    // classes — not gear-inclusive totals, so they change on a loadout swap.
+    // FIXED offset: 7 u32 in Live's charProfileStruct order, its 956 block
+    // landing 6 bytes later. BASE stats (the loadout roll), not gear totals.
     if b.len() >= 990 {
         prof.str_ = rd_u32(b, 962);
         prof.sta = rd_u32(b, 966);

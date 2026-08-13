@@ -75,10 +75,8 @@ pub struct ProfileInfo {
     /// skills by another path, so it's empty there). `0xFFFFFFFF` = the skill is
     /// unavailable to this class; the consumer filters those (and 0) out.
     pub skills: Vec<u32>,
-    /// Base stats. eql reads these from a fixed profile offset; they are the
-    /// loadout ROLL (race + primary + additional classes), not the
-    /// gear-inclusive totals, so a loadout swap changes them. 0 where a backend
-    /// doesn't surface them.
+    /// Base stats — the loadout roll (race + primary + additional classes),
+    /// not gear-inclusive totals. 0 where a backend doesn't surface them.
     pub str_: u32,
     pub sta: u32,
     pub cha: u32,
