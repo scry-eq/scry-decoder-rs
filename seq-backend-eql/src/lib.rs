@@ -420,6 +420,19 @@ pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
         level: b[33],
         ..Default::default()
     };
+    // Base stats at a FIXED offset: 7 u32 in Live's charProfileStruct order
+    // (STR/STA/CHA/DEX/INT/AGI/WIS), Live's 956 block landing 6 bytes later.
+    // These are the loadout's BASE stats — race + primary + the two additional
+    // classes — not gear-inclusive totals, so they change on a loadout swap.
+    if b.len() >= 990 {
+        prof.str_ = rd_u32(b, 962);
+        prof.sta = rd_u32(b, 966);
+        prof.cha = rd_u32(b, 970);
+        prof.dex = rd_u32(b, 974);
+        prof.int_ = rd_u32(b, 978);
+        prof.agi = rd_u32(b, 982);
+        prof.wis = rd_u32(b, 986);
+    }
     // Variable-length NetStream walk to the SKILL array (and the AA array en
     // route), mirroring ZoneMgr::fillProfileStructEQL (zonemgr.cpp). Populates
     // `skills`, `aa_ids`/`aa_values`, and `aa_spent`. Bounds-guarded: any
@@ -1377,6 +1390,31 @@ mod tests {
         assert_eq!(p.level, 42);
         // 34-byte identity-only buffer has no name slot → empty, no panic.
         assert_eq!(p.name, "");
+    }
+
+    #[test]
+    fn profile_reads_base_stats() {
+        // Seven DISTINCT values, so a permuted field mapping cannot pass.
+        let mut b = vec![0u8; 990];
+        for (i, v) in [11u32, 22, 33, 44, 55, 66, 77].iter().enumerate() {
+            b[962 + 4 * i..966 + 4 * i].copy_from_slice(&v.to_le_bytes());
+        }
+        let p = parse_player_profile(&b).unwrap();
+        // Wire order is STR/STA/CHA/DEX/INT/AGI/WIS.
+        assert_eq!(
+            (p.str_, p.sta, p.cha, p.dex, p.int_, p.agi, p.wis),
+            (11, 22, 33, 44, 55, 66, 77)
+        );
+    }
+
+    #[test]
+    fn profile_short_buffer_leaves_base_stats_zero() {
+        // One byte short of the block: read is skipped, not partial, no panic.
+        let p = parse_player_profile(&vec![0u8; 989]).unwrap();
+        assert_eq!(
+            (p.str_, p.sta, p.cha, p.dex, p.int_, p.agi, p.wis),
+            (0, 0, 0, 0, 0, 0, 0)
+        );
     }
 
     /// Synthetic profile: 34-byte identity header, then unmapped-middle junk
