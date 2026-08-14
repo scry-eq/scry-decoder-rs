@@ -81,6 +81,7 @@ impl Backend for EqlBackend {
             "OP_LevelUpdate" => level_update(bytes),
             "OP_AAExpUpdate" => aa_exp(bytes),
             "OP_ManaChange" => mana_change(bytes),
+            "OP_Stamina" => stamina(bytes),
             "OP_SkillUpdate" => skill_update(bytes),
             "OP_LootTransaction" => loot_transaction(bytes),
             "OP_LootDrops" => loot_drops(bytes),
@@ -444,6 +445,16 @@ fn money(bytes: &[u8]) -> Decoded {
 }
 
 // OP_ManaChange: the player's current mana (newMana); no max on the wire.
+fn stamina(bytes: &[u8]) -> Decoded {
+    match crate::stamina::parse_stamina(bytes) {
+        Ok(s) => Decoded::One(Event::Stamina {
+            food: s.food,
+            water: s.water,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
 fn mana_change(bytes: &[u8]) -> Decoded {
     match crate::mana_change::parse_mana_change(bytes) {
         Ok(m) => Decoded::One(Event::ManaUpdate {

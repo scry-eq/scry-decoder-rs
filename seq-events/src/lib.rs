@@ -409,6 +409,9 @@ pub enum Event {
     /// AA experience (OP_AAExpUpdate): `alt_exp` 0..100000 toward the next point,
     /// `aa_points` = unspent points.
     AaExp { alt_exp: u32, aa_points: u32 },
+    /// Hunger / thirst (OP_Stamina), in ticks till the next eat/drink. NOT the
+    /// run/jump endurance bar — that is OP_EndUpdate.
+    Stamina { food: u32, water: u32 },
     /// The player's current mana (OP_ManaChange). eql sends no max on the wire —
     /// the consumer tracks the observed high-water mark, like the daemon.
     ManaUpdate { mana: u32 },

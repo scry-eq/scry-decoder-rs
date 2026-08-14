@@ -32,6 +32,7 @@ impl Backend for LiveBackend {
             "OP_ClientUpdate" => self_pos(bytes),
             "OP_Illusion" => illusion(bytes),
             "OP_ManaChange" => mana_change(bytes),
+            "OP_Stamina" => stamina(bytes),
             "OP_SkillUpdate" => skill_update(bytes),
             "OP_Action2" => action2(bytes),
             "OP_TargetMouse" => target(bytes),
@@ -289,6 +290,16 @@ fn doors(bytes: &[u8]) -> Decoded {
 }
 
 // OP_ManaChange: the player's current mana (newMana); no max on the wire.
+fn stamina(bytes: &[u8]) -> Decoded {
+    match seq_decode::stamina::parse_stamina(bytes) {
+        Ok(s) => Decoded::One(Event::Stamina {
+            food: s.food,
+            water: s.water,
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
 fn mana_change(bytes: &[u8]) -> Decoded {
     match seq_decode::mana_change::parse_mana_change(bytes) {
         Ok(m) => Decoded::One(Event::ManaUpdate {
