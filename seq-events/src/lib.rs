@@ -137,6 +137,11 @@ pub struct GuildInZone {
     pub name: String,
 }
 
+/// `parent_slot` value meaning "not inside a bag".
+pub const TOP_LEVEL_SLOT: u16 = 0xFFFF;
+/// Highest worn slot index (Charm..Ammo); above this is inventory/cursor.
+pub const MAX_WORN_SLOT: u16 = 22;
+
 /// One item the character owns (see [`Event::ItemSet`]).
 ///
 /// `serial` is a per-INSTANCE id, so two copies of the same item type share an
@@ -163,6 +168,14 @@ pub struct ItemTemplate {
     /// equipment key ring, 1 carried inventory; 0 and 25 unidentified). Group by
     /// this to separate the storage spaces.
     pub container_id: u32,
+    /// Slot index WITHIN `container_id`; unique per container. Combined with
+    /// `parent_slot == TOP_LEVEL_SLOT` and `container_id == 0` this is the
+    /// standard EQ slot enum: 0-22 worn (Charm..Ammo), 23-30 personal
+    /// inventory, 35 cursor.
+    pub container_slot: u16,
+    /// Parent bag's slot when the item sits INSIDE a bag; [`TOP_LEVEL_SLOT`]
+    /// otherwise. With `container_slot` this is Live's mainSlot/subSlot pair.
+    pub parent_slot: u16,
     /// `[STR, STA, AGI, DEX, CHA, INT, WIS]`, signed. BASE values: an in-game
     /// tooltip showing "modified" numbers read one higher on CHA.
     pub stats: Vec<i32>,
@@ -173,6 +186,17 @@ pub struct ItemTemplate {
     pub mana: i32,
     pub endurance: i32,
     pub ac: i32,
+}
+
+impl ItemTemplate {
+    /// Is this item EQUIPPED? Worn gear is top-level in the possessions
+    /// container at a slot inside the worn range — inventory and cursor share
+    /// that container at higher indices, and every other container is storage.
+    pub fn is_worn(&self) -> bool {
+        self.container_id == 0
+            && self.parent_slot == TOP_LEVEL_SLOT
+            && self.container_slot <= MAX_WORN_SLOT
+    }
 }
 
 /// One row of the guild roster (see [`Event::GuildRoster`]). `class` is the

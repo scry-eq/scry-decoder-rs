@@ -736,6 +736,8 @@ fn item_set_event(set: crate::item_packet::ItemSet) -> Event {
                 icon: i.icon,
                 slot_mask: i.slot_mask,
                 container_id: i.container_id,
+                container_slot: i.container_slot,
+                parent_slot: i.parent_slot,
                 stats: i.stats,
                 resists: i.resists,
                 hp: i.hp,

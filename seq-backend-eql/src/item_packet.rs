@@ -72,6 +72,9 @@ const SERIAL_LEN: usize = 16;
 /// Container id, immediately after the serial + NUL. Record-relative, unlike
 /// every FIELD_* above, which are relative to the post-strings block.
 const RECORD_CONTAINER: usize = 21;
+/// u32 = the item's LOCATION: low u16 slot within its container, high u16
+/// parent bag slot (0xFFFF = top-level). Live's mainSlot/subSlot, packed.
+const RECORD_LOCATION: usize = 25;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ItemTemplate {
@@ -92,6 +95,13 @@ pub struct ItemTemplate {
     /// This is WHERE THE ITEM IS. `slot_mask` below is where it COULD go — they
     /// answer different questions and neither substitutes for the other.
     pub container_id: u32,
+    /// Slot index WITHIN `container_id`. Unique per container. For
+    /// `container_id == 0` with `parent_slot == 0xFFFF` this is the standard EQ
+    /// slot enum: 0-22 worn (Charm..Ammo), 23-30 personal inventory, 35 cursor.
+    pub container_slot: u16,
+    /// Parent bag's slot when this item sits INSIDE a bag; `0xFFFF` = top-level.
+    /// Together with `container_slot` this is Live's mainSlot/subSlot pair.
+    pub parent_slot: u16,
     /// Standard EQ slot bitmask: bit2 head, bit3 face, bits1|4 ears, bit5 neck,
     /// bit6 shoulders, bit7 arms, bit8 back, bits9|10 wrists, bit11 range,
     /// bit12 hands, bit13 primary, bit14 secondary, bits15|16 fingers,
@@ -195,6 +205,9 @@ pub fn parse_item_packet(b: &[u8]) -> Result<ItemSet, ItemPacketError> {
         // A record whose field block runs past the buffer is truncated; skip it
         // rather than emitting zeros that look like real stats.
         let container_id = u32_at(b, lo + RECORD_CONTAINER).unwrap_or(0);
+        let location = u32_at(b, lo + RECORD_LOCATION).unwrap_or(0xFFFF_FFFF);
+        let container_slot = (location & 0xFFFF) as u16;
+        let parent_slot = (location >> 16) as u16;
 
         let (Some(item_id), Some(slot_mask), Some(icon)) = (
             u32_at(b, tail + FIELD_ITEM_ID),
@@ -223,6 +236,8 @@ pub fn parse_item_packet(b: &[u8]) -> Result<ItemSet, ItemPacketError> {
             icon,
             slot_mask,
             container_id,
+            container_slot,
+            parent_slot,
             stats,
             resists,
             hp: slot(SLOT_HP),
@@ -243,6 +258,14 @@ mod tests {
     /// two strings, then the field block.
     fn record(serial: &[u8; 16], name: &str, lore: &str, id: u32, slot: u32, icon: u32) -> Vec<u8> {
         record_in(serial, name, lore, id, slot, icon, 39)
+    }
+
+    /// Same, with an explicit packed location word (high = parent, low = slot).
+    fn record_at(serial: &[u8; 16], name: &str, container: u32, parent: u16, slot: u16) -> Vec<u8> {
+        let mut r = record_in(serial, name, name, 1, 0, 0, container);
+        let loc = ((parent as u32) << 16) | slot as u32;
+        r[RECORD_LOCATION..RECORD_LOCATION + 4].copy_from_slice(&loc.to_le_bytes());
+        r
     }
 
     fn record_in(
@@ -312,6 +335,33 @@ mod tests {
         assert_eq!(crown.container_id, 39, "equipment key ring");
         assert_eq!(crown.stats.len(), STAT_COUNT);
         assert_eq!(crown.resists.len(), RESIST_COUNT);
+    }
+
+    #[test]
+    fn location_splits_into_parent_and_slot() {
+        let mut b = 1u32.to_le_bytes().to_vec();
+        // worn: top-level in container 0, slot 5
+        b.extend(record_at(b"iGS000e0000000a0", "Worn", 0, 0xFFFF, 5));
+        // inside a bag: parent slot 19, position 24
+        b.extend(record_at(b"iGS000e0000000b0", "InBag", 0, 19, 24));
+        // key ring: its own container, so slot 5 here does NOT collide with worn
+        b.extend(record_at(b"iGS000e0000000c0", "Ring", 39, 0xFFFF, 5));
+
+        let set = parse_item_packet(&b).unwrap();
+        let g = |n: &str| set.items.iter().find(|i| i.name == n).unwrap();
+
+        assert_eq!(
+            (g("Worn").parent_slot, g("Worn").container_slot),
+            (0xFFFF, 5)
+        );
+        assert_eq!(
+            (g("InBag").parent_slot, g("InBag").container_slot),
+            (19, 24)
+        );
+        assert_eq!(g("Ring").container_id, 39);
+        // Slot indices are per-container, so the same index in two containers is
+        // not a conflict — this is why an unscoped uniqueness test fails.
+        assert_eq!(g("Ring").container_slot, g("Worn").container_slot);
     }
 
     /// The name offset is fixed, but the FIELD BLOCK is not — it follows two
