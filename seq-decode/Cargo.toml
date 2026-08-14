@@ -1,6 +1,6 @@
 [package]
 name = "seq-decode"
-description = "Pure parsers for ShowEQ packet payloads."
+description = "Pure parsers for EverQuest packet payloads."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

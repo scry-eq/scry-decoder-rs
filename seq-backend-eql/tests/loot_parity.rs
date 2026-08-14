@@ -2,7 +2,7 @@
 //!
 //! The sequence below is the loot traffic of `eqlegends-loot2` (2026-08-08), in
 //! wire order, transcribed from the recorded golden. Feeding the same events to
-//! `showeq-web/scripts/loot-backfill.ts` produces the 16 rows asserted here —
+//! `scry-web/scripts/loot-backfill.ts` produces the 16 rows asserted here —
 //! four sales whose amounts were separately confirmed against the server's own
 //! text, eight corpse coin piles, and one row per disposition.
 //!

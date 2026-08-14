@@ -19,7 +19,7 @@
 //! record finally lands and resolves that id as ours, the host drains the held
 //! vitals via [`SelfTracker::take_pending_vitals`] and applies them.
 //!
-//! It lives here rather than in a host so that showeq-daemon and scry inherit
+//! It lives here rather than in a host so that scry-cpp and scry inherit
 //! the behaviour instead of each re-deriving it.
 
 use crate::StatSync;

@@ -1,4 +1,4 @@
-//! Pure parsers for ShowEQ packet payloads.
+//! Pure parsers for EverQuest packet payloads.
 //!
 //! No I/O, no global state, no Qt. Each module exposes a `parse_*`
 //! function that turns a `&[u8]` payload into a typed struct (or a

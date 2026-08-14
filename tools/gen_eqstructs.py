@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate seq-structs-<target>/src/bindings.rs from showeq-daemon/src/backend/<target>/everquest.h.
+"""Generate seq-structs-<target>/src/bindings.rs from scry-cpp/src/backend/<target>/everquest.h.
 
 Replaces bindgen for the explicit allowlist of EQ wire structs. Parses each
 struct's `/*OFFSET*/` field comments to derive layout, emits #[repr(C, packed)]
@@ -329,7 +329,7 @@ def emit_rust(structs: list[tuple[str, list[tuple[str, str, str]], int]]) -> str
 
 
 # Backends with a generated bindings file. live + test mirror
-# showeq-daemon/src/backend/<t>/everquest.h and regenerate together (`all`).
+# scry-cpp/src/backend/<t>/everquest.h and regenerate together (`all`).
 #
 # eql is NOT here and cannot be generated (2026-08-03). Its structs are
 # hand-maintained in seq-backend-eql/src/bindings.rs. The only header this
@@ -377,8 +377,8 @@ def default_header(daemon: Path, target: str) -> Path:
 
 def main(argv: list[str]) -> int:
     here = Path(__file__).resolve().parent.parent
-    # Sibling checkout: ../showeq-daemon relative to this repo root (matches README).
-    daemon = here.parent / "showeq-daemon"
+    # Sibling checkout: ../scry-cpp relative to this repo root (matches README).
+    daemon = here.parent / "scry-cpp"
 
     # Usage:
     #   gen_eqstructs.py                       -> live (default)

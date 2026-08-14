@@ -1,6 +1,6 @@
 [package]
 name = "seq-bridge"
-description = "C++ FFI bridge (cxx) for the ShowEQ Rust decoder."
+description = "C++ FFI bridge (cxx) for the Scry Rust decoder."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -413,7 +413,7 @@ mod tests {
     /// End-to-end against a REAL capture dump, when one is available locally.
     /// Self-skips otherwise: captures are gitignored personal data, so this
     /// cannot ship a fixture. Produce one with:
-    ///   showeq-daemon --replay <cap>.vpk --config-dir conf --no-listen \
+    ///   scryd --replay <cap>.vpk --config-dir conf --no-listen \
     ///       --dump-all-sessions --dump-payload 0x05d5:/tmp/pp
     ///   SEQ_ITEM_PACKET_FIXTURE=/tmp/pp.1.bin cargo test -p seq-backend-eql
     #[test]

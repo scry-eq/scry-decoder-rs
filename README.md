@@ -1,7 +1,7 @@
-# showeq-decoder-rs
+# scry-decoder-rs
 
-The ShowEQ daemon's packet decoder. Rust is the **only** decoder — the C++
-daemon (`showeq-daemon`, expected as a sibling checkout) links `seq-bridge`
+The Scry daemon's packet decoder. Rust is the **only** decoder — the C++
+daemon (`scry-cpp`, expected as a sibling checkout) links `seq-bridge`
 via Corrosion as a hard build dependency; there is no C++ fallback path and
 no toggle. Every wire handler in the daemon decodes through the
 `seq::rust::decode_*` FFI surface.
@@ -27,7 +27,7 @@ backend feature must be enabled (`compile_error!` otherwise).
 | Crate               | Purpose                                                    |
 |---------------------|------------------------------------------------------------|
 | `seq-decode`        | Shared backend-neutral Live parsers — pure `&[u8]` → typed struct, no I/O or global state. Live and Test share these. |
-| `seq-structs-live`  | Generated Rust mirrors of `showeq-daemon/src/backend/live/everquest.h` (via `tools/gen_eqstructs.py`, committed). |
+| `seq-structs-live`  | Generated Rust mirrors of `scry-cpp/src/backend/live/everquest.h` (via `tools/gen_eqstructs.py`, committed). |
 | `seq-structs-test`  | Same for `backend/test/everquest.h`. Byte-identical to live today; forks when the Test server diverges. |
 | `seq-backend-eql`   | Fully self-contained EQ Legends decode stack: vendored copies of the shared parsers, its own diverged parsers, eql-only decoders (stat-sync, buff-list, loadout-swap, UCS chat), a pinned `eqstructs` fork, and `size_overrides()` for the daemon's payload size table. |
 | `seq-bridge`        | `cxx` FFI shim (staticlib) — the only crate the daemon links. |
@@ -72,4 +72,4 @@ gotchas, per-backend rules).
 
 ## License
 
-GPL-2.0 — see [`LICENSE`](LICENSE). Matches `showeq` and `showeq-daemon`.
+GPL-2.0 — see [`LICENSE`](LICENSE). Matches legacy ShowEQ and `scry-cpp`.

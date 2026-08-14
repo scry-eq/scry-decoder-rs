@@ -1,7 +1,7 @@
 //! Parser for the variable-length spawn payload carried by
-//! `OP_ZoneEntry` (DIR_Server) — what showeq-daemon historically
+//! `OP_ZoneEntry` (DIR_Server) — what scry-cpp historically
 //! decoded via `SpawnShell::fillSpawnStruct` (see
-//! `showeq-daemon/src/spawnshell.cpp:633`).
+//! `scry-cpp/src/spawnshell.cpp:633`).
 //!
 //! The wire format is a sequence of fixed-width fields punctuated by
 //! null-terminated strings, with two conditional skip blocks (NPC vs

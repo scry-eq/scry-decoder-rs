@@ -9,7 +9,7 @@
 //! there is no eql → seq-decode edge.
 //!
 //! Cite opcodes by NAME, never by id — EQL rotates ids nearly every patch, and
-//! `showeq-daemon/conf/eql/opcodes.toml` is the only map. Retired ids may be
+//! `scry-cpp/conf/eql/opcodes.toml` is the only map. Retired ids may be
 //! named AS history.
 //!
 //! Two kinds of module live here:

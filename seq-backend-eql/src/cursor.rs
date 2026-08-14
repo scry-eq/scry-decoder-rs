@@ -1,7 +1,7 @@
 //! Sequential little-endian reader for variable-length wire payloads.
 //!
 //! Mirrors the surface of the daemon's `NetStream` (see
-//! `showeq-daemon/src/netstream.{h,cpp}`) for the operations we
+//! `scry-cpp/src/netstream.{h,cpp}`) for the operations we
 //! actually use in spawn parsing: u8 / u32 reads, fixed-size skips,
 //! null-terminated strings. EQ wire format is little-endian on the
 //! tested targets — `NetStream::readUInt32NC()` is a direct memcpy on
