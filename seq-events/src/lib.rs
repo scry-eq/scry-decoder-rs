@@ -359,6 +359,10 @@ pub enum Event {
     /// icon but nothing more, and the player profile carries no item data at
     /// all.
     ItemSet { items: Vec<ItemTemplate> },
+    /// ONE item, learned incrementally (Live's per-item OP_ItemPacket, which
+    /// fires on each slot move and zone-in pickup). The consumer ACCUMULATES
+    /// these — unlike [`Event::ItemSet`], which replaces the whole set.
+    ItemLearned { item: ItemTemplate },
     /// The guild message of the day (OP_GuildMOTD). `message`/`sender` are empty
     /// when the guild has none set. The wire carries no guild id — the MOTD is
     /// implicitly the local player's guild — so the consumer stamps it from the

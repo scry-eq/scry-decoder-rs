@@ -67,6 +67,7 @@ pub mod guild_motd;
 pub mod guild_roster;
 pub mod hp_update;
 pub mod illusion;
+pub mod item_packet;
 pub mod level_update;
 pub mod mana_change;
 pub mod mob_health;

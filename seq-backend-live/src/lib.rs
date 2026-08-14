@@ -6,8 +6,8 @@
 //! output stays byte-for-byte identical across the migration.
 
 use seq_events::{
-    heading_deg, Backend, Decoded, Dir, DoorInfo, Event, GuildInZone, GuildRosterMember, Pos,
-    ProfileInfo, SpawnInfo, ZoneInfo,
+    heading_deg, Backend, Decoded, Dir, DoorInfo, Event, GuildInZone, GuildRosterMember,
+    ItemTemplate, Pos, ProfileInfo, SpawnInfo, ZoneInfo,
 };
 
 /// The Live/Test backend (shared `seq-decode` parsers).
@@ -33,6 +33,7 @@ impl Backend for LiveBackend {
             "OP_Illusion" => illusion(bytes),
             "OP_ManaChange" => mana_change(bytes),
             "OP_Stamina" => stamina(bytes),
+            "OP_ItemPacket" => item_packet(bytes),
             "OP_SkillUpdate" => skill_update(bytes),
             "OP_Action2" => action2(bytes),
             "OP_TargetMouse" => target(bytes),
@@ -290,6 +291,39 @@ fn doors(bytes: &[u8]) -> Decoded {
 }
 
 // OP_ManaChange: the player's current mana (newMana); no max on the wire.
+fn item_packet(bytes: &[u8]) -> Decoded {
+    match seq_decode::item_packet::parse_item_packet(bytes) {
+        Ok(i) => Decoded::One(Event::ItemLearned {
+            item: ItemTemplate {
+                serial: i.instance_id,
+                name: i.name,
+                lore_name: i.lore_name,
+                item_id: i.item_id,
+                icon: 0, // Live's wrapper carries no icon id.
+                slot_mask: i.slot_mask,
+                // Live addresses possessions only; its mainSlot/subSlot map
+                // onto the neutral pair, with mainSlot 0 meaning "not in a bag"
+                // — the same thing eql spells 0xFFFF. Normalising here is what
+                // lets `is_worn` be shared rather than reimplemented per wire.
+                container_id: 0,
+                container_slot: i.sub_slot,
+                parent_slot: if i.main_slot == 0 {
+                    seq_events::TOP_LEVEL_SLOT
+                } else {
+                    i.main_slot as u16
+                },
+                stats: i.stats,
+                resists: i.resists,
+                hp: i.hp,
+                mana: i.mana,
+                endurance: i.endurance,
+                ac: i.ac,
+            },
+        }),
+        Err(_) => Decoded::Malformed,
+    }
+}
+
 fn stamina(bytes: &[u8]) -> Decoded {
     match seq_decode::stamina::parse_stamina(bytes) {
         Ok(s) => Decoded::One(Event::Stamina {
