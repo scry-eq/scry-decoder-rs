@@ -77,7 +77,8 @@ fn spawn(bytes: &[u8]) -> Decoded {
             // Live has no guild-in-zone name feed wired, so the pair is unused
             // here; 0 keeps the key inert rather than colliding on server 0.
             guild_server_id: 0,
-            pos: None, // Live position arrives via OP_MobUpdate.
+            class_mask: 0, // live isn't multiclass
+            pos: None,     // Live position arrives via OP_MobUpdate.
         })),
         Err(_) => Decoded::Malformed,
     }

@@ -122,6 +122,7 @@ fn spawn_event(s: &crate::ZoneSpawn) -> Event {
         max_hp: Some(u32::from(s.max_hp)),
         guild_id: s.guild_id,
         guild_server_id: s.guild_server_id,
+        class_mask: s.class_mask,
         // eql spawn carries position inline; heading is h2048 (11-bit).
         pos: Some(Pos {
             x: i32::from(s.x),

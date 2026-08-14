@@ -50,6 +50,8 @@ pub struct SpawnInfo {
     /// into the guild map built from [`Event::GuildsInZone`]. 0 on backends that
     /// don't send it.
     pub guild_server_id: u32,
+    /// EQL multiclass bitmask (bit N = class N). 0 on non-multiclass wires.
+    pub class_mask: u32,
     /// Present when the spawn packet carries position (eql); `None` when
     /// position arrives separately via movement opcodes (Live).
     pub pos: Option<Pos>,
