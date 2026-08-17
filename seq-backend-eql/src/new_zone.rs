@@ -39,6 +39,27 @@ pub enum NewZoneError {
     Truncated(usize, usize),
     #[error("{0} not NUL-terminated within payload")]
     UnterminatedText(&'static str),
+    #[error("{0} is not a plausible zone name")]
+    ImplausibleName(&'static str),
+}
+
+/// Does this read like a zone name, or like whatever bytes happened to be there?
+///
+/// The walk starts at offset 0 and takes everything up to the first NUL, so a payload that
+/// is not an `OP_NewZone` yields a "name" made of raw bytes — and the consumer LATCHES it:
+/// zone identity is held in World and re-sent in every snapshot, so one bad decode renames
+/// the zone for the rest of the session and takes the map with it. Observed live as
+/// `zoneShort = "X\u{fb}f"`.
+///
+/// Zone names are ASCII (`airplane_eqlsolo`, `The Plane of Sky`), so the test is deliberately
+/// blunt: printable ASCII only, and bounded. It cannot save a wrong payload that happens to
+/// contain plausible text, but it turns the common case from silent corruption into a
+/// rejected packet.
+fn plausible(name: &str, max: usize) -> bool {
+    // Empty is structurally legal and harmless — a well-formed packet may carry no text,
+    // and an empty zone name is not a zone RENAMED to nonsense. Only text that is present
+    // and made of non-printable bytes is the failure this rejects.
+    name.is_empty() || (name.len() <= max && name.bytes().all(|b| (0x20..=0x7e).contains(&b)))
 }
 
 struct R<'a> {
@@ -80,6 +101,12 @@ pub fn parse_new_zone(bytes: &[u8]) -> Result<NewZone, NewZoneError> {
     let mut r = R { bytes, p: 0 };
     let short_name = r.text("short_name")?;
     let long_name = r.text("long_name")?;
+    if !plausible(&short_name, 64) {
+        return Err(NewZoneError::ImplausibleName("short_name"));
+    }
+    if !plausible(&long_name, 128) {
+        return Err(NewZoneError::ImplausibleName("long_name"));
+    }
     r.skip(2)?;
     let zonefile = r.text("zonefile")?;
     r.skip(90)?;
@@ -163,5 +190,35 @@ mod tests {
         assert_eq!(z.short_name, "");
         assert_eq!(z.long_name, "");
         assert_eq!(z.zonefile, "");
+    }
+}
+
+#[cfg(test)]
+mod reject_tests {
+    use super::*;
+
+    /// The live regression: a non-OP_NewZone payload walked as one produced
+    /// `zoneShort = "X\u{fb}f"`, which World then latched into every snapshot.
+    #[test]
+    fn rejects_a_short_name_of_raw_bytes() {
+        let mut buf = vec![b'X', 0xfb, b'f', 0];
+        buf.extend_from_slice(b"garbage\0");
+        buf.extend_from_slice(&[0u8; 200]);
+        assert_eq!(
+            parse_new_zone(&buf),
+            Err(NewZoneError::ImplausibleName("short_name"))
+        );
+    }
+
+    /// A garbage LONG name is rejected too — it is what the zone is displayed as.
+    #[test]
+    fn rejects_a_long_name_of_raw_bytes() {
+        let mut buf = Vec::from(&b"airplane\0"[..]);
+        buf.extend_from_slice(&[0x12, 0x21, 0xdd, 0x71, 0]);
+        buf.extend_from_slice(&[0u8; 200]);
+        assert_eq!(
+            parse_new_zone(&buf),
+            Err(NewZoneError::ImplausibleName("long_name"))
+        );
     }
 }
