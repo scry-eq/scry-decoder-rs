@@ -4,42 +4,39 @@
 //! **This is eql's OWN copy**; when eql and Live differ, only this copy changes
 //! (Live's `parse_player_spawn_pos` lives in `seq-decode`, untouched).
 //!
-//! **Re-derived 2026-08-04** (the 08/04 rotation, which shrank this broadcast
-//! 28B -> 24B and rearranged the body again — no 28B offset survives). Two of
-//! the three coords still sit in the **low 19 bits** of a word (signed, ×8
-//! fixed-point), but z now sits in the **high** 19 bits of its word:
+//! **Re-laid-out 2026-08-18** from upstream legends `1cd04be`
+//! (`playerPosUpdateEQLStruct`). The 08/18 patch rearranged the body again at
+//! the same 24-byte size — the third rearrangement in three patches, and again
+//! one no size gate can catch. Every coordinate now sits in the **low** 19 bits
+//! of its word (signed, ×8 fixed-point); the high-19 z of the 08/04 layout is
+//! gone:
 //!
 //! ```text
 //!   /*0000*/ u16  spawnId
-//!   /*0002*/ u16  spawnId2         (0 in every sample)
-//!   /*0004*/ u32  { x:19 (low, signed) | hi:13 }
-//!   /*0008*/ u32  unknown          (role TBD)
-//!   /*0012*/ u32  { lo:13 | z:19 (high, signed) }
-//!   /*0016*/ u32  { y:19 (low, signed) | heading:11 @bit19 | hi:2 }
-//!   /*0020*/ u32  unknown          (role TBD)
+//!   /*0002*/ u16  spawnId2         (0 in every pre-patch sample)
+//!   /*0004*/ u32  unknown          (role TBD — carried x before this patch)
+//!   /*0008*/ u32  { z:19 (low, signed) | deltaZ:13 }
+//!   /*0012*/ u32  unknown          (role TBD)
+//!   /*0016*/ u32  { x:19 (low, signed) | heading @bit19 | pad:1 }
+//!   /*0020*/ u32  { y:19 (low, signed) | deltaY:13 }
 //! ```
 //!
-//! How the coords were pinned (993 broadcasts, 41 tracked spawns): an
-//! exhaustive scan of **all 173 candidate 19-bit windows** in the body scored
-//! each against the `OP_MobUpdate` / `OP_NpcMoveUpdate` position streams, which
-//! this patch left untouched and which therefore stand as map-frame ground
-//! truth. The scan independently selected these three as the global best for
-//! their axis, matching upstream's independent derivation.
+//! Only the heading kept its home: it is still the field at bit 19 of the @16
+//! word. What moved under it is the coordinate sharing that word — `y` before
+//! this patch, `x` now.
 //!
-//! Absolute error against ground truth is not the right statistic here — this
-//! opcode carries *other PCs* while `OP_MobUpdate` carries NPCs, so only 57 of
-//! 993 records overlap a ground-truth track at all. The non-confounded checks:
-//! per-spawn trajectory smoothness over 931 consecutive steps gives a 4.00-unit
-//! median (p90 21.6) with 4 steps above 500 units, i.e. a real walk; and an
-//! x/y-transposed control scores 6× worse against ground truth (667-unit median
-//! vs 111, 1/57 within 25 units vs 18/57), which settles the axis orientation.
+//! **UNVALIDATED LOCALLY — no post-patch capture exists yet.** The 08/04 layout
+//! was pinned by scoring all 173 candidate 19-bit windows against the
+//! `OP_MobUpdate` / `OP_NpcMoveUpdate` streams; that scan has not been re-run
+//! for 08/18 because there is no recording from this wire. This layout is
+//! upstream's derivation taken as data. Re-run the scan on the first post-patch
+//! capture before treating any axis here as confirmed — upstream and we have
+//! disagreed on a word index before (see the ZoneEntry `posData` note in
+//! `lib.rs`), and a transposed x/y decodes into a plausible-looking map.
 //!
-//! Heading is an **11-bit** field at bit 19 of the @16 word — directly above
-//! `y`, in the bits upstream's struct labels `deltaY`. It is a **compass** value
-//! (2048 per circle, 0 = N, increasing clockwise) and is NOT inverted, unlike
-//! the `heading_deg` convention the mob/npc streams use. Measured against travel
-//! bearing over 448 legs at a 5.77-degree median; the next-best window scored
-//! 25.8 degrees and a random field would score ~90.
+//! Previous layouts, kept so a re-derivation can tell drift from a bad read:
+//! 08/04–08/05 was x @4 low-19 / z @12 high-19 / y @16 low-19, heading @16 bit19;
+//! before that a 28-byte body with `spawnId@0, z@4, x@8, y@12`.
 //!
 //! This parser surfaces the *raw* sign-extended coords and the daemon applies
 //! `>> 3` (1/8-unit -> integer game world), matching the `EqlDispatch::mobUpdate`
@@ -50,11 +47,15 @@ use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = 24;
 
-/// Full circle in wire units for [`PlayerSpawnPos::heading`] (11-bit field).
+/// Full circle in wire units for [`PlayerSpawnPos::heading`].
 ///
-/// The 08/04 rotation narrowed this from 13 bits to 11, bringing it in line
-/// with the C>S self-report's [`crate::player_self_pos::HEADING_UNITS`]. Both
-/// are compass values needing no inversion.
+/// Upstream declares this field 12 bits wide but consumes it as `h2048` — 2048
+/// units per circle, which is what an 11-bit field carries. We keep the 11-bit
+/// read: it is what our own 08/04 measurement pinned (5.77-degree median
+/// against travel bearing over 448 legs, next-best window 25.8) and it agrees
+/// with upstream's *scale* rather than its declared width. Reading 12 bits at a
+/// 2048 scale would double every angle. If a post-patch capture shows headings
+/// wrapping at half a circle, widen to 12 and set this to 4096.
 pub const HEADING_UNITS: u16 = 2048;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +70,7 @@ pub struct PlayerSpawnPos {
     pub delta_x: i32,
     pub delta_y: i32,
     pub delta_z: i32,
-    /// 11-bit compass value (0..2047, see [`HEADING_UNITS`]); 0 = N, increasing
+    /// Compass value (0..2047, see [`HEADING_UNITS`]); 0 = N, increasing
     /// clockwise, NOT inverted. `SpawnShell::moveSpawn` takes no heading, so the
     /// daemon currently ignores this; it is decoded so callers that want a
     /// facing don't have to re-derive it.
@@ -102,11 +103,11 @@ pub fn parse_player_spawn_pos(bytes: &[u8]) -> Result<PlayerSpawnPos, PlayerSpaw
     let spawn_id = read_u16_le(bytes, 0);
     let spawn_id2 = read_u16_le(bytes, 2);
 
-    // x and y in the LOW 19 bits of the @4 and @16 words; z in the HIGH 19 of
-    // the @12 word (see module doc for how each was pinned).
-    let x = sign_extend(read_u32_le(bytes, 4) & 0x7_FFFF, 19);
-    let z = sign_extend(read_u32_le(bytes, 12) >> 13, 19);
-    let y = sign_extend(read_u32_le(bytes, 16) & 0x7_FFFF, 19);
+    // All three coords are the LOW 19 bits of their word as of 08/18 — z @8,
+    // x @16, y @20 (see module doc).
+    let z = sign_extend(read_u32_le(bytes, 8) & 0x7_FFFF, 19);
+    let x = sign_extend(read_u32_le(bytes, 16) & 0x7_FFFF, 19);
+    let y = sign_extend(read_u32_le(bytes, 20) & 0x7_FFFF, 19);
 
     let heading = ((read_u32_le(bytes, 16) >> 19) & 0x7FF) as u16;
 
@@ -145,30 +146,40 @@ mod tests {
         assert_eq!(p.heading, 0);
     }
 
+    // Each axis at its own offset, with the neighbouring bits set, so a word
+    // that shifts under a future rearrangement fails loudly instead of reading
+    // a plausible number out of the wrong field.
     #[test]
-    fn x_is_the_low19_at_4_and_z_is_the_high19_at_12() {
+    fn each_coordinate_reads_from_its_own_word() {
         let mut buf = [0u8; PAYLOAD_LEN];
         buf[0..2].copy_from_slice(&0x1151u16.to_le_bytes()); // spawnId 4433
-                                                             // x = 42 with every high bit set (the neighbouring field must be ignored).
-        buf[4..8].copy_from_slice(&(42u32 | (0x1FFFu32 << 19)).to_le_bytes());
-        // z = the 19-bit minimum, parked in the HIGH bits, low 13 bits all set.
-        buf[12..16].copy_from_slice(&((0x0004_0000u32 << 13) | 0x1FFF).to_le_bytes());
+
+        // The two words that carry nothing: filled so a parser reading a
+        // coordinate out of either fails instead of returning a plausible 0.
+        buf[4..8].copy_from_slice(&0xFFFF_FFFFu32.to_le_bytes());
+        buf[12..16].copy_from_slice(&0xFFFF_FFFFu32.to_le_bytes());
+
+        // Each coordinate in the low 19 of its word, neighbouring bits all set.
+        buf[8..12].copy_from_slice(&(42u32 | (0x1FFFu32 << 19)).to_le_bytes()); // z = 42
+        buf[16..20].copy_from_slice(&(0x0004_0000u32 | (0x1FFFu32 << 19)).to_le_bytes()); // x = min
+        buf[20..24].copy_from_slice(&(300u32 | (0x1FFFu32 << 19)).to_le_bytes()); // y = 300
         let p = parse_player_spawn_pos(&buf).unwrap();
         assert_eq!(p.spawn_id, 0x1151);
-        assert_eq!(p.x, 42);
-        assert_eq!(p.z, -262_144);
+        assert_eq!(p.z, 42);
+        assert_eq!(p.x, -262_144);
+        assert_eq!(p.y, 300);
     }
 
     #[test]
-    fn y_and_heading_share_the_word_at_16() {
+    fn x_and_heading_share_the_word_at_16() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        // y = -1 (all 19 bits set) and a quarter-circle heading directly above
-        // it, with the 2 spare top bits set so a sloppy mask would be caught.
+        // x = -1 (all 19 bits set) and a quarter-circle heading directly above
+        // it, with the spare top bit set so a sloppy mask would be caught.
         let quarter = u32::from(HEADING_UNITS) / 4;
-        let w = 0x7_FFFFu32 | (quarter << 19) | (0x3u32 << 30);
+        let w = 0x7_FFFFu32 | (quarter << 19) | (0x1u32 << 31);
         buf[16..20].copy_from_slice(&w.to_le_bytes());
         let p = parse_player_spawn_pos(&buf).unwrap();
-        assert_eq!(p.y, -1);
+        assert_eq!(p.x, -1);
         assert_eq!(p.heading, HEADING_UNITS / 4);
         assert!(p.heading < HEADING_UNITS);
     }

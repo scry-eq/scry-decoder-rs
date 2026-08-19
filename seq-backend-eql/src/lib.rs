@@ -887,19 +887,42 @@ pub fn parse_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     // their X/Y ones are right. Heading is still NOT recoverable: no word at
     // 11- or 12-bit width scores better than noise against MobUpdate's facing,
     // so it stays zeroed rather than pointed in a direction from the wrong bits.
-    let w0 = w.u32()?;
+    //
+    // ---- 2026-08-18: the block was rearranged again. ----
+    // Ported from upstream legends `1cd04be` (`spawnStruct` posData) plus their
+    // call site, which still transposes — `spawn.cpp: setPos(s->y >> 3,
+    // s->x >> 3, s->z >> 3)`, so their `y` field is world X and their `x` field
+    // is world Y. Both halves or neither, same as the 08/06 port.
+    //
+    //     w0  pad
+    //     w1  { z:19 low | deltaZ:13 }              -> world Z
+    //     w2  { heading:12 low | padding:20 }
+    //     w3  { y:19 low | deltaY:13 }  (upstream's `y`)  -> world X
+    //     w4  { x:19 low | deltaX:13 }  (upstream's `x`)  -> world Y
+    //     w5  trailing
+    //
+    // Every coordinate is now in the LOW 19 bits of its word; the high-19 z of
+    // the previous layout is gone, and the pad moved from w1 to w0.
+    //
+    // UNVALIDATED LOCALLY — no post-patch capture exists yet, so the 952-record
+    // scoring run against OP_MobUpdate that pinned the 08/06 layout has not been
+    // re-run. IF Z COMES OUT WRONG, test w2's HIGH 19 bits (`w2 >> 13`) first:
+    // that is precisely the disagreement we already found once, upstream naming
+    // a separate z field while Z actually rode the top of the heading word.
     let _pad = w.u32()?;
+    let w1 = w.u32()?;
     let _w2 = w.u32()?;
     let w3 = w.u32()?;
     let w4 = w.u32()?;
     let _trail = w.u32()?;
-    let x = pos19_word(w0);
-    let y = pos19_word(w3);
-    let z = pos19_word(w4 >> 13);
-    // The spawn record's facing did not survive the rearrangement: the word it
-    // used to ride is now the Y coordinate. Upstream reports the remaining
-    // heading word as unmapped and zeroes it at consumption; do the same rather
-    // than point every spawn in a direction taken from the wrong bits.
+    let x = pos19_word(w3);
+    let y = pos19_word(w4);
+    let z = pos19_word(w1);
+    // Upstream gives the facing its own word again (w2, 12 bits low) after a
+    // patch with no home for it. Left at 0 until it is measured: the last time
+    // no window scored better than noise against MobUpdate's facing, and a
+    // wrong heading points every spawn in the zone the wrong way, where a zero
+    // one just points them all north.
     let heading = 0u16;
 
     // Title/suffix string block: 4 strings on ordinary spawns, 6 (title, suffix,
@@ -1638,17 +1661,17 @@ mod tests {
         u32le(&mut b, 0); // petOwnerId
         b.extend_from_slice(&[0u8; 49]); // npc==1 extra
         b.extend_from_slice(&[0u8; 60]); // equipment (else branch: 20 + 2*5*4)
-                                         // 2026-08-06 position block (upstream `posData` shape, word roles
-                                         // measured against OP_MobUpdate): w0 low-19 = X, w1 = pad, w3 low-19
-                                         // = Y, w4 high-19 = Z, w5 = 0. Building the pad as a NON-zero value
-                                         // here is deliberate: the bug this replaced read X out of w1, and a
-                                         // zero-filled pad would have let that reading pass.
-        let _ = heading; // spawn facing did not survive the rearrangement
-        b.extend_from_slice(&pos_word(x)); // w0: X in the low 19
-        u32le(&mut b, 0x1234_5678); // w1: pad — deliberately not zero
-        u32le(&mut b, 0); // w2
-        b.extend_from_slice(&pos_word(y)); // w3: Y in the low 19
-        u32le(&mut b, u32::from_le_bytes(pos_word(z)) << 13); // w4: Z in the high 19
+                                         // 2026-08-18 position block (upstream `posData` shape + their
+                                         // transposing call site): w0 = pad, w1 low-19 = Z, w2 = heading
+                                         // word, w3 low-19 = X, w4 low-19 = Y, w5 = 0. Building the pad
+                                         // and the heading word as NON-zero values here is deliberate: an
+                                         // earlier bug read a coordinate out of the pad, and a zero-filled
+                                         // one would have let that reading pass.
+        b.extend_from_slice(&(0x1234_5678u32).to_le_bytes()); // w0: pad — deliberately not zero
+        b.extend_from_slice(&pos_word(z)); // w1: Z in the low 19
+        u32le(&mut b, u32::from(heading) & 0xFFF); // w2: heading word (not decoded yet)
+        b.extend_from_slice(&pos_word(x)); // w3: X in the low 19 (upstream's `y`)
+        b.extend_from_slice(&pos_word(y)); // w4: Y in the low 19 (upstream's `x`)
         u32le(&mut b, 0); // w5 (always 0 on the wire)
         text(&mut b, title);
         text(&mut b, suffix);

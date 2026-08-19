@@ -1,31 +1,48 @@
 //! Parser for the 42-byte `playerSelfPosStruct` (`OP_ClientUpdate`, C>S — the
 //! local player's own position report).
 //!
-//! **Re-derived 2026-08-06 for the 08/05 mini-patch.** This body has now been
-//! rearranged on two consecutive patches while keeping its 42-byte size, so no
-//! size gate can ever catch the change — only a range check against the
-//! breadcrumb will. Positions are IEEE floats in game-world units (no ×8
-//! packing — this is C>S, distinct from the S>C packed `playerSpawnPosStruct`):
+//! **Re-laid-out 2026-08-18** from upstream legends `1cd04be`
+//! (`eqlClientUpdateSelfStruct`). This body has now been rearranged on three
+//! patches while keeping its 42-byte size, so no size gate can ever catch the
+//! change — only a range check against the breadcrumb will. Positions are IEEE
+//! floats in game-world units (no ×8 packing — this is C>S, distinct from the
+//! S>C packed `playerSpawnPosStruct`):
 //!
 //! ```text
 //!   /*0000*/ u16  ctr        update counter
 //!   /*0002*/ u16  spawnId    the local player's spawn id (the PHANTOM TWIN's)
-//!   /*0004*/ u8   unknown0004[6]
+//!   /*0004*/ u16  unknown
+//!   /*0006*/ u16  { heading:11 (low) | hi:5 }
+//!   /*0008*/ u16  unknown
 //!   /*0010*/ f32  x          gameX
 //!   /*0014*/ f32  unknown    velocity candidate
-//!   /*0018*/ f32  y          gameY
-//!   /*0022*/ f32  z          gameZ
-//!   /*0026*/ u32  unknown    (upstream: stale quiet-NaN facing payload)
-//!   /*0030*/ f32  unknown    velocity candidate
+//!   /*0018*/ f32  unknown
+//!   /*0022*/ u16  unknown
+//!   /*0024*/ u16  unknown
+//!   /*0026*/ u32  unknown
+//!   /*0030*/ f32  z          gameZ
 //!   /*0034*/ f32  unknown    velocity candidate
-//!   /*0038*/ u32  { heading:11 (low) | hi:21 }
+//!   /*0038*/ f32  y          gameY
 //! ```
 //!
-//! Upstream declares this struct 44B (`tail[2]` past the heading word). The
-//! wire is **42B** — 1054 C>S bodies in the 08/06 capture, none at 44 — so the
-//! tail is dropped here and `PAYLOAD_LEN` stays 42. Both payloads are gated
-//! `none`, so an over-long declaration would not warn; it would just hand this
-//! parser a short buffer. That was true of the 08/04 wire too.
+//! Only `x` held still. The heading moved from the word at 38 all the way down
+//! to 6, and `y` took over the offset the heading vacated — so a parser left on
+//! the 08/05 offsets reads a raw float as a compass value and a bit-masked
+//! integer as a coordinate. Both misreads are loud, which is the one mercy here.
+//!
+//! **UNVALIDATED LOCALLY — no post-patch capture exists yet.** The 08/05 layout
+//! was pinned by matching each float's observed RANGE against the corresponding
+//! `OP_SelfPos` breadcrumb axis over 1054 self-reports; that comparison has not
+//! been re-run for 08/18 because there is no recording from this wire. Re-run it
+//! (recipe below) before treating any axis here as confirmed.
+//!
+//! Upstream declares this struct 44B (`tail[2]` past the last float). The wire
+//! was **42B** through 08/06 — 1054 C>S bodies, none at 44 — so the tail is
+//! dropped here and `PAYLOAD_LEN` stays 42. Both payloads are gated `none`, so
+//! an over-long declaration would not warn; it would just hand this parser a
+//! short buffer. Re-check the size on the first post-patch capture: if 44B
+//! bodies now appear they will be REJECTED by the length check, which at least
+//! fails loudly.
 //!
 //! **How the axes were pinned.** The three position floats fall out of a range
 //! comparison against the `OP_SelfPos` breadcrumb (which reports the player's
@@ -44,7 +61,8 @@
 //! far enough apart that the assignment is unambiguous.
 //!
 //! Previous layouts, kept so a re-derivation can tell drift from a bad read:
-//! 08/04 was y@18 / z@30 / x@38 / heading@22; 07/29 was y@10 / x@22 / z@34.
+//! 08/05 was x@10 / y@18 / z@22 / heading@38; 08/04 was y@18 / z@30 / x@38 /
+//! heading@22; 07/29 was y@10 / x@22 / z@34.
 //!
 //! **A spawnId is back at offset 2** (the 07/14 patch had dropped it; this
 //! matches upstream's `eqlClientSelfPosStruct`, which kept declaring it). Over a
@@ -71,8 +89,8 @@ pub const PAYLOAD_LEN: usize = 42;
 
 /// Full circle in wire heading units (11-bit field → 2048 steps).
 ///
-/// The facing is the low 11 bits of the dword at offset 38 (moved from 22 by
-/// the 08/05 mini-patch, agreeing with upstream's re-derivation). Scored
+/// The facing is the low 11 bits of the u16 at offset 6 (moved from 38 by the
+/// 08/18 patch, per upstream's re-derivation — UNMEASURED here). Scored
 /// against travel bearing over 469 movement legs it lands at a **0.64 degree**
 /// median, and the same field read as a 10/12/13-bit window gives the identical
 /// angle (the extra bits are fractional), which is what fixes the low edge at
@@ -143,16 +161,16 @@ pub fn parse_player_self_pos(bytes: &[u8]) -> Result<PlayerSelfPos, PlayerSelfPo
     // the breadcrumb's /loc ordering. See the module doc for how the X/Y
     // assignment was settled physically rather than from field labels.
     let x = read_f32_le(bytes, 10);
-    let y = read_f32_le(bytes, 18);
-    let z = read_f32_le(bytes, 22);
+    let z = read_f32_le(bytes, 30);
+    let y = read_f32_le(bytes, 38);
 
     // The velocity components have NOT been located for this patch and are
     // deliberately surfaced as 0 rather than read from a plausible-looking
     // offset: a wrong velocity would smear the player marker between updates.
-    // Candidates are the three small-range floats at 14, 30 and 34 (all within
-    // ±3.6, the right magnitude for the ±2.26 units/tick of a full run); the
-    // capture has too little sustained movement to tell which maps to which
-    // axis.
+    // On the 08/05 body the candidates were the three small-range floats at 14,
+    // 30 and 34 (all within ±3.6, the right magnitude for the ±2.26 units/tick
+    // of a full run). The 08/18 rearrangement took 30 for z, so the surviving
+    // candidates are 14, 18 and 34 — re-measure rather than assume.
     //
     // TO RESOLVE IT, the capture matters more than the analysis: run SOUTH,
     // then run WEST, with /loc as ground truth, so each axis moves in isolation
@@ -161,7 +179,7 @@ pub fn parse_player_self_pos(bytes: &[u8]) -> Result<PlayerSelfPos, PlayerSelfPo
     // (That recipe is the salvaged half of a July derivation which produced
     // deltaY@6 / deltaX@22 / deltaZ@3; those OFFSETS are dead — this body has
     // been rearranged twice since, on 08/04 and 08/05 — but the method stands.)
-    let heading = (read_u32_le(bytes, 38) & 0x7FF) as u16;
+    let heading = read_u16_le(bytes, 6) & 0x7FF;
 
     Ok(PlayerSelfPos {
         spawn_id,
@@ -189,46 +207,39 @@ mod tests {
         assert!(parse_player_self_pos(&[0; 43]).is_err());
     }
 
+    // Distinct values per axis, and the offsets each axis VACATED on 08/18 are
+    // filled with a decoy — a parser left on the 08/05 layout reads the decoy
+    // instead of failing, which is exactly the silent regression to catch.
     #[test]
-    fn parses_floats_x10_y18_z22() {
+    fn parses_floats_x10_z30_y38() {
         let mut buf = [0u8; PAYLOAD_LEN];
         buf[10..14].copy_from_slice(&654.25f32.to_le_bytes()); // x
-        buf[18..22].copy_from_slice(&941.50f32.to_le_bytes()); // y
-        buf[22..26].copy_from_slice(&190.01f32.to_le_bytes()); // z
+        buf[30..34].copy_from_slice(&190.01f32.to_le_bytes()); // z
+        buf[38..42].copy_from_slice(&941.50f32.to_le_bytes()); // y
+        buf[18..22].copy_from_slice(&(-7.0f32).to_le_bytes()); // decoy: 08/05 y
+        buf[22..26].copy_from_slice(&(-7.0f32).to_le_bytes()); // decoy: 08/05 z
         let p = parse_player_self_pos(&buf).unwrap();
         assert_eq!(p.x, 654.25);
         assert_eq!(p.y, 941.50);
         assert_eq!(p.z, 190.01);
     }
 
-    // A real self-report off the 08/05 wire. Ground truth for the same moment
-    // comes from the OP_SelfPos breadcrumb — a different opcode with a totally
-    // different encoding (IEEE floats in 17-byte tiled records) — and the two
-    // agree to 0.0000 units on all three axes. That cross-opcode agreement is
-    // what pins these offsets; the 08/04 offsets decode this same packet to
-    // zero or garbage.
-    #[test]
-    fn decodes_a_captured_self_report() {
-        let bytes: [u8; PAYLOAD_LEN] = [
-            0x00, 0x00, 0xC3, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x96, 0x43,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x5C, 0xDE, 0xC4, 0x00, 0x00, 0x38, 0x40, 0x00, 0x10,
-            0xF6, 0x7F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFA, 0x07, 0x00, 0xD4,
-        ];
-        let p = parse_player_self_pos(&bytes).unwrap();
-        assert_eq!(p.x, 301.875);
-        assert_eq!(p.y, -1778.875);
-        assert_eq!(p.z, 2.875);
-        assert_eq!(p.spawn_id, 963);
-        assert_eq!(p.heading, 2042); // ~358.9 degrees, i.e. just west of north
-    }
+    // NO captured-packet test for the 08/18 wire yet. The 08/05 one was retired
+    // with the rotation rather than re-pointed: its bytes were recorded off the
+    // previous layout, so re-asserting them under these offsets would only pin
+    // whatever the new reads happen to produce — a test that can never fail and
+    // proves nothing. Record a replacement from the first post-patch capture and
+    // cross-check it against the OP_SelfPos breadcrumb for the same moment, the
+    // way the 08/05 one was pinned (a different opcode with a different
+    // encoding, agreeing to 0.0000 units on all three axes).
 
-    // Facing is an 11-bit compass value in the low bits at 38: 0 = N, a quarter
+    // Facing is an 11-bit compass value in the low bits at 6: 0 = N, a quarter
     // circle = E. The neighbouring high bits are set so a sloppy mask is caught.
     #[test]
     fn decodes_the_facing_as_a_compass_value() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        let w = (u32::from(HEADING_UNITS) / 4) | (0x1F_FFFFu32 << 11);
-        buf[38..42].copy_from_slice(&w.to_le_bytes());
+        let w = (HEADING_UNITS / 4) | (0x1Fu16 << 11);
+        buf[6..8].copy_from_slice(&w.to_le_bytes());
         let p = parse_player_self_pos(&buf).unwrap();
         assert_eq!(p.heading, HEADING_UNITS / 4);
         assert!(p.heading < HEADING_UNITS);
@@ -240,8 +251,9 @@ mod tests {
     #[test]
     fn velocity_is_not_decoded_this_patch() {
         let mut buf = [0u8; PAYLOAD_LEN];
+        // The 08/18 candidates: 30 is z now, so it is no longer one of them.
         buf[14..18].copy_from_slice(&2.26f32.to_le_bytes());
-        buf[30..34].copy_from_slice(&2.26f32.to_le_bytes());
+        buf[18..22].copy_from_slice(&2.26f32.to_le_bytes());
         buf[34..38].copy_from_slice(&2.26f32.to_le_bytes());
         let p = parse_player_self_pos(&buf).unwrap();
         assert_eq!((p.delta_x, p.delta_y, p.delta_z), (0.0, 0.0, 0.0));
