@@ -97,39 +97,31 @@ fn eql_spawn(name: &str, id: u32) -> Vec<u8> {
     };
     text(&mut bytes, name);
     bytes.extend_from_slice(&id.to_le_bytes());
-    bytes.push(40);
+    bytes.push(40); // level
     bytes.extend_from_slice(&[0; 16]);
-    bytes.push(1);
-    bytes.extend_from_slice(&0u32.to_le_bytes());
-    bytes.push(0);
+    bytes.push(1); // npc
+    bytes.extend_from_slice(&0u32.to_le_bytes()); // miscData
+    bytes.extend_from_slice(&[0; 4]); // 09/01 pad ahead of the flag byte
+    bytes.push(0); // otherData: no title, no suffix
     bytes.extend_from_slice(&[0; 8]);
-    bytes.push(0);
-    bytes.extend_from_slice(&[0; 3]);
-    bytes.push(0);
+    bytes.push(0); // charProperties
+    bytes.push(95); // curHp
+    bytes.extend_from_slice(&[0; 37]);
+    bytes.extend_from_slice(&50u32.to_le_bytes()); // race
+    bytes.push(0); // holding
+    bytes.extend_from_slice(&3u32.to_le_bytes()); // deity
+    bytes.extend_from_slice(&0u32.to_le_bytes()); // guildID
+    bytes.extend_from_slice(&0u32.to_le_bytes()); // guildServerID
+    bytes.extend_from_slice(&5u32.to_le_bytes()); // class
+    bytes.extend_from_slice(&0u32.to_le_bytes()); // classMask
     bytes.extend_from_slice(&[0; 4]);
-    bytes.push(95);
-    bytes.extend_from_slice(&[0; 33]);
-    bytes.extend_from_slice(&50u32.to_le_bytes());
-    bytes.push(0);
-    bytes.extend_from_slice(&3u32.to_le_bytes());
-    bytes.extend_from_slice(&0u32.to_le_bytes());
-    bytes.extend_from_slice(&0u32.to_le_bytes());
-    bytes.extend_from_slice(&5u32.to_le_bytes());
-    bytes.extend_from_slice(&0u32.to_le_bytes());
-    bytes.extend_from_slice(&[0; 4]);
-    text(&mut bytes, "");
+    text(&mut bytes, ""); // lastName
     bytes.extend_from_slice(&[0; 2]);
-    bytes.extend_from_slice(&0u32.to_le_bytes());
-    bytes.extend_from_slice(&[0; 49]);
-    bytes.extend_from_slice(&[0; 60]);
-    bytes.extend_from_slice(&[0; 24]);
-    for _ in 0..4 {
-        text(&mut bytes, "");
-    }
-    bytes.extend_from_slice(&[0; 4]);
-    bytes.push(0);
-    text(&mut bytes, "0");
-    bytes.extend_from_slice(&[0; 53]);
+    bytes.extend_from_slice(&0u32.to_le_bytes()); // petOwnerId
+    bytes.extend_from_slice(&[0; 49]); // npc extra
+    bytes.extend_from_slice(&[0; 60]); // equipment, 2-slot branch
+    bytes.extend_from_slice(&[0; 20]); // posData, 5 words
+    bytes.extend_from_slice(&[0; 79]); // unknowns, isMercenary, unknowns
     bytes
 }
 

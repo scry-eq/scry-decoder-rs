@@ -1,18 +1,10 @@
-//! C++ FFI bridge — exposes the Rust decoders across the cxx ABI.
+//! C++ FFI bridge — a thin shim exposing the Rust decoders across the cxx ABI,
+//! built as the `staticlib` Corrosion links into `seq-daemon-core`.
 //!
-//! The bridge is intentionally a thin shim. Parsing logic stays in the decode
-//! crates (`seq-decode` for the shared/Live path, `seq-backend-eql` for eql's
-//! diverged opcodes) so it remains usable from pure-Rust contexts (replay
-//! tools, the eventual standalone daemon). This crate is the `staticlib`
-//! Corrosion links into `seq-daemon-core`.
-//!
-//! Backend selection via Cargo features: `backend-live` / `backend-test` pick
-//! the bindings crate in `seq-decode` (Test rides the shared Live decoders).
-//! `backend-eql` instead links `seq-backend-eql` — a fully self-contained eql
-//! decode stack that shares NOTHING with Live, so a Live wire patch can't reach
-//! eql. The uniform `decode_*` FFI surface is identical for every backend; the
-//! `backend` alias below routes each call to the active backend's decoders, and
-//! the few opcodes whose eql wire diverges call eql's parser explicitly.
+//! Cargo features pick the backend: `backend-live`/`backend-test` use
+//! `seq-decode`, `backend-eql` the self-contained `seq-backend-eql`. The
+//! `decode_*` surface is identical either way — the `backend` alias routes each
+//! call, and the eql-diverged opcodes call eql's parser explicitly.
 
 #[cfg(not(any(
     feature = "backend-live",
@@ -21,26 +13,20 @@
 )))]
 compile_error!("seq-bridge: enable exactly one backend feature (default: backend-live).");
 
-// The active backend's decoder crate. live/test share `seq-decode`; eql is its
-// own self-contained stack (`seq-backend-eql`). Shared decoders call
-// `backend::parse_*`; the eql-diverged opcodes cfg-select
-// `seq_backend_eql::parse_legends_*` directly below.
+// The active backend's decoder crate: live/test share `seq-decode`, eql is its
+// own self-contained stack.
 #[cfg(feature = "backend-eql")]
 use seq_backend_eql as backend;
 #[cfg(not(feature = "backend-eql"))]
 use seq_decode as backend;
 
-// cxx expands `-> Box<T>` entries into code using an API stabilized after the
-// workspace's declared rust-version (1.75). It's generated, so there is nothing
-// here to rewrite; the toolchain we actually build with is `stable`.
+// cxx's generated `-> Box<T>` code needs an API newer than the declared MSRV;
+// we build with `stable`, and there is nothing here to rewrite.
 #[allow(clippy::incompatible_msrv)]
 #[cxx::bridge(namespace = "seq::rust")]
 mod ffi {
-    /// Decoded `OP_MobUpdate` payload. `ok` is the discriminator: when
-    /// false the remaining fields are zeroed and the daemon drops the
-    /// packet. The discriminator is preferred over cxx's `Result`
-    /// mapping because the latter would emit C++ exceptions for what
-    /// the daemon's SZC_Match dispatch already prevents.
+    /// Decoded `OP_MobUpdate`. An `ok` discriminator beats cxx's `Result`,
+    /// which would raise C++ exceptions SZC_Match dispatch already prevents.
     struct MobUpdate {
         spawn_id: u16,
         x: i32,
@@ -50,18 +36,15 @@ mod ffi {
         ok: bool,
     }
 
-    /// Decoded `OP_DeleteSpawn`. `ok=false` means the payload was the
-    /// wrong size; SZC_Match in the daemon already guards against that
-    /// so it shouldn't fire in normal operation.
+    /// Decoded `OP_DeleteSpawn`; `ok=false` is a wrong-size payload, which
+    /// SZC_Match should already have rejected.
     struct DeleteSpawn {
         spawn_id: u32,
         ok: bool,
     }
 
-    /// Variable-length spawn payload (Stage A+2). Mirrors the fields
-    /// `SpawnShell::fillSpawnStruct` populates on a `spawnStruct`. The
-    /// daemon assigns each field into its own struct via `applySpawn`.
-    /// `bytes_consumed` records the parser's consumed length.
+    /// Variable-length spawn payload mirroring the fields
+    /// `SpawnShell::fillSpawnStruct` populates on a `spawnStruct`.
     struct Spawn {
         ok: bool,
         bytes_consumed: u32,
@@ -99,9 +82,8 @@ mod ffi {
         light: u8,
         is_mercenary: u8,
 
-        // Decoded position + hp, filled only by backends whose spawn wire is
-        // already decoded (eql). Live leaves these zero and uses pos_data /
-        // cur_hp; eql leaves the raw arrays zero and fills these.
+        // Decoded position + hp, eql only; Live leaves these zero and uses
+        // pos_data / cur_hp instead.
         x: i16,
         y: i16,
         z: i16,
@@ -111,9 +93,8 @@ mod ffi {
         heading: u16,
     }
 
-    // Stage A+3 — small fixed-size opcodes. Each struct ends with an
-    // `ok` discriminator: false means the payload was malformed (length
-    // mismatch / failed extraction); the daemon drops the packet.
+    // Small fixed-size opcodes; each ends with an `ok` discriminator, false
+    // meaning the payload was malformed and the daemon drops the packet.
     struct RemoveSpawn {
         spawn_id: u32,
         remove_spawn: u8,
@@ -125,9 +106,8 @@ mod ffi {
         max_hp: i32,
         ok: bool,
     }
-    // eql OP_HPUpdate is a multiplexed stat-sync channel, not Live's
-    // fixed HP struct — decoded via decode_stat_sync. `wide` gates the real
-    // cur/max (vs percent) forms; `has_*` mark which stats the packet carried.
+    // eql OP_HPUpdate is a multiplexed stat-sync channel: `wide` picks the real
+    // cur/max form over percent, and `has_*` mark the stats the packet carried.
     struct StatSync {
         spawn_id: u32,
         wide: bool,
@@ -142,9 +122,8 @@ mod ffi {
         end_max: i64,
         ok: bool,
     }
-    // One stat-sync packet's verdict from EqlSelfTracker. `is_self` false means
-    // the packet belongs to another spawn and the host routes its HP normally;
-    // the has_* flags are meaningful only when is_self is true.
+    // One stat-sync packet's verdict from EqlSelfTracker; the has_* flags are
+    // meaningful only when `is_self` is true.
     struct SelfStat {
         is_self: bool,
         has_hp: bool,
@@ -165,24 +144,21 @@ mod ffi {
         cast_time_ms: u32,
         ok: bool,
     }
-    // eql OP_Stance / OP_Invocation, S>C: 4B {u32 abilityId}.
-    // The daemon resolves ability_id to a display name (stance vs invocation
-    // table picked by the opcode). ok=false = wrong-size payload.
+    // eql OP_Stance / OP_Invocation, S>C 4B {u32 abilityId}; the opcode picks
+    // which name table the daemon resolves the id against.
     struct ActivateAbility {
         ability_id: u32,
         ok: bool,
     }
-    // eql OP_SendAATable (S>C): one AA ability-rank definition per packet
-    // (burst at zone-in). desc_id == the profile's per-rank aa id; title_sid is a
-    // dbstr type-1 id the daemon resolves to the AA display name. ok=false = short.
+    // eql OP_SendAATable (S>C): one AA ability-rank definition per packet;
+    // desc_id is the profile's per-rank id, title_sid a dbstr type-1 id.
     struct AaTableEntry {
         desc_id: u32,
         title_sid: u32,
         ok: bool,
     }
-    // eql OP_LoadoutSwap: a player's multiclass loadout change. Only
-    // the identity fields that change on a swap are surfaced; spawn_id is the
-    // header id of the player who swapped (self or a nearby tracked spawn).
+    // eql OP_LoadoutSwap: only the identity fields a multiclass swap changes,
+    // for the player named by the header's spawn_id.
     struct LoadoutSwap {
         spawn_id: u32,
         level: u8,
@@ -255,9 +231,8 @@ mod ffi {
         hp_percent: i32,
         ok: bool,
     }
-    // Widened to u32 for Live's re-derived 8-byte `{u32 spawnId, u32 type}`
-    // layout (2026-07-28); eql's own struct is still u16/u16/u32 and converts
-    // losslessly. `parameter` survives for eql — Live's wire has no value field.
+    // u32 for Live's 8-byte `{u32 spawnId, u32 type}`; eql's u16/u16/u32
+    // converts losslessly, and `parameter` survives only for eql.
     struct SpawnAppearance {
         spawn_id: u32,
         kind: u32,
@@ -309,36 +284,29 @@ mod ffi {
         level: i32,
         ok: bool,
     }
-    /// A backend-declared payload size override: `name` (a toml `typename`) →
-    /// its authoritative size on the linked backend. The daemon applies these
-    /// over its C++ `sizeof` size table so `SZC_Match` validates against the
-    /// backend's size, not a hardcoded Live `sizeof`. Empty for live/test.
+    /// A toml `typename` and its authoritative size on the linked backend, so
+    /// `SZC_Match` gates on that rather than a hardcoded Live `sizeof`.
     struct StructSize {
         name: String,
         size: u32,
     }
-    // eql OP_GuildMOTD — the guild message of the day. Single struct (not a list);
-    // `ok` false = decode failed / too short. The packet carries no guild id (the
-    // MOTD is implicitly the local player's guild), so none is returned.
+    // eql OP_GuildMOTD. The packet carries no guild id — the MOTD is implicitly
+    // the local player's guild.
     struct GuildMotd {
         message: String,
         sender: String,
         ok: bool,
     }
-    // OP_ExpandedGuildInfo (Live) — one entry of the guild rank-name table.
-    // The opcode is a tagged union; `action` selects the shape. Only the
-    // rank-name action (3) fills rank_index (1-based, matches the roster member
-    // rank field) + rank_name; other actions leave them 0/empty. The consumer
-    // gates on `action == 3` and builds a rank -> name table for the guild.
+    // OP_ExpandedGuildInfo (Live) is a tagged union on `action`; only action 3
+    // fills rank_index (1-based) + rank_name, so consumers gate on it.
     struct GuildExpandedInfo {
         action: u32,
         guild_id: u32,
         rank_index: u32,
         rank_name: String,
     }
-    // OP_GuildMemberUpdate (Live) — one member's zone/last-on update (NOT rank).
-    // `ok` false = decode failed. Identified by `name`; the consumer updates that
-    // roster member's online state. zone_id 0 = offline.
+    // OP_GuildMemberUpdate (Live): one member's zone/last-on, keyed by `name`,
+    // not their rank. zone_id 0 = offline.
     struct GuildMemberUpdateInfo {
         name: String,
         zone_id: u16,
@@ -346,22 +314,15 @@ mod ffi {
         last_on: u32,
         ok: bool,
     }
-    // One guild present in the zone (eql OP_GuildsInZoneList / OP_NewGuildInZone).
-    // Returned as a flat Vec — the list opcode yields N, the single opcode yields
-    // one — so the daemon feeds both through the same GuildMgr primitive.
+    // One guild present in the zone. A flat Vec, so the list and single-guild
+    // opcodes both feed the same GuildMgr primitive.
     struct GuildInZoneRow {
         guild_id: u32,
         server_id: u32,
         name: String,
     }
-    // One row of the eql guild roster (OP_GuildMemberList). Returned as a flat
-    // Vec (empty on decode failure); `guild_id` repeats per row so the C++ side
-    // needs no wrapper struct, mirroring BuffListEntry.
-    //
-    // `class_mask` is the eql MULTICLASS BITMASK (bit N = class N), not a class
-    // id — a character has three simultaneous classes. `primary_class` is its
-    // lowest set bit, for a consumer that can show only one.
-    // `zone_id` 0 = offline; `last_on` is unix seconds, 0 = never.
+    // One row of the eql guild roster; `guild_id` repeats per row so the C++
+    // side needs no wrapper. `class_mask` is a MULTICLASS BITMASK, not a class.
     struct GuildRosterRow {
         guild_id: u32,
         name: String,
@@ -376,9 +337,8 @@ mod ffi {
         public_note: String,
         zone_id: u16,
     }
-    // One record of eql OP_BuffList. Returned as a flat Vec (empty on
-    // decode failure); every entry repeats spawn_id so the C++ side can filter
-    // to the player without a wrapper struct. remaining_ticks <= 0 = permanent.
+    // One record of eql OP_BuffList; every entry repeats spawn_id so the C++
+    // side can filter without a wrapper. remaining_ticks <= 0 = permanent.
     struct BuffListEntry {
         spawn_id: u32,
         spell_id: u32,
@@ -388,10 +348,8 @@ mod ffi {
         // with the ones the player put on it; only this tells them apart.
         caster: String,
     }
-    // One EQL UCS (cross-zone chat) line. `channel_first` is the still-masked
-    // first byte of the channel name; `channel_rest` is the clean remainder.
-    // The caller recovers the per-session mask (from the General* crib) to
-    // repair `channel_first`. An empty Vec = no chat in the packet.
+    // One EQL UCS chat line; `channel_first` is still masked and the caller
+    // repairs it with the per-session mask recovered from the General* crib.
     struct UcsChatRecord {
         channel_first: u8,
         channel_rest: String,
@@ -441,13 +399,16 @@ mod ffi {
     struct Buff {
         spawn_id: u32,
         spell_id: u32,
-        // form: 0=fade(13b) | 1=initial(30b) | 2=live-update(34+b) |
-        // 3=compact(24b, eql buff-slot channel). For form 3, spawn_id is 0 and
-        // slot is 0xff for scribe/bar refreshes; change_type is 1=faded/4=applied.
+        // form: 0 fade | 1 initial | 2 live-update | 3 compact (eql buff-slot
+        // channel: spawn_id 0, slot 0xff on scribe/bar refreshes).
         form: u8,
         slot: u8,
         dur_ticks: u32,
         change_type: u32,
+        // Form 3 (eql) only; seconds, not ticks. Zero on every other form.
+        counters: u32,
+        duration_mod: i32,
+        duration: i32,
         ok: bool,
     }
     struct Action2 {
@@ -549,9 +510,8 @@ mod ffi {
         ok: bool,
     }
 
-    // Per-element decode for OP_SendZonePoints. Daemon reads the 4-byte
-    // count off the front, then invokes this on each 24-byte
-    // zonePointStruct slice.
+    // Per-element decode for OP_SendZonePoints: the daemon strips the leading
+    // count and invokes this on each 24-byte zonePointStruct slice.
     struct ZonePoint {
         zone_trigger: u32,
         y: f32,
@@ -563,24 +523,15 @@ mod ffi {
         ok: bool,
     }
 
-    // Message opcode payloads. OP_SimpleMessage is fixed 12b; OP_FormattedMessage
-    // has a 13b header + variable-length text array (daemon slices the
-    // tail off the raw payload); OP_SpecialMesg has two embedded
-    // NUL-terminated strings the parser surfaces directly.
+    // Message opcode payloads: OP_SimpleMessage is fixed 12b, OP_FormattedMessage
+    // a 13b header + text array, OP_SpecialMesg two embedded strings.
     struct SimpleMessage {
         message_format: u32,
         message_color: u32,
         ok: bool,
     }
-    // OP_FormattedMessage. `message_format`/`message_color` are the stock
-    // Live header (format id + chat colour). The remaining fields are the
-    // EQL enrichment and stay zero/empty on live/test: that channel
-    // diverges (format id @9, not @5) and multiplexes a spell id, a
-    // message-class discriminator, the actor spawn id, and a pre-split
-    // NUL-delimited arg list the stock header can't represent. On eql,
-    // message_format/message_color mirror format_id/spell_id so the stock
-    // MessageShell::formattedMessage symbol still resolves; the eql handler
-    // reads the rich fields. See seq-backend-eql/src/formatted_message.rs.
+    // OP_FormattedMessage. Past the stock Live header the fields are eql
+    // enrichment and stay zero/empty on live/test.
     struct FormattedMessage {
         message_format: u32,
         message_color: u32,
@@ -619,11 +570,8 @@ mod ffi {
         ok: bool,
     }
 
-    // OP_PlayerProfile — long, variable-length NetStream walk. Only
-    // fields the daemon's downstream consumers actually read are
-    // exposed; everything else is parsed (to advance the cursor) but
-    // dropped. `bytes_consumed` matches the C++ parser's tally for the
-    // length-mismatch debug print.
+    // OP_PlayerProfile. Only fields a downstream consumer reads are exposed;
+    // the rest is parsed to advance the cursor, then dropped.
     struct PlayerProfile {
         ok: bool,
         bytes_consumed: u32,
@@ -768,10 +716,8 @@ mod ffi {
         ok: bool,
     }
 
-    // Stateful Session API. cxx cannot express a Rust enum whose variants own
-    // different payloads, so a batch uses tagged references into typed payload
-    // vectors. C++ switches on `kind`, reads `payload_index` from the matching
-    // vector, and can construct its std::variant mechanically.
+    // cxx cannot express a Rust enum whose variants own different payloads, so
+    // a batch is tagged references into typed payload vectors.
     enum SessionBackend {
         Live = 0,
         Test = 1,
@@ -1789,12 +1735,8 @@ mod ffi {
         fn decode_hp_update(bytes: &[u8]) -> HpUpdate;
         fn decode_stat_sync(bytes: &[u8]) -> StatSync;
 
-        // eql session identity. Unlike every other entry here this is stateful:
-        // eql issues the self ZoneEntry twice per zone and keys the player's
-        // stats to the SECOND id, which can land after the stats themselves do.
-        // Resolving that needs cross-packet memory, so it lives in the backend
-        // where every host inherits it rather than in each host's dispatch.
-        // One instance per session/box. Inert on live/test.
+        // eql keys the player's stats to the SECOND of two self ZoneEntries,
+        // which can arrive late — so this one entry is stateful.
         type EqlSelfTracker;
         fn eql_self_tracker_new() -> Box<EqlSelfTracker>;
         fn reset(self: &mut EqlSelfTracker);
@@ -1807,17 +1749,13 @@ mod ffi {
         fn observe_stat_sync(self: &mut EqlSelfTracker, stat: &StatSync) -> SelfStat;
         fn take_pending_vitals(self: &mut EqlSelfTracker) -> SelfStat;
         // Mid-session recovery: with no zone-in witnessed there is no name to
-        // match, so the player is invisible until they zone. Feed the id from
-        // the client's own outbound position report here — 1 = newly adopted
-        // provisionally (synthesise a record for it), 0 = nothing to do.
+        // match, so adopt provisionally off the client's own position report.
         fn observe_self_pos(self: &mut EqlSelfTracker, spawn_id: u32) -> u8;
         // Non-zero when a real (name-matched) adoption has superseded a
         // provisional id: drop whatever was synthesised for it.
         fn take_retired_provisional(self: &mut EqlSelfTracker) -> u32;
-        // One acquisition spans two packets (narration, then confirmation), so
-        // recording needs cross-packet memory — same reasoning as the self
-        // tracker above. One instance per session; inert on live/test. Each
-        // method returns the rows that COMPLETED on this event, usually none.
+        // An acquisition spans a narration and a confirmation packet, so each
+        // method returns only the rows that COMPLETED on this event.
         type EqlLootTracker;
         fn eql_loot_tracker_new() -> Box<EqlLootTracker>;
         fn set_zone(self: &mut EqlLootTracker, zone_short: &str) -> Vec<LootRow>;
@@ -1906,16 +1844,12 @@ mod ffi {
         fn decode_player_spawn_pos(bytes: &[u8]) -> PlayerSpawnPos;
         fn decode_npc_move_update(bytes: &[u8]) -> NpcMove;
 
-        /// Backend-sourced payload size overrides (see `StructSize`). Empty on
-        /// live/test; eql returns the payloads whose wire size diverges from
-        /// Live's compiled `everquest.h` struct.
+        /// Backend-sourced payload size overrides; empty on live/test, since
+        /// they diverge from Live's compiled struct sizes in nothing.
         fn struct_size_overrides() -> Vec<StructSize>;
 
-        /// Per-row byte stride of an `OP_SpawnDoor` array payload for the
-        /// linked backend (136 on live/test = `sizeof(doorStruct)`; 132 on
-        /// eql). The daemon's `SpawnShell::newDoorSpawns` iterates with this
-        /// instead of the compiled Live `sizeof`, which would mis-stride a
-        /// diverged backend's rows.
+        /// Per-row stride of an `OP_SpawnDoor` payload — 136 on live/test, 132
+        /// on eql, where the compiled Live `sizeof` would mis-stride.
         fn door_stride() -> usize;
     }
 }
@@ -3777,10 +3711,8 @@ fn empty_session_batch(
 }
 
 fn struct_size_overrides() -> Vec<ffi::StructSize> {
-    // The daemon's SZC_Match size table is built from Live's C++ `sizeof`
-    // (s_everquest.h); these entries let the linked backend override any name
-    // whose wire size diverges. live/test diverge from nothing → empty; eql
-    // sources its list from the pinned seq-backend-eql struct/parser sizes.
+    // The daemon's SZC_Match table is Live's C++ `sizeof`; these entries let the
+    // linked backend override any name whose wire size diverges.
     #[cfg(feature = "backend-eql")]
     let raw = seq_backend_eql::size_overrides();
     #[cfg(not(feature = "backend-eql"))]
@@ -3798,9 +3730,8 @@ fn door_stride() -> usize {
 }
 
 fn decode_mob_update(bytes: &[u8]) -> ffi::MobUpdate {
-    // Each compiled backend supplies its own parser. EQL retained the packed
-    // coordinate bits but moved the block from byte 4 to byte 8 on 2026-08-25,
-    // increasing its payload from 14 to 18 bytes.
+    // Each compiled backend supplies its own parser; eql's packed coordinate
+    // block sits at byte 8, not byte 4, in an 18-byte payload.
     match backend::parse_mob_update(bytes) {
         Ok(m) => ffi::MobUpdate {
             spawn_id: m.spawn_id,
@@ -3867,9 +3798,8 @@ fn decode_hp_update(bytes: &[u8]) -> ffi::HpUpdate {
     }
 }
 
-// eql: OP_HPUpdate is the multiplexed stat-sync channel, decoded via
-// decode_stat_sync — Live's fixed HP struct never appears, so this shared FFI
-// is inert.
+// eql routes OP_HPUpdate through decode_stat_sync, so Live's fixed HP struct
+// never appears and this shared FFI is inert there.
 #[cfg(feature = "backend-eql")]
 fn decode_hp_update(_bytes: &[u8]) -> ffi::HpUpdate {
     ffi::HpUpdate {
@@ -3920,10 +3850,8 @@ fn decode_stat_sync(bytes: &[u8]) -> ffi::StatSync {
     }
 }
 
-// eql session identity — the one stateful thing on this bridge. See
-// seq_backend_eql::self_track for why it can't be a pure per-packet function.
-// The C++/Elixir side owns one per session; all logic stays in the backend so
-// the host only forwards packets and applies the verdict.
+// eql session identity, the one stateful thing on this bridge. The host owns
+// one per session and only forwards packets; the logic stays in the backend.
 #[cfg(feature = "backend-eql")]
 pub struct EqlSelfTracker(seq_backend_eql::SelfTracker);
 #[cfg(not(feature = "backend-eql"))]
@@ -4032,9 +3960,8 @@ impl EqlSelfTracker {
     }
 }
 
-// Loot recording state. Same shape as EqlSelfTracker above: the host owns one
-// per session and only forwards packets; all the pairing lives in the backend
-// so every host inherits identical behaviour.
+// Loot recording state, shaped like EqlSelfTracker: the host owns one per
+// session and forwards packets, and the pairing lives in the backend.
 #[cfg(feature = "backend-eql")]
 pub struct EqlLootTracker(seq_backend_eql::LootTracker);
 #[cfg(not(feature = "backend-eql"))]
@@ -4403,9 +4330,7 @@ fn decode_stat_sync(_bytes: &[u8]) -> ffi::StatSync {
     stat_sync_err()
 }
 
-// eql-only: OP_GuildsInZoneList / OP_NewGuildInZone — the guilds present in the
-// zone, the only source of guild NAMES. eql owns this parser like every other;
-// the daemon and scry both consume it rather than each re-decoding the wire.
+// eql-only: the guilds present in the zone, the only source of guild NAMES.
 // live/test stub empty.
 #[cfg(feature = "backend-eql")]
 fn decode_guilds_in_zone_list(bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
@@ -4461,9 +4386,8 @@ fn decode_new_guild_in_zone(bytes: &[u8]) -> Vec<ffi::GuildInZoneRow> {
     }
 }
 
-// OP_GuildMOTD — the guild message of the day. Each backend owns its parser
-// (`backend` = seq_decode for live/test, seq_backend_eql for eql); the wire is
-// the stock struct on both today.
+// OP_GuildMOTD. Each backend owns its parser, though the wire is the stock
+// struct on both today.
 fn decode_guild_motd(bytes: &[u8]) -> ffi::GuildMotd {
     match backend::guild_motd::parse_guild_motd(bytes) {
         Ok(m) => ffi::GuildMotd {
@@ -4535,9 +4459,8 @@ fn decode_guild_member_update(_bytes: &[u8]) -> ffi::GuildMemberUpdateInfo {
     }
 }
 
-// eql-only: OP_GuildMemberList — the full guild roster. Flattened to a Vec
-// (empty = decode failed / empty guild). live/test stub empty: the eql wire
-// diverges from the stock struct, so there is nothing shared to fall back to.
+// eql-only: the full guild roster, flattened to a Vec. live/test stub empty —
+// eql's wire diverges, so there is nothing shared to fall back to.
 #[cfg(feature = "backend-eql")]
 fn decode_guild_roster(bytes: &[u8]) -> Vec<ffi::GuildRosterRow> {
     match seq_backend_eql::guild_roster::parse_guild_member_list(bytes) {
@@ -4565,9 +4488,8 @@ fn decode_guild_roster(bytes: &[u8]) -> Vec<ffi::GuildRosterRow> {
     }
 }
 
-// Live/Test: the stock roster. Single class (no multiclass mask -> class_mask 0)
-// and no per-member zone (Live doesn't carry it -> zone_id 0). Its own parser
-// in seq-decode, kept separate from eql's because the wire genuinely differs.
+// Live/Test: the stock roster, with no multiclass mask and no per-member zone.
+// Its own parser, kept separate from eql's because the wire genuinely differs.
 #[cfg(not(feature = "backend-eql"))]
 fn decode_guild_roster(bytes: &[u8]) -> Vec<ffi::GuildRosterRow> {
     match seq_decode::guild_roster::parse_guild_member_list(bytes) {
@@ -4910,11 +4832,12 @@ fn decode_buff(bytes: &[u8]) -> ffi::Buff {
     match backend::parse_buff(bytes) {
         Ok(b) => {
             // Only the eql wire has the 24b compact form, so only its parser
-            // carries change_type; Live's Buff is left untouched.
+            // carries the compact-form fields; Live's Buff is left untouched.
             #[cfg(feature = "backend-eql")]
-            let change_type = b.change_type;
+            let (change_type, counters, duration_mod, duration) =
+                (b.change_type, b.counters, b.duration_mod, b.duration);
             #[cfg(not(feature = "backend-eql"))]
-            let change_type = 0u32;
+            let (change_type, counters, duration_mod, duration) = (0u32, 0u32, 0i32, 0i32);
             ffi::Buff {
                 spawn_id: b.spawn_id,
                 spell_id: b.spell_id,
@@ -4922,6 +4845,9 @@ fn decode_buff(bytes: &[u8]) -> ffi::Buff {
                 slot: b.slot,
                 dur_ticks: b.dur_ticks,
                 change_type,
+                counters,
+                duration_mod,
+                duration,
                 ok: true,
             }
         }
@@ -4932,6 +4858,9 @@ fn decode_buff(bytes: &[u8]) -> ffi::Buff {
             slot: 0,
             dur_ticks: 0,
             change_type: 0,
+            counters: 0,
+            duration_mod: 0,
+            duration: 0,
             ok: false,
         },
     }
@@ -4958,9 +4887,8 @@ fn decode_action2(bytes: &[u8]) -> ffi::Action2 {
     }
 }
 
-// Zeroed sentinel for a bad/absent spawn payload. Also the field base for
-// eql's partial fill (its Legends spawn only decodes id/name/pos/level/hp; the
-// Live-only raw equipment/position arrays stay zero).
+// Zeroed sentinel for a bad or absent spawn payload, and the field base for
+// eql's partial fill, where the Live-only raw arrays stay zero.
 fn spawn_err() -> ffi::Spawn {
     ffi::Spawn {
         ok: false,
@@ -5039,9 +4967,8 @@ fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
     }
 }
 
-// eql: zone-spawn decodes id/name/decoded-pos/level/hp; the rest stays zero.
-// This one keeps a cfg-split (eql's ZoneSpawn is a different shape than Live's
-// Spawn — decoded x/y/z vs raw pos arrays).
+// eql's zone-spawn decodes id/name/pos/level/hp and zeroes the rest; the
+// cfg-split stays because its ZoneSpawn is a different shape than Live's Spawn.
 #[cfg(feature = "backend-eql")]
 fn decode_spawn(bytes: &[u8]) -> ffi::Spawn {
     match seq_backend_eql::parse_spawn(bytes) {
@@ -5399,11 +5326,8 @@ fn decode_formatted_message(bytes: &[u8]) -> ffi::FormattedMessage {
     }
 }
 
-// eql: OP_FormattedMessage carries a stock length-prefixed body —
-// formatId@5, msgType/colour@9, length-prefixed args@13 (see the parser). The
-// args are already positional (empty slots dropped, links cleaned); the daemon
-// interpolates via EQStr::formatMessage(format_id, args). message_format/
-// message_color mirror format_id/msg_color for stock symbol compatibility.
+// eql's OP_FormattedMessage args arrive positional (empty slots dropped, links
+// cleaned), so the daemon only has to interpolate via EQStr::formatMessage.
 #[cfg(feature = "backend-eql")]
 fn decode_formatted_message(bytes: &[u8]) -> ffi::FormattedMessage {
     match backend::parse_formatted_message(bytes) {

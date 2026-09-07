@@ -1,18 +1,16 @@
-//! Parser for `OP_NpcMoveUpdate` — variable-length 13..24 byte
-//! payload using the legacy MSB-first `BitStream` packing (NOT the
-//! C-struct `#[repr(C, packed)]` bitfield convention used elsewhere).
-//!
-//! Wire format mirrors `SpawnShell::npcMoveUpdate` / the daemon's
-//! `BitStream` reader:
+//! Parser for `OP_NpcMoveUpdate` — a variable-length 13..24 byte payload in the
+//! legacy MSB-first `BitStream` packing (not the `#[repr(C, packed)]` bitfield
+//! convention used elsewhere), shifted on the way out (coords `>> 3`, deltas
+//! `>> 2`) so the fields drop straight into `updateSpawn`.
 //!
 //! ```text
 //!   16 bits — spawnId (big-endian within the bit stream)
-//!   16 bits — garbage / reserved
+//!   32 bits — garbage / reserved
 //!    6 bits — fieldSpecifier bitmask
 //!   19 bits — y (signed, sign-magnitude — NOT two's complement)
 //!   19 bits — x (signed)
 //!   19 bits — z (signed)
-//!   12 bits — heading (signed)
+//!   12 bits — path bearing toward the next waypoint, NOT a facing
 //!   [optional, in this order if the corresponding mask bit is set]
 //!     0x01  → 12 bits pitch (read but unused by daemon)
 //!     0x02  → 10 bits deltaHeading (signed)
@@ -22,9 +20,8 @@
 //!     0x20  → 13 bits deltaZ (signed)
 //! ```
 //!
-//! The daemon shifts y/x/z right by 3, and the deltas right by 2,
-//! both for fixed-point conversion. We mirror those shifts on the
-//! way out so the surfaced fields drop straight into `updateSpawn`.
+//! 09/01 layout from upstream 47a4992, unverified on our wire: the 12-bit angle
+//! is a path bearing, so [`NpcMoveUpdate::heading`] stays 0.
 
 use thiserror::Error;
 
@@ -41,7 +38,10 @@ pub struct NpcMoveUpdate {
     pub x: i16,
     pub y: i16,
     pub z: i16,
+    /// This channel carries no facing — always 0 (see the module doc).
     pub heading: i16,
+    /// The 12-bit angle: a bearing toward the next waypoint, not a facing.
+    pub path_bearing: i16,
     pub delta_x: i16,
     pub delta_y: i16,
     pub delta_z: i16,
@@ -60,6 +60,8 @@ pub enum NpcMoveUpdateError {
     BadLength(usize),
     #[error("bit stream exhausted after {0} bits (payload too short for fieldSpecifier)")]
     Truncated(usize),
+    #[error("coordinate {0} outside the +-16000 game world")]
+    OutOfRange(i16),
 }
 
 /// MSB-first bit reader matching the daemon's `BitStream`
@@ -79,10 +81,8 @@ impl<'a> BitStream<'a> {
         }
     }
 
-    /// Mirrors `BitStream::readUInt`: returns 0 on under-read so the
-    /// caller's logic doesn't crash on malformed packets — same as
-    /// the C++ daemon. Callers that care about the truncation surface
-    /// it via [`Self::cur`]/[`Self::total`].
+    /// Mirrors `BitStream::readUInt`: 0 on under-read, so a malformed packet
+    /// degrades instead of crashing; callers check [`Self::cur`]/[`Self::total`].
     fn read_uint(&mut self, bit_count: usize) -> u32 {
         if self.cur + bit_count > self.total {
             return 0;
@@ -144,17 +144,21 @@ pub fn parse_npc_move_update(bytes: &[u8]) -> Result<NpcMoveUpdate, NpcMoveUpdat
     let mut s = BitStream::new(bytes);
 
     let spawn_id = s.read_uint(16) as u16;
-    // 08/25: this lead field widened 16 -> 32 bits, shifting everything after
-    // it by 16. Confirmed against OP_MobUpdate over 304 time-paired records:
-    // median error 0.00 on all three axes with the shift, 8396 / 4568 / 2115
-    // without it. Field ORDER is unchanged, so our map-frame naming stands.
+    // 08/25 widened this lead field 16 -> 32 bits; upstream agrees.
     let _garbage = s.read_uint(32);
     let field_specifier = s.read_uint(6) as u8;
 
     let y = (s.read_int(19) >> 3) as i16;
     let x = (s.read_int(19) >> 3) as i16;
     let z = (s.read_int(19) >> 3) as i16;
-    let heading = s.read_int(12) as i16;
+    let path_bearing = s.read_int(12) as i16;
+
+    // Upstream's guard: a decode that slipped a bit lands far outside any zone.
+    for axis in [x, y, z] {
+        if axis.abs() > 16000 {
+            return Err(NpcMoveUpdateError::OutOfRange(axis));
+        }
+    }
 
     let mut delta_x: i16 = 0;
     let mut delta_y: i16 = 0;
@@ -190,7 +194,8 @@ pub fn parse_npc_move_update(bytes: &[u8]) -> Result<NpcMoveUpdate, NpcMoveUpdat
         x,
         y,
         z,
-        heading,
+        heading: 0,
+        path_bearing,
         delta_x,
         delta_y,
         delta_z,
@@ -231,17 +236,55 @@ mod tests {
 
     #[test]
     fn read_int_sign_magnitude() {
-        // sign=1, mag=5 in 4 bits → readInt(4) = -5
-        // bits: 1 1 0 1 → 0b1101 → 0xD
+        // sign=1, mag=5 in 4 bits (0b1101) → readInt(4) = -5.
         let mut s = BitStream::new(&[0xD0]);
         assert_eq!(s.read_int(4), -5);
     }
 
+    /// MSB-first writer mirroring [`BitStream`], for building layout fixtures.
+    fn put_bits(buf: &mut [u8], at: usize, count: usize, value: u32) {
+        for i in 0..count {
+            let bit = (value >> (count - 1 - i)) & 1;
+            let pos = at + i;
+            buf[pos >> 3] |= (bit as u8) << (7 - (pos & 7));
+        }
+    }
+
+    fn fixture(y: i32, x: i32, z: i32, bearing: u32) -> [u8; 16] {
+        let mut buf = [0u8; 16];
+        put_bits(&mut buf, 0, 16, 0x4321);
+        let mut put_coord = |at: usize, v: i32| {
+            put_bits(&mut buf, at, 1, u32::from(v < 0));
+            put_bits(&mut buf, at + 1, 18, v.unsigned_abs());
+        };
+        put_coord(54, y);
+        put_coord(73, x);
+        put_coord(92, z);
+        put_bits(&mut buf, 111, 12, bearing);
+        buf
+    }
+
+    // Layout pin: the 12-bit angle lands in `path_bearing`, never `heading`.
+    #[test]
+    fn the_twelve_bit_angle_is_a_path_bearing_not_a_facing() {
+        let r = parse_npc_move_update(&fixture(800, -2400, 16, 0x123)).unwrap();
+        assert_eq!((r.x, r.y, r.z), (-300, 100, 2));
+        assert_eq!(r.path_bearing, 0x123);
+        assert_eq!(r.heading, 0);
+    }
+
+    #[test]
+    fn rejects_a_coordinate_outside_the_game_world() {
+        assert_eq!(
+            parse_npc_move_update(&fixture(200_000, 0, 0, 0)),
+            Err(NpcMoveUpdateError::OutOfRange(25_000)),
+        );
+    }
+
     #[test]
     fn parses_minimum_packet_no_optional_fields() {
-        // spawnId=0x4321, lead=0, fs=0, y=0, x=0, z=0, heading=0.
-        // 16 + 32 + 6 + 19 + 19 + 19 + 12 = 123 bits -> 16 bytes, which is
-        // also the length floor: under 16 the fixed block cannot fit.
+        // 16+32+6+19+19+19+12 = 123 bits -> 16 bytes, the length floor:
+        // under 16 the fixed block cannot fit.
         let mut buf = [0u8; 16];
         buf[0] = 0x43;
         buf[1] = 0x21;
@@ -251,6 +294,7 @@ mod tests {
         assert_eq!(r.y, 0);
         assert_eq!(r.z, 0);
         assert_eq!(r.heading, 0);
+        assert_eq!(r.path_bearing, 0);
         assert_eq!(r.delta_x, 0);
         assert!(!r.has_delta_x);
         assert!(!r.has_delta_y);

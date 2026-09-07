@@ -1,5 +1,6 @@
-//! Parser for the post-2026-05-22 variable-size `OP_Buff` broadcast. The legacy
-//! 168-byte `buffStruct` is dead. Wire forms cracked from captures:
+//! Parser for the variable-size `OP_Buff` broadcast (the legacy 168-byte
+//! `buffStruct` is dead), extracting wire fields only — duration scaling and
+//! SpellItem management stay daemon-side with the Player + Spells DB.
 //!
 //! ```text
 //!   Header (all forms): u32 spawnID @0, u32 spellID @4
@@ -7,20 +8,13 @@
 //!   30b "initial sync": buff slot @9
 //!   34+b "live update": block-1 duration ticks (u32) @15
 //!   24b  "compact":     buff SLOT @0 (not a spawn id), spellID @4,
-//!                       changeType @12 (1 = faded, 4 = applied)
+//!                       counters @8, changeType @12, durationMod @16,
+//!                       duration @20 (seconds)
 //! ```
 //!
-//! The 24b compact record is the eql buff-slot channel. Note its @0 is a buff
-//! SLOT, not a spawn id like every other form — it always describes the local
-//! player's own buff window, so callers must not apply a spawn-id filter to it.
-//! Slots 0-14 are real buff-window entries; higher values are scribe / bar
-//! refreshes and are reported as slot 0xff so callers can drop them. Layout
-//! credit: legacy showeq SpellShell::buffChange.
-//!
-//! This only extracts the wire fields. The application logic — the spell-DB
-//! level-scaled duration for the 30b form, the self-spawn / null-spell filter,
-//! and SpellItem management — stays daemon-side (it needs the Player + Spells
-//! DB, which don't cross the FFI).
+//! The 24b compact form always describes the local player's own buff window, so
+//! its @0 is a buff SLOT and callers must not spawn-id filter it; slots >= 15
+//! are scribe/bar refreshes, reported as 0xff so callers can drop them.
 
 use thiserror::Error;
 
@@ -30,8 +24,10 @@ pub const FORM_INITIAL: u8 = 1;
 pub const FORM_UPDATE: u8 = 2;
 pub const FORM_COMPACT: u8 = 3;
 
-/// `change_type` values carried by [`FORM_COMPACT`].
-pub const CHANGE_FADED: u32 = 1;
+/// `change_type` values carried by [`FORM_COMPACT`]. 1 also occurs on the wire
+/// and is NOT a fade on Legends (09/01 vocabulary from upstream 47a4992).
+pub const CHANGE_REMOVED: u32 = 2;
+pub const CHANGE_WORN_OFF: u32 = 3;
 pub const CHANGE_APPLIED: u32 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,8 +40,14 @@ pub struct Buff {
     pub slot: u8,
     /// Block-1 duration in ticks — valid for [`FORM_UPDATE`] only (0 otherwise).
     pub dur_ticks: u32,
-    /// Apply/fade code — valid for [`FORM_COMPACT`] only (0 otherwise).
+    /// Apply/remove code — valid for [`FORM_COMPACT`] only (0 otherwise).
     pub change_type: u32,
+    /// Rune/cure counters, 1 when the spell has none ([`FORM_COMPACT`] only).
+    pub counters: u32,
+    /// Signed duration adjustment in seconds ([`FORM_COMPACT`] only).
+    pub duration_mod: i32,
+    /// Buff duration in seconds, 0 = instant ([`FORM_COMPACT`] only).
+    pub duration: i32,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -77,6 +79,9 @@ pub fn parse_buff(bytes: &[u8]) -> Result<Buff, BuffError> {
             slot: if raw_slot < 15 { raw_slot as u8 } else { 0xff },
             dur_ticks: 0,
             change_type: rd_u32(bytes, 12),
+            counters: rd_u32(bytes, 8),
+            duration_mod: rd_u32(bytes, 16) as i32,
+            duration: rd_u32(bytes, 20) as i32,
         });
     }
 
@@ -98,6 +103,9 @@ pub fn parse_buff(bytes: &[u8]) -> Result<Buff, BuffError> {
         slot,
         dur_ticks,
         change_type: 0,
+        counters: 0,
+        duration_mod: 0,
+        duration: 0,
     })
 }
 
@@ -115,6 +123,26 @@ mod compact_tests {
     }
 
     #[test]
+    fn reads_the_duration_fields() {
+        // 09/01 layout from upstream 47a4992, unverified on our wire.
+        let mut b = rec(3, 296, CHANGE_APPLIED);
+        b[8..12].copy_from_slice(&7u32.to_le_bytes());
+        b[16..20].copy_from_slice(&(-30i32).to_le_bytes());
+        b[20..24].copy_from_slice(&1080i32.to_le_bytes());
+        let m = parse_buff(&b).unwrap();
+        assert_eq!((m.counters, m.duration_mod, m.duration), (7, -30, 1080));
+    }
+
+    #[test]
+    fn removal_codes_are_distinct_from_apply() {
+        for code in [CHANGE_REMOVED, CHANGE_WORN_OFF] {
+            let m = parse_buff(&rec(1, 231, code)).unwrap();
+            assert_eq!(m.change_type, code);
+            assert_ne!(m.change_type, CHANGE_APPLIED);
+        }
+    }
+
+    #[test]
     fn parses_an_applied_record() {
         // Captured verbatim: slot 0, spell 296, applied.
         let m = parse_buff(&rec(0, 296, CHANGE_APPLIED)).unwrap();
@@ -125,18 +153,17 @@ mod compact_tests {
     }
 
     #[test]
-    fn parses_a_faded_record() {
-        // Captured verbatim: slot 2, spell 231, faded.
-        let m = parse_buff(&rec(2, 231, CHANGE_FADED)).unwrap();
+    fn parses_a_change_type_1_record() {
+        // Upstream retracted the "fade" reading of changeType 1 on Legends.
+        let m = parse_buff(&rec(2, 231, 1)).unwrap();
         assert_eq!(m.slot, 2);
         assert_eq!(m.spell_id, 231);
-        assert_eq!(m.change_type, CHANGE_FADED);
+        assert_eq!(m.change_type, 1);
     }
 
     #[test]
     fn flags_scribe_slots_as_ignorable() {
-        // Slots >= 15 are bar/scribe refreshes, not buff-window entries; 128 of
-        // 162 records in one capture were these (331..339 and similar).
+        // Slots >= 15 are bar/scribe refreshes, not buff-window entries.
         assert_eq!(parse_buff(&rec(331, 4010, 0)).unwrap().slot, 0xff);
         assert_eq!(parse_buff(&rec(15, 1, 0)).unwrap().slot, 0xff);
         assert_eq!(parse_buff(&rec(14, 1, 0)).unwrap().slot, 14);

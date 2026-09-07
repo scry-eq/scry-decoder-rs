@@ -1,26 +1,5 @@
-// eql-OWNED wire structs — HAND-MAINTAINED. Edit this file directly.
-//
-// Originally emitted by tools/gen_eqstructs.py, but eql is no longer
-// generated and this is no longer a generated file (2026-08-03). The
-// generator's only possible input is Live's everquest.h, and there is no eql
-// fork header — so "regenerating" would import Live's layouts into eql, the
-// exact coupling the 2026-07-09 clean break removed. It had also not been
-// regenerated since that break, while eql's wire kept diverging, so the
-// @generated banner was claiming a guarantee nothing enforced and blocking
-// the correct in-place fix when a struct diverged.
-//
-// Keep every struct paired with a size assertion in __layout_tests below:
-// that is what actually guards these layouts, and it works the same whether
-// the file is generated or hand-written. When eql's wire diverges, change the
-// struct HERE and update its assertion — do not model the record somewhere
-// else and leave a wrong struct standing.
-//
-// Live and test bindings ARE still generated (seq-structs-{live,test}); the
-// generator and the daemon's pre-push freshness check both cover only those.
-//
-// Lints (#![allow(non_camel_case_types)] etc.) are applied at the crate
-// root in lib.rs since this file is included via include!() and cannot
-// carry inner attributes itself.
+// eql-OWNED wire structs, HAND-MAINTAINED — regenerating would import Live's
+// layouts. Edit here on a divergence and update the `__layout_tests` size.
 
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
@@ -29,7 +8,7 @@ pub struct spawnPositionUpdate {
     pub spawnId: i16,
     /// uint8_t unk1[6] — grew 2 -> 6 on the 08/25 patch, moving the block to byte 8
     pub unk1: [u8; 6],
-    /// packed bitfield: y:19 z:19 u3:7 x:19 unused2:4 heading:12
+    /// packed bitfield: y:19 z:19 u3:7 x:19 unknown:3 heading:12 unused2:1
     pub _bits: [u8; 10],
 }
 
@@ -244,11 +223,8 @@ impl Default for endUpdateStruct {
     }
 }
 
-// eql /consider is 24B in BOTH directions, NOT Live's 32B considerStruct. This
-// pinned fork is hand-edited to eql's real layout (clean-break rule: eql owns
-// its structs; edit by hand when the eql wire genuinely diverges). Decoded by
-// `parse_consider`; this struct's size is what the daemon `SZC_Match`-gates on,
-// surfaced via seq-bridge `struct_size_overrides`.
+// eql /consider is 24B in BOTH directions, not Live's 32B considerStruct; this
+// size is what the daemon `SZC_Match`-gates on.
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 pub struct considerStruct {
@@ -381,8 +357,8 @@ pub struct spawnIllusionStruct {
     pub unknown0076: u32,
     /// uint32_t face
     pub face: u32,
-    /// uint8_t unknown0084[248]
-    pub unknown0084: [u8; 248],
+    /// uint8_t unknown0084[252]
+    pub unknown0084: [u8; 252],
 }
 
 impl Default for spawnIllusionStruct {
@@ -572,9 +548,8 @@ impl Default for dzSwitchInfo {
 
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
-/// DIVERGED from Live 2026-08-03: eql's record is 44 bytes, Live's is 39. The
-/// three consumed fields kept their offsets; the tail grew. Validated on 10
-/// captured casts (see start_cast.rs).
+/// DIVERGED from Live: eql's record is 44 bytes, Live's 39 — the three consumed
+/// fields kept their offsets and only the tail grew.
 pub struct startCastStruct {
     /// int32_t slot
     pub slot: i32,
@@ -693,9 +668,8 @@ impl Default for corpseLocStruct {
 
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
-/// DIVERGED from Live 2026-07-13: eql's door row is 132 bytes, Live's is 136.
-/// The first 88 bytes are byte-identical; the trailing unknown region is 44
-/// instead of 48. Rows are iterated by the daemon at this stride.
+/// DIVERGED from Live: eql's door row is 132 bytes, Live's 136 (the trailing
+/// unknown region is 44, not 48); the daemon strides rows at this size.
 pub struct doorStruct {
     /// char name[32]
     pub name: [u8; 32],
@@ -832,16 +806,13 @@ impl spawnPositionUpdate {
     /// Bits 45..64 of the packed int64 — X coordinate.
     #[inline]
     pub fn x(&self) -> u64 { (self.lo64() >> 45) & ((1 << 19) - 1) }
-    /// High 12 bits of the trailing u16 — heading. The 4 unused bits lead;
-    /// upstream declares them trailing, which reads the facing 4 bits low.
+    /// Bits 3..14 of the trailing u16 — heading on a 4096-step circle.
+    /// 09/01 layout from upstream 47a4992, unverified on our wire.
     #[inline]
-    pub fn heading(&self) -> u64 { ((self.hi16() >> 4) & 0xFFF) as u64 }
-    /// High 4 bits of the trailing u16 — signed 4-bit unused field.
+    pub fn heading(&self) -> u64 { ((self.hi16() >> 3) & 0xFFF) as u64 }
+    /// Top bit of the trailing u16 — zero on every packet upstream saw.
     #[inline]
-    pub fn unused2(&self) -> i64 {
-        let v = ((self.hi16() >> 12) & 0xF) as i64;
-        if v & 0x8 != 0 { v - 0x10 } else { v }
-    }
+    pub fn unused2(&self) -> i64 { ((self.hi16() >> 15) & 1) as i64 }
 }
 
 #[cfg(test)]
@@ -864,7 +835,7 @@ mod __layout_tests {
     #[test] fn clientTargetStruct_size() { assert_eq!(core::mem::size_of::<clientTargetStruct>(), 4); }
     #[test] fn newCorpseStruct_size() { assert_eq!(core::mem::size_of::<newCorpseStruct>(), 40); }
     #[test] fn remDropStruct_size() { assert_eq!(core::mem::size_of::<remDropStruct>(), 12); }
-    #[test] fn spawnIllusionStruct_size() { assert_eq!(core::mem::size_of::<spawnIllusionStruct>(), 332); }
+    #[test] fn spawnIllusionStruct_size() { assert_eq!(core::mem::size_of::<spawnIllusionStruct>(), 336); }
     #[test] fn buffStruct_size() { assert_eq!(core::mem::size_of::<buffStruct>(), 168); }
     #[test] fn action2Struct_size() { assert_eq!(core::mem::size_of::<action2Struct>(), 48); }
     #[test] fn SpawnUpdateStruct_size() { assert_eq!(core::mem::size_of::<SpawnUpdateStruct>(), 32); }
