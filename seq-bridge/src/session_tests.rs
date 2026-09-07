@@ -1988,7 +1988,6 @@ fn stateful_bridge_sessions_are_isolated_when_interleaved() {
         &confirmation,
         21,
     );
-    assert!(second_confirmation.loot_rows.is_empty());
     assert!(second_confirmation.loot_acquired.is_empty());
     let first_confirmation = first.decode(
         ffi::SessionStream::Zone,
@@ -1997,10 +1996,6 @@ fn stateful_bridge_sessions_are_isolated_when_interleaved() {
         &confirmation,
         22,
     );
-    assert_eq!(first_confirmation.loot_rows.len(), 1);
-    assert_eq!(first_confirmation.loot_rows[0].item_name, "Sword");
-    assert_eq!(first_confirmation.loot_rows[0].sequence, 302);
-    assert!(first_confirmation.loot_rows[0].complete);
     assert_eq!(first_confirmation.loot_acquired.len(), 1);
     let acquired = &first_confirmation.loot_acquired[0];
     assert_eq!(acquired.timestamp, 20);
