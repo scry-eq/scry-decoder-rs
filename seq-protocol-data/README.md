@@ -34,7 +34,7 @@ The current semantic SHA-256 hashes are:
 
 - live: `8ba647ade8da0f99bea459e82dd6b47b2a0694b8ec131275d91536084c62577e`
 - test: `0180d6c6c7baad7cc480a96723b99f962c08f9c72ea3998fd22873fc53c12fe2`
-- eql: `e6f2f9fd46cc2f73d1f508abe217a93f0af0859195e75e1ea04d1c8125170044`
+- eql: `933330a63f08ba1f99aef3308935fa44a78095f417e9a3915c1a130a852fd801`
 
 The hash covers backend, stream, numeric ID, and opcode name in sorted order.
 It ignores TOML formatting and comments, which makes it suitable for host
