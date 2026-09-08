@@ -1,84 +1,53 @@
-//! Parser for eql's 24-byte `playerSpawnPosStruct` (`OP_ClientUpdate`,
-//! DIR_Server only — position broadcast for spawns other than the local player).
+//! Parser for eql's OWN 28-byte `playerSpawnPosStruct` (`OP_ClientUpdate`, S>C
+//! — position broadcast for spawns other than the local player); Live's copy
+//! lives in `seq-decode` and is untouched by edits here.
 //!
-//! **This is eql's OWN copy**; when eql and Live differ, only this copy changes
-//! (Live's `parse_player_spawn_pos` lives in `seq-decode`, untouched).
-//!
-//! **Re-laid-out 2026-08-18** from upstream legends `1cd04be`
-//! (`playerPosUpdateEQLStruct`). The 08/18 patch rearranged the body again at
-//! the same 24-byte size — the third rearrangement in three patches, and again
-//! one no size gate can catch. Every coordinate now sits in the **low** 19 bits
-//! of its word (signed, ×8 fixed-point); the high-19 z of the 08/04 layout is
-//! gone:
+//! 09/01 layout from upstream 47a4992, unverified on our wire:
 //!
 //! ```text
 //!   /*0000*/ u16  spawnId
-//!   /*0002*/ u16  spawnId2         (0 in every pre-patch sample)
-//!   /*0004*/ u32  unknown          (role TBD — carried x before this patch)
-//!   /*0008*/ u32  { z:19 (low, signed) | deltaZ:13 }
-//!   /*0012*/ u32  unknown          (role TBD)
-//!   /*0016*/ u32  { x:19 (low, signed) | heading @bit19 | pad:1 }
-//!   /*0020*/ u32  { y:19 (low, signed) | deltaY:13 }
+//!   /*0002*/ u16  unknown          (0 on the wire)
+//!   /*0004*/ u32  seq              per-entity counter, wraps at 32768
+//!   /*0008*/ i64  animation:10@64 | y:19@74 | deltaZ:13@93 | deltaX:16@106 | pad:6
+//!   /*0016*/ i64  deltaHeading:10@128 | x:19@138 | pad:3 | heading:11@160
+//!                 | pad:1 | deltaY:13@172 | pad:7
+//!   /*0024*/ i32  z:19@192 | pitch:11@211 | pad:2
 //! ```
 //!
-//! Only the heading kept its home: it is still the field at bit 19 of the @16
-//! word. What moved under it is the coordinate sharing that word — `y` before
-//! this patch, `x` now.
-//!
-//! **UNVALIDATED LOCALLY — no post-patch capture exists yet.** The 08/04 layout
-//! was pinned by scoring all 173 candidate 19-bit windows against the
-//! `OP_MobUpdate` / `OP_NpcMoveUpdate` streams; that scan has not been re-run
-//! for 08/18 because there is no recording from this wire. This layout is
-//! upstream's derivation taken as data. Re-run the scan on the first post-patch
-//! capture before treating any axis here as confirmed — upstream and we have
-//! disagreed on a word index before (see the ZoneEntry `posData` note in
-//! `lib.rs`), and a transposed x/y decodes into a plausible-looking map.
-//!
-//! Previous layouts, kept so a re-derivation can tell drift from a bad read:
-//! 08/04–08/05 was x @4 low-19 / z @12 high-19 / y @16 low-19, heading @16 bit19;
-//! before that a 28-byte body with `spawnId@0, z@4, x@8, y@12`.
-//!
-//! This parser surfaces the *raw* sign-extended coords and the daemon applies
-//! `>> 3` (1/8-unit -> integer game world), matching the `EqlDispatch::mobUpdate`
-//! path. Deltas/pitch/animation have no located field and read 0.
+//! Fields are already map-frame, so no transpose; coords stay raw and the
+//! daemon applies `>> 3`, and the deltas are raw wire values (upstream's
+//! `animation / 2` scaling is a display heuristic, not a decode).
 
 use crate::eqstructs::sign_extend;
 use thiserror::Error;
 
 pub const PAYLOAD_LEN: usize = 28;
 
-/// Full circle in wire units for [`PlayerSpawnPos::heading`].
-///
-/// The 08/25 patch moved the facing to bit 160. Upstream declares it
-/// `heading:8` on a 256-step circle and consumes it as `pu->heading & 0xff`;
-/// that is wrong. Measured against travel bearing over 3204 legs from the
-/// 08/25 capture, an 11-bit field on a 2048-step circle scores a **0.63
-/// degree** median, where upstream's 8-bit/256 read scores 95.61 — noise —
-/// and a 12-bit/4096 read scores 69.50. Width and scale are independent:
-/// keep 11 bits at 2048. The field sits in the gap between z and y (bits
-/// 147..171), so 11 bits fit with one spare bit before y at 172.
+/// Full circle in wire units for [`PlayerSpawnPos::heading`] — 11 bits on a
+/// 2048-step circle, matching both upstream and our own measurement.
 pub const HEADING_UNITS: u16 = 2048;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayerSpawnPos {
     pub spawn_id: u16,
+    /// The u16 at offset 2; 0 on every packet upstream saw.
     pub spawn_id2: u16,
+    /// Per-entity update counter, wrapping at 32768. Not in the FFI struct.
+    pub seq: u32,
     /// Raw 19-bit signed; daemon applies `>> 3` for fixed-point conv.
     pub x: i32,
     pub y: i32,
     pub z: i32,
-    /// No located field on eql's 28B wire — surfaced as 0.
+    /// Raw wire deltas — 16-bit for x, 13-bit for y and z. Scale unmeasured.
     pub delta_x: i32,
     pub delta_y: i32,
     pub delta_z: i32,
     /// Compass value (0..2047, see [`HEADING_UNITS`]); 0 = N, increasing
-    /// clockwise, NOT inverted. `SpawnShell::moveSpawn` takes no heading, so the
-    /// daemon currently ignores this; it is decoded so callers that want a
-    /// facing don't have to re-derive it.
+    /// clockwise, NOT inverted.
     pub heading: u16,
-    /// Not carried on eql's 28B wire — surfaced as 0.
     pub delta_heading: i16,
     pub animation: i16,
+    /// 11-bit up/down look angle on the same 2048-step circle.
     pub pitch: u16,
 }
 
@@ -92,6 +61,10 @@ fn read_u16_le(bytes: &[u8], at: usize) -> u16 {
     u16::from_le_bytes([bytes[at], bytes[at + 1]])
 }
 
+fn read_u32_le(bytes: &[u8], at: usize) -> u32 {
+    u32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]])
+}
+
 fn read_u64_le(bytes: &[u8], at: usize) -> u64 {
     let mut b = [0u8; 8];
     b.copy_from_slice(&bytes[at..at + 8]);
@@ -103,37 +76,26 @@ pub fn parse_player_spawn_pos(bytes: &[u8]) -> Result<PlayerSpawnPos, PlayerSpaw
         return Err(PlayerSpawnPosError::BadLength(bytes.len()));
     }
 
-    let spawn_id = read_u16_le(bytes, 0);
-    let spawn_id2 = read_u16_le(bytes, 2);
-
-    // 08/25: the record grew 24 -> 28B and the fields are no longer word
-    // aligned. Map frame, scored against OP_MobUpdate over 423 time-paired
-    // records (median abs error, best vs next-best window):
-    //     map X  bit 74    13.50 vs 106.75
-    //     Z      bit 128    1.50 vs   9.50
-    //     map Y  bit 172   11.38 vs 852.00
-    // Upstream's field named `x` is map X here and their `y` is map Y — this
-    // is the one position struct they do NOT transpose at their call site.
+    // Bit positions are the module doc's, counted from bit 0 of the payload.
+    let lo = read_u64_le(bytes, 8);
     let hi = read_u64_le(bytes, 16);
-    let x = sign_extend(((read_u64_le(bytes, 8) >> 10) & 0x7_FFFF) as u32, 19);
-    let z = sign_extend((hi & 0x7_FFFF) as u32, 19);
-    let y = sign_extend(((hi >> 44) & 0x7_FFFF) as u32, 19);
-
-    let heading = ((hi >> 32) & 0x7FF) as u16;
+    let tail = read_u32_le(bytes, 24);
+    let field = |w: u64, shift: u32, bits: u32| ((w >> shift) & ((1u64 << bits) - 1)) as u32;
 
     Ok(PlayerSpawnPos {
-        spawn_id,
-        spawn_id2,
-        x,
-        y,
-        z,
-        delta_x: 0,
-        delta_y: 0,
-        delta_z: 0,
-        heading,
-        delta_heading: 0,
-        animation: 0,
-        pitch: 0,
+        spawn_id: read_u16_le(bytes, 0),
+        spawn_id2: read_u16_le(bytes, 2),
+        seq: read_u32_le(bytes, 4),
+        x: sign_extend(field(hi, 10, 19), 19),
+        y: sign_extend(field(lo, 10, 19), 19),
+        z: sign_extend(tail & 0x7_FFFF, 19),
+        delta_x: sign_extend(field(lo, 42, 16), 16),
+        delta_y: sign_extend(field(hi, 44, 13), 13),
+        delta_z: sign_extend(field(lo, 29, 13), 13),
+        heading: field(hi, 32, 11) as u16,
+        delta_heading: sign_extend(field(hi, 0, 10), 10) as i16,
+        animation: sign_extend(field(lo, 0, 10), 10) as i16,
+        pitch: ((tail >> 19) & 0x7FF) as u16,
     })
 }
 
@@ -143,7 +105,7 @@ mod tests {
 
     #[test]
     fn rejects_wrong_length() {
-        assert!(parse_player_spawn_pos(&[0; 24]).is_err()); // the pre-08/25 size is rejected
+        assert!(parse_player_spawn_pos(&[0; 24]).is_err());
         assert!(parse_player_spawn_pos(&[0; 27]).is_err());
         assert!(parse_player_spawn_pos(&[0; 29]).is_err());
     }
@@ -156,56 +118,55 @@ mod tests {
         assert_eq!(p.heading, 0);
     }
 
-    // Each axis at its own offset, with the neighbouring bits set, so a word
-    // that shifts under a future rearrangement fails loudly instead of reading
-    // a plausible number out of the wrong field.
+    /// Pack one field into a 64-bit word at its documented bit position.
+    fn at(shift: u32, bits: u32, value: i64) -> u64 {
+        ((value as u64) & ((1u64 << bits) - 1)) << shift
+    }
+
+    // Layout pin: distinct values per field, so a parser that slips a bit fails
+    // on a value rather than on a plausible-looking number.
     #[test]
-    fn each_coordinate_reads_from_its_own_field() {
+    fn every_field_reads_from_its_own_bit_range() {
         let mut buf = [0u8; PAYLOAD_LEN];
         buf[0..2].copy_from_slice(&0x1151u16.to_le_bytes()); // spawnId 4433
+        buf[4..8].copy_from_slice(&30_000u32.to_le_bytes()); // seq
+        let lo = at(0, 10, 37) | at(10, 19, -1065 * 8) | at(29, 13, -12) | at(42, 16, 4000);
+        let hi = at(0, 10, -9) | at(10, 19, 709 * 8) | at(32, 11, 1512) | at(44, 13, -60);
+        let tail = at(0, 19, -22 * 8) | at(19, 11, 300);
+        buf[8..16].copy_from_slice(&lo.to_le_bytes());
+        buf[16..24].copy_from_slice(&hi.to_le_bytes());
+        buf[24..28].copy_from_slice(&(tail as u32).to_le_bytes());
 
-        // Every bit outside the three coordinate fields is set, so a parser
-        // that slips by even one bit reads a wrong value instead of a
-        // plausible 0. x = bit 74, z = bit 128, y = bit 172.
-        let lo = !(0x7_FFFFu64 << 10);
-        buf[8..16].copy_from_slice(&(lo | (300u64 << 10)).to_le_bytes()); // x = 300
-        let hi = !(0x7_FFFFu64 | (0x7_FFFFu64 << 44));
-        buf[16..24].copy_from_slice(&(hi | 42u64 | (0x0004_0000u64 << 44)).to_le_bytes());
         let p = parse_player_spawn_pos(&buf).unwrap();
         assert_eq!(p.spawn_id, 0x1151);
-        assert_eq!(p.x, 300);
-        assert_eq!(p.z, 42);
-        assert_eq!(p.y, -262_144); // 19-bit signed minimum
-    }
-
-    // A real 08/25 broadcast whose spawn also appears in OP_MobUpdate at the
-    // same moment. That stream packs the same position in an unrelated layout
-    // and agrees exactly on x, y, z AND heading — which is what pins the
-    // 11-bit heading here: upstream's 8-bit read truncates 1512 to 232.
-    #[test]
-    fn decodes_a_captured_broadcast() {
-        let bytes: [u8; PAYLOAD_LEN] = [
-            0x92, 0x63, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xB0, 0x58, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x51, 0xFF, 0x87, 0x07, 0xE8, 0xC5, 0xEB, 0x7D, 0x00, 0x00, 0x00, 0x00,
-        ];
-        let p = parse_player_spawn_pos(&bytes).unwrap();
-        assert_eq!(p.spawn_id, 25490);
+        assert_eq!(p.spawn_id2, 0);
+        assert_eq!(p.seq, 30_000);
         // the parser surfaces raw 19-bit values; the daemon applies >> 3
         assert_eq!((p.x >> 3, p.y >> 3, p.z >> 3), (709, -1065, -22));
+        assert_eq!((p.delta_x, p.delta_y, p.delta_z), (4000, -60, -12));
         assert_eq!(p.heading, 1512);
+        assert_eq!(p.delta_heading, -9);
+        assert_eq!(p.animation, 37);
+        assert_eq!(p.pitch, 300);
     }
 
+    // Heading is 11 bits at 160, so a 12-bit read borrows a pad or an x bit.
     #[test]
-    fn heading_is_eleven_bits_between_z_and_y() {
+    fn heading_is_eleven_bits_at_bit_160() {
         let mut buf = [0u8; PAYLOAD_LEN];
-        // A quarter-circle heading at bit 160 with every neighbouring bit set:
-        // upstream's 8-bit read would truncate it, and a 12-bit read would
-        // borrow y's low bit. Both fail here.
         let quarter = u64::from(HEADING_UNITS) / 4;
         let hi = !(0x7FFu64 << 32) | (quarter << 32);
         buf[16..24].copy_from_slice(&hi.to_le_bytes());
         let p = parse_player_spawn_pos(&buf).unwrap();
         assert_eq!(p.heading, HEADING_UNITS / 4);
         assert!(p.heading < HEADING_UNITS);
+    }
+
+    // The 19-bit coordinates are signed; the minimum must not wrap to positive.
+    #[test]
+    fn coordinates_sign_extend_at_the_nineteen_bit_minimum() {
+        let mut buf = [0u8; PAYLOAD_LEN];
+        buf[8..16].copy_from_slice(&at(10, 19, -262_144).to_le_bytes());
+        assert_eq!(parse_player_spawn_pos(&buf).unwrap().y, -262_144);
     }
 }

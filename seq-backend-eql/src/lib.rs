@@ -1,40 +1,13 @@
-//! Self-contained EverQuest Legends decode surface.
-//!
-//! **eql depends on nothing from the Live decode stack.** EQ Legends is a
-//! separate server that merely shares wire ancestry with Live *today*; to keep
-//! a Live-only wire patch from silently corrupting eql, this crate vendors its
-//! own copy of every parser + output struct (the modules below, forked from
-//! `seq-decode`) and reads them through its own PINNED in-crate `eqstructs`
-//! layouts. `seq-bridge`'s `backend-eql` feature routes every `decode_*` here —
-//! there is no eql → seq-decode edge.
-//!
-//! Cite opcodes by NAME, never by id — EQL rotates ids nearly every patch. The
-//! map is `seq-protocol-data/data/eql.toml`; `seq-protocol-data/tools/
-//! import_host_catalogs.py --check` keeps scry-cpp's `conf/eql/opcodes.toml`
-//! in step with it. Retired ids may be named AS history.
-//!
-//! Two kinds of module live here:
-//!   * eql's OWN byte-offset parsers for the opcodes whose Legends wire diverges
-//!     from Live — `parse_spawn` / `parse_player_profile` / `parse_player_self_pos`
-//!     / `parse_new_zone` / `parse_consider` below. Each takes the SAME canonical
-//!     name as its Live counterpart in `seq-decode` (uniform surface — only the
-//!     impl differs), so the bridge's `backend` alias routes to them with no
-//!     per-opcode cfg. The lone exception is `decode_spawn`: eql's decoded output
-//!     shape (x/y/z) differs from Live's raw `Spawn`, so its bridge fn keeps a
-//!     cfg-split — both branches still call the backend's `parse_spawn`.
-//!     /loc-confirmed; see `OPCODES_LEGENDS.md`.
-//!   * pinned copies of the shared parsers (identical to Live *today*) that we
-//!     now OWN — when eql and Live diverge, edit only the copy here.
-//!
-//! Field offsets/scales shuffle per patch; re-derive from captures, don't
-//! memorize. **eql offsets below are the 2026-07-07 post-patch layout.**
+//! Self-contained EverQuest Legends decode surface: eql vendors its own copy of
+//! every parser and reads them through its own pinned `eqstructs`, so there is
+//! no eql -> `seq-decode` edge and a Live wire patch cannot reach it. Modules
+//! keep their Live counterparts' names, so the bridge routes with no per-opcode
+//! cfg. Cite opcodes by NAME — EQL rotates ids nearly every patch.
 
 use thiserror::Error;
 
-/// eql's OWN pinned struct layouts (module `eqstructs`, a frozen fork of the
-/// live bindings — see `eqstructs.rs`/`bindings.rs`). The vendored parser
-/// modules reference `crate::eqstructs::<name>`; nothing here tracks Live's
-/// generated bindings.
+/// eql's OWN pinned struct layouts, a hand-maintained fork of the live
+/// bindings; nothing here tracks Live's generated ones.
 pub(crate) mod eqstructs;
 
 // Vendored parser + output-struct modules (forked from seq-decode; eql-owned).
@@ -130,10 +103,8 @@ pub use loot_message::{parse_loot_message, LootMessage, LootMessageError};
 pub use loot_track::{LootRow, LootSource, LootTracker};
 pub use loot_transaction::{parse_loot_transaction, LootTransaction, LootTransactionError};
 pub use money_update::{parse_money_update, MoneyUpdate, MoneyUpdateError};
-// Vendored 18B `hpNpcUpdateStruct` parser: eql never sees Live's fixed HP
-// struct (OP_StatSync is the multiplexed stat channel decoded by `parse_stat_sync`
-// below), so the shared `decode_hp_update` FFI is stubbed inert for eql in the
-// bridge. Retained only so the module stays byte-identical to the Live fork.
+// eql never sees Live's fixed HP struct (`parse_stat_sync` owns that channel),
+// so this is retained only to stay byte-identical to the Live fork.
 pub use hp_update::{parse_hp_update, HpUpdate, HpUpdateError};
 pub use illusion::{parse_illusion, Illusion, IllusionError};
 pub use level_update::{parse_level_update, LevelUpdate, LevelUpdateError};
@@ -169,9 +140,8 @@ pub(crate) fn cstr_field(bytes: &[u8]) -> String {
     String::from_utf8_lossy(&bytes[..end]).into_owned()
 }
 
-// eql's own diverged parsers below return the vendored output structs, brought
-// into scope by the `pub use` re-exports above: Consider, NewZone,
-// PlayerProfile, PlayerSelfPos.
+// eql's own diverged parsers below return the vendored output structs
+// re-exported above: Consider, NewZone, PlayerProfile, PlayerSelfPos.
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum DecodeError {
@@ -213,10 +183,8 @@ fn latin1(b: &[u8]) -> String {
     b.iter().map(|&c| c as char).collect()
 }
 
-/// The eql-relevant subset of a spawn. `Spawn` (the Live struct) can't derive
-/// `Default` (it holds a `[u32; 45]` equipment array), so eql uses this small
-/// struct and the uniform `decode_spawn` bridge maps it into `ffi::Spawn`
-/// (decoded x/y/z + hp; Live's raw equipment/position arrays stay zero).
+/// The eql-relevant subset of a spawn; Live's `Spawn` can't derive `Default`,
+/// so the `decode_spawn` bridge maps this small struct into `ffi::Spawn`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ZoneSpawn {
     pub id: u16,
@@ -227,7 +195,8 @@ pub struct ZoneSpawn {
     pub x: i16,
     pub y: i16,
     pub z: i16,
-    /// h2048 heading (0..2047) — high 13 bits of the middle coord word.
+    /// h2048 heading (0..2047). The 09/01 `posData` carries no facing, so this
+    /// reads 0 until a capture re-locates it.
     pub heading: u16,
     pub level: u8,
     pub cur_hp: u8,
@@ -246,10 +215,8 @@ pub struct ZoneSpawn {
     pub light: u8,
 }
 
-// Bounds-checked LE/BE reads at an absolute offset for the variable-length
-// tail walk. Unlike the fixed `rd_*` readers above (callers length-guard those
-// up front), these return `None` past the end so a truncated tail degrades to
-// "identity + name only" instead of panicking.
+// Bounds-checked reads for the variable-length tail walk: `None` past the end,
+// so a truncated tail degrades to "identity + name only" instead of panicking.
 #[inline]
 fn opt_u8(b: &[u8], o: usize) -> Option<u8> {
     b.get(o).copied()
@@ -271,25 +238,15 @@ fn opt_f32_le(b: &[u8], o: usize) -> Option<f32> {
     Some(f32::from_le_bytes(b.get(o..o + 4)?.try_into().unwrap()))
 }
 
-/// NUL-terminated latin-1 out of a fixed-width name buffer (eql profile names
-/// use latin-1, matching the daemon's `QString::fromLatin1`; distinct from the
-/// crate-root utf8-lossy `cstr_field` the vendored modules use).
+/// NUL-terminated latin-1 out of a fixed-width name buffer — profile names are
+/// latin-1, unlike the crate-root utf8-lossy `cstr_field`.
 fn cstr_latin1(buf: &[u8]) -> String {
     let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
     latin1(&buf[..end])
 }
 
-/// The name/lastname block is a reliable ABSOLUTE anchor inside the
-/// (variable-length, ~40KB) profile: `u32 == 64` + 64-byte NUL-terminated name
-/// buffer + `u32 == 32` + 32-byte NUL-terminated lastname buffer. Scanning for
-/// that signature — instead of a fixed offset like the old 36047 — survives the
-/// inventory/spellbook size drift that shifts the block per character and per
-/// patch, and everything from the block onward matches the Live tail layout.
-/// Returns the offset of the leading `u32 == 64`, or `None` if not found.
-///
-/// VALIDATE the candidate: a real first name is a capitalized, printable,
-/// NUL-terminated run — binary that happens to carry the two length words
-/// won't also spell a name, so this won't false-match.
+/// Offset of the `u32 64` + name + `u32 32` + lastname signature, or `None`.
+/// Scanning survives the inventory drift that moves the block per character.
 fn find_profile_name_block(b: &[u8]) -> Option<usize> {
     if b.len() < 104 {
         return None;
@@ -323,11 +280,37 @@ fn find_profile_name_block(b: &[u8]) -> Option<usize> {
     None
 }
 
-/// Parse name + lastname + the positionally-mapped tail (birthday, expansions,
-/// languages, current zone/instance, position, guild, carried+bank money)
-/// starting at the name block found by `find_profile_name_block`. Byte orders
-/// match the Live tail (`fillProfileStruct`): zoneId/instance LE, standState/
-/// anon BE, everything else LE. Degrades gracefully on a truncated tail.
+/// Spellbook slot count (upstream's `MAX_SPELLBOOK_SLOTS`).
+const SPELLBOOK_SLOTS: usize = 800;
+
+/// The spellbook is `SPELLBOOK_SLOTS` × {u32 spellId, u32 small word} with
+/// `0xffffffff` in empty slots; the region is unmapped, so scan for it.
+fn find_profile_spellbook(b: &[u8]) -> Option<usize> {
+    let span = SPELLBOOK_SLOTS * 8;
+    if b.len() < span {
+        return None;
+    }
+    'candidate: for o in (0..=(b.len() - span)).step_by(2) {
+        let mut populated = 0usize;
+        for k in 0..SPELLBOOK_SLOTS {
+            let id = rd_u32(b, o + k * 8);
+            let word = rd_u32(b, o + k * 8 + 4);
+            if word > 4096 || (id != 0xffff_ffff && !(1..=100_000).contains(&id)) {
+                continue 'candidate;
+            }
+            if id != 0xffff_ffff {
+                populated += 1;
+            }
+        }
+        if populated >= 64 {
+            return Some(o);
+        }
+    }
+    None
+}
+
+/// Parse name, lastname and the positional tail from the block located by
+/// `find_profile_name_block`; byte orders match the Live tail.
 fn read_profile_name_and_tail(b: &[u8], p0: usize, prof: &mut PlayerProfile) -> Option<()> {
     let mut p = p0;
 
@@ -386,29 +369,28 @@ fn read_profile_name_and_tail(b: &[u8], p0: usize, prof: &mut PlayerProfile) -> 
     p += 4;
     prof.guild_server_id = opt_u32_le(b, p)?;
 
-    // Money is NOT in this walk. The relative tail landed in the wrong place —
-    // and its assumed layout was wrong too: carried is followed by CURSOR, not
-    // bank. Read from fixed offsets in `parse_player_profile` instead.
+    // Money is NOT in this walk: carried is followed by CURSOR, not bank, so
+    // `parse_player_profile` reads it from fixed offsets instead.
     Some(())
 }
 
-/// `OP_PlayerProfile` (Legends) S>C. Two parts:
+/// `OP_PlayerProfile` (Legends) S>C: a fixed identity/coin prefix, a
+/// count-prefixed walk to the AA and skill arrays, then a signature-anchored
+/// name/lastname + tail. Every read is bounds-guarded, so a truncated profile
+/// keeps whatever it decoded, and coin denominations are NOT normalized on the
+/// wire — always sum to copper rather than assuming each is below 10.
 ///
-/// 1. Identity header, fixed offsets (patch-VERIFIED against a known char —
-///    race DarkElf=6 @21, level 12 @33): gender u8 @20, race u32 @21, class u32
-///    @25, level u8 @33. Truncation to the daemon's u16 race / u8 class happens
-///    on the C++ side (`setIdentity`), same as the Live path.
-///
-/// 2. Name/lastname + tail, via `find_profile_name_block`'s absolute anchor-scan
-///    (replaces the old fragile fixed offset 36047). This yields the surname
-///    and the current zone/instance, position, guild, and carried+bank money —
-///    the eql box is named and placed from its own profile, authoritatively,
-///    like Live, rather than from the own-spawn adoption fallback.
-///
-/// The EQ Legends multiclass bitmask sits at @29 (u32, inserted between class
-/// and level — that's why `level` is @33 not @29). `class` @25 is the primary
-/// of three simultaneous classes; surfacing all three needs a proto field and
-/// is deferred (the neutral `setIdentity` carries a single class).
+/// ```text
+///   /*0020*/ u8  gender
+///   /*0021*/ u32 race
+///   /*0025*/ u32 class      primary of the three the mask carries
+///   /*0029*/ u32 classMask  multiclass bitmask (why level is @33, not @29)
+///   /*0033*/ u8  level
+///   /*0962*/ u32 STR STA CHA DEX INT AGI WIS   base stats, not gear totals
+///   /*33687*/ u32 carried  P/G/S/C      /*33703*/ u32 cursor P/G/S/C
+///   /*33777*/ u32 stance   /*33781*/ u32 invocation
+///   bank      signature-located past the inventory mirror of the carried purse
+/// ```
 pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
     if b.len() < 34 {
         return Err(DecodeError::Short(b.len()));
@@ -421,8 +403,6 @@ pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
         level: b[33],
         ..Default::default()
     };
-    // FIXED offset: 7 u32 in Live's charProfileStruct order, its 956 block
-    // landing 6 bytes later. BASE stats (the loadout roll), not gear totals.
     if b.len() >= 990 {
         prof.str_ = rd_u32(b, 962);
         prof.sta = rd_u32(b, 966);
@@ -432,36 +412,21 @@ pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
         prof.agi = rd_u32(b, 982);
         prof.wis = rd_u32(b, 986);
     }
-    // Variable-length NetStream walk to the SKILL array (and the AA array en
-    // route), mirroring ZoneMgr::fillProfileStructEQL (zonemgr.cpp). Populates
-    // `skills`, `aa_ids`/`aa_values`, and `aa_spent`. Bounds-guarded: any
-    // short-read leaves whatever it read so far — identity above + name below
-    // are unaffected, and skills fall back to incremental OP_SkillUpdate.
     walk_profile_skills(b, &mut prof);
 
-    // Name + tail via absolute anchor-scan. If the block isn't found (heavy
-    // drift / truncation) the identity fields above still stand and the C++
-    // side falls back to own-spawn name adoption.
+    if let Some(o) = find_profile_spellbook(b) {
+        prof.spell_book = (0..SPELLBOOK_SLOTS)
+            .map(|k| rd_u32(b, o + k * 8) as i32)
+            .collect();
+    }
+
     if let Some(p) = find_profile_name_block(b) {
         read_profile_name_and_tail(b, p, &mut prof);
     }
-    // EQL active stance / invocation live at a FIXED offset (33777 / 33781): the
-    // combat-state block sits in the profile's fixed prefix, verified byte-
-    // identical across two chars of different class/level/server (the variable
-    // netstream is all AFTER it). Bounds-guarded; the C++ side range-validates
-    // the id via stanceName()/invocationName().
     if b.len() >= 33785 {
         prof.stance = rd_u32(b, 33777);
         prof.invocation = rd_u32(b, 33781);
     }
-    // Money at FIXED offsets, same fixed-prefix region as stance above. Two
-    // blocks exist; verified against a known purse across 10 captured profiles:
-    //   33687 carried P/G/S/C   33703 cursor P/G/S/C
-    //   36245 inventory mirror  36261 bank P/G/S/C
-    // Carried is authoritative and sits BELOW stance (33777), so it is inside
-    // the prefix already verified byte-identical across chars. Denominations are
-    // NOT normalized on the wire (101 silver / 281 copper observed) — always sum
-    // to copper rather than assuming each is < 10.
     if b.len() >= 33719 {
         prof.platinum = rd_u32(b, 33687);
         prof.gold = rd_u32(b, 33691);
@@ -472,10 +437,6 @@ pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
         prof.silver_cursor = rd_u32(b, 33711);
         prof.copper_cursor = rd_u32(b, 33715);
     }
-    // Bank follows the inventory mirror of the carried quadruple, which sits
-    // PAST the stance-verified prefix — locate it by signature instead of a raw
-    // constant so it survives drift in the variable region. An all-zero purse
-    // would match padding anywhere, so bank is left 0 in that case.
     if b.len() >= 36277 {
         let carried = [prof.platinum, prof.gold, prof.silver, prof.copper];
         if carried != [0; 4] {
@@ -504,22 +465,30 @@ pub fn parse_player_profile(b: &[u8]) -> Result<PlayerProfile, DecodeError> {
     Ok(prof)
 }
 
-/// Walk the eql OP_PlayerProfile from the identity header (cursor @35, one byte
-/// past `level1`) through every count-prefixed section to the SKILL array,
-/// filling `skills`, `aa_ids`/`aa_values`, and `aa_spent` (= Σ aa value). Direct
-/// port of ZoneMgr::fillProfileStructEQL: little-endian scalars, sequential
-/// cursor. Every section count varies per character, so there are no fixed
-/// offsets past `level1` — the cursor must be walked. Bounds-guarded: any
-/// underflow returns early, leaving the fields populated so far untouched.
+/// Walk the eql `OP_PlayerProfile` from @35 through every count-prefixed section
+/// to the AA and SKILL arrays, mirroring the daemon's `fillProfileStructEQL`.
+/// Section counts vary per character, so the cursor must be walked; any
+/// underflow returns early and leaves the fields filled so far.
+///
+/// ```text
+///   /*0000*/ checksum … /*0033*/ level, /*0034*/ level1 -> resume at 35
+///   u32 count + count*20   bind points
+///   u32 deity, u32 intoxication
+///   u32 count + count*4    spell-slot refresh
+///   u32 count + count*20   equipment
+///   u32 count + count*20, u32 count + count*4, u32 count + count*4  unknown
+///   51 bytes               face / hair / beard / eyes / …
+///   40 bytes               points, mana, curHp, STR STA CHA DEX INT AGI WIS
+///   28 bytes               unknown padding
+///   u32 count + count*{u32 descId, u32 points, u32 flags}   AA array
+///   u32 count + count*u32  SKILLS
+/// ```
 fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
     // MAX_KNOWN_SKILLS in the daemon headers (src/backend/*/everquest.h).
     const MAX_KNOWN_SKILLS: usize = 100;
     let len = b.len();
-    // checksum@0, skip 16, gender@20, race@21, class@25, classMask@29,
-    // level@33, level1@34 => walk resumes at 35.
     let mut p: usize = 35;
 
-    // Read a LE u32 and advance; bail out of the whole walk on underflow.
     macro_rules! next_u32 {
         () => {{
             if p + 4 > len {
@@ -530,7 +499,6 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
             v
         }};
     }
-    // Skip `n` bytes; bail on underflow.
     macro_rules! skip {
         ($n:expr) => {{
             let n = $n;
@@ -541,23 +509,18 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
         }};
     }
 
-    // bind points: u32 count, then count * 20 bytes.
     let bind_count = next_u32!() as usize;
     skip!(bind_count.saturating_mul(20));
 
-    // deity, intoxication (2 u32).
     let _deity = next_u32!();
     let _intoxication = next_u32!();
 
-    // spell-slot refresh: u32 count, then count * u32.
     let refresh_count = next_u32!() as usize;
     skip!(refresh_count.saturating_mul(4));
 
-    // equipment: u32 count, then count * 20 bytes.
     let equip_count = next_u32!() as usize;
     skip!(equip_count.saturating_mul(20));
 
-    // three unknown count-prefixed arrays: 20B, 4B, 4B entries.
     let s0 = next_u32!() as usize;
     skip!(s0.saturating_mul(20));
     let s1 = next_u32!() as usize;
@@ -565,17 +528,10 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
     let s2 = next_u32!() as usize;
     skip!(s2.saturating_mul(4));
 
-    // face / hair / beard / eyes / etc.
     skip!(51);
-
-    // points, MANA, curHp, STR, STA, CHA, DEX, INT, AGI, WIS (10 u32).
     skip!(40);
-
-    // unknown padding.
     skip!(28);
 
-    // AA array: u32 count, then count * {u32 id, u32 value, u32 unk}. Guard the
-    // whole block before the loop so a corrupt count can't over-allocate.
     let aa_count = next_u32!() as usize;
     let aa_bytes = aa_count.saturating_mul(12);
     if p.checked_add(aa_bytes).map_or(true, |e| e > len) {
@@ -587,7 +543,6 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
     for _ in 0..aa_count {
         let id = rd_u32(b, p);
         let val = rd_u32(b, p + 4);
-        // unknown at p + 8.
         p += 12;
         aa_spent = aa_spent.wrapping_add(val);
         prof.aa_ids.push(id);
@@ -595,7 +550,6 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
     }
     prof.aa_spent = aa_spent;
 
-    // SKILLS: u32 count, then count * u32 (store up to MAX_KNOWN_SKILLS).
     let skill_count = next_u32!() as usize;
     if p.checked_add(skill_count.saturating_mul(4))
         .map_or(true, |e| e > len)
@@ -613,70 +567,25 @@ fn walk_profile_skills(b: &[u8], prof: &mut PlayerProfile) {
     }
 }
 
-// `OP_ClientUpdate` (Legends) C>S: IEEE-float position + heading.
-// post-2026-07-29 layout (42B; see `player_self_pos.rs` for the derivation
-// and its evidence): spawnId u16 @2, gameY@10, gameX@22, gameZ@34, heading the
-// low 11 bits at @26. The velocities are not located this patch and read 0.
-//
-// Worth knowing when a future patch rotates this again: the 07/29 body is close
-// to the pre-07/14 42B form, which also carried spawnId@2 and gameY@10 (it
-// had gameX@18 / z@30, i.e. those two sit 4 bytes later now). The 38B bodies
-// that ran between 07/14 and 07/29 were the outlier — they dropped the spawnId
-// entirely. So on the next rotation, check the older 42B layout before assuming
-// a from-scratch rearrangement.
-// `parse_player_self_pos` lives in `player_self_pos.rs` (re-exported above) — one
-// parser that validates against its own `PAYLOAD_LEN`, the SAME const the
-// `playerSelfPosStruct` size override reads, so the SZC gate and the parser can
-// never disagree on the size (they diverged once — 42 vs 38 — and silently masked
-// the self-position, see OPCODES_LEGENDS.md 2026-07-14).
+// C>S self position lives in `player_self_pos.rs`, which owns both the layout
+// and the `PAYLOAD_LEN` the size override reads, so the gate can't disagree.
 
-/// `OP_NewZone` (Legends) S>C, ~340B, once per zone-in. Carries the
-/// CURRENT zone as packed NUL-terminated text — `short_name` then `long_name`
-/// (then a zonefile repeat + environment tail). The daemon drives
-/// `ZoneMgr::setZoneByName(short, long)` directly, so no classic-id table is
-/// needed. Confirmed 3-way (2026-07-08): guktop / "The City of Guk",
-/// nektulos / "Nektulos Forest", unrest / "The Estate of Unrest" — each the
-/// correct current zone, each a different length (packed C-strings, not
-/// fixed-width arrays, so the fields sit at zone-dependent offsets).
-///
-/// The pre-2026-07-08 mapping pointed OP_NewZone at 0x4bc8, whose `u32@6` is the
-/// BIND zone (identical across zones); that opcode is not OP_NewZone and is no
-/// longer decoded here.
+/// `OP_NewZone` (Legends) S>C, once per zone-in: the current zone as packed
+/// NUL-terminated `short_name` then `long_name`, at zone-dependent offsets.
 pub fn parse_new_zone(b: &[u8]) -> Result<NewZone, DecodeError> {
-    // Keep this public compatibility entry point, but make the module parser
-    // the sole implementation used by both the Event backend and direct FFI.
-    // Preserve the compatibility error for implausible names so callers can
-    // distinguish the August 25 opcode-rotation failure from truncation.
+    // Compatibility entry point over the module parser; the implausible-name
+    // error tells an opcode rotation apart from truncation.
     new_zone::parse_new_zone(b).map_err(|error| match error {
         NewZoneError::ImplausibleName(field) => DecodeError::Implausible(field),
         _ => DecodeError::Short(b.len()),
     })
 }
 
-// NOTE: eql has NO local OP_MobUpdate parser — the Legends wire turned out to
-// be byte-identical to Live's `spawnPositionUpdate` (14B, packed
-// y:19/z:19/u3:7/x:19/heading:12, fixed-point ×8), so `seq-bridge` routes
-// eql's `decode_mob_update` to the shared `seq_decode::parse_mob_update`.
-// The earlier per-offset i16 parser here (X@10, Y@4/8, Z@6/64) was reading
-// truncated windows of those bitfields — correct inside ±4095 game units but
-// wrapping by 8192 (Y) / 1024 (Z) beyond, the "north<->south teleport" bug.
+// `OP_MobUpdate` lives in `mob_update.rs`, reading eql's own pinned
+// `spawnPositionUpdate` binding.
 
-/// `OP_ZoneSpawns` (Legends) S>C: null-terminated name, then a variable-length
-/// block. Header fields stay at the front: spawnId u32 @0, level u8 @4,
-/// curHpPct u8 @44, maxHpPct u8 @45. **post-2026-07-07 layout**: position sits
-/// at a FIXED offset from the END of the block (block grew 326→330 NPC / 486
-/// rich, but the position triple stays anchored to the tail). **post-2026-07-29
-/// layout**: three consecutive u32 words in packet order Z @(len-103),
-/// X @(len-99), Y @(len-95), each a **signed 19-bit fixed-point (×8) coordinate
-/// in the word's low bits** (same packing as Live's `spawnStruct` position
-/// words; the upper 13 bits carry other subfields). The 19-bit width (not i16)
-/// was confirmed by sign-fill analysis 2026-07-08 — an i16 read wraps
-/// coordinates past ±4095 by 8192 game units. The walk below reaches these
-/// sequentially rather than from the tail, because the record's tail length
-/// varies with the title/suffix string block.
-/// Sequential reader mirroring the daemon's `NetStream` (LE `readUInt*NC`,
-/// NUL-terminated `readText`), bounds-checked: any overrun ends the walk with
-/// `BadLength` rather than panicking (a dropped spawn, not a crash).
+/// Sequential reader mirroring the daemon's `NetStream`; an overrun ends the
+/// walk with `BadLength` (a dropped spawn, not a crash).
 struct Walk<'a> {
     b: &'a [u8],
     p: usize,
@@ -684,9 +593,6 @@ struct Walk<'a> {
 impl<'a> Walk<'a> {
     fn new(b: &'a [u8]) -> Self {
         Walk { b, p: 0 }
-    }
-    fn pos(&self) -> usize {
-        self.p
     }
     fn need(&self, n: usize) -> Result<(), DecodeError> {
         if self.p + n > self.b.len() {
@@ -728,8 +634,7 @@ impl<'a> Walk<'a> {
 }
 
 /// Decode a signed 19-bit ×8 fixed-point coordinate out of a full position word
-/// (low 19 bits; upper 13 carry unrelated subfields). Same packing as
-/// `rd_pos19`, but taking the whole word.
+/// (low 19 bits; upper 13 carry unrelated subfields).
 #[inline]
 fn pos19_word(w: u32) -> i16 {
     let v = w & 0x7FFFF;
@@ -741,11 +646,21 @@ fn pos19_word(w: u32) -> i16 {
     (raw >> 3) as i16
 }
 
-/// `OP_ZoneSpawns` (Legends) S>C, one per spawn. Full front walk,
-/// ported 1:1 from the community patch's `SpawnShell::fillSpawnStruct` (verified
-/// against a 1617-record eql corpus). Supersedes the old tail-anchored partial,
-/// which assumed a fixed 95-byte tail and so mis-read position and dropped
-/// titles on any spawn carrying a title/suffix string block.
+/// `OP_ZoneSpawns` (Legends) S>C, one per spawn — the full front walk, mirroring
+/// upstream's `SpawnShell::fillSpawnStruct`. 09/01 layout from upstream 47a4992,
+/// unverified on our wire:
+///
+/// ```text
+///   +4 pad ahead of the otherData flag byte
+///   curHp read in Live's slot, then a flat 37-byte skip
+///     (the appearanceCount-variable block is gone)
+///   color block 36 -> 40 bytes on the equipment-bearing branch
+///   posData 5 words: x:19@10, y:19@74, z:19@128, world = field >> 3, no facing
+///   title/suffix gated on otherData bits 4/5, replacing the tail-anchored scan
+/// ```
+///
+/// The flag-gated tail can't absorb a miscount the way the old tail-anchored
+/// scan did, so the posData word count is load-bearing.
 pub fn parse_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     let mut w = Walk::new(b);
 
@@ -758,7 +673,8 @@ pub fn parse_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     w.skip(16)?;
     let npc = w.u8()?;
     let _misc_data = w.u32()?;
-    let _other_data = w.u8()?;
+    w.skip(4)?;
+    let other_data = w.u8()?;
     w.skip(8)?; // unknown3, unknown4
                 // (EQ Legends aura-flagged spawns carry no aura block on the wire.)
 
@@ -774,13 +690,8 @@ pub fn parse_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
         }
     }
 
-    // EQ Legends: the HP percent sits 8 bytes past Live's slot (Live's slot
-    // reads 0 for every eql spawn).
-    w.skip(3)?;
-    let appearance_count = w.u8()? as usize;
-    w.skip(4)?;
     let cur_hp = w.u8()?;
-    w.skip(33 + 4 * appearance_count)?;
+    w.skip(37)?;
 
     let race = w.u32()?;
     let holding = w.u8()?;
@@ -804,142 +715,34 @@ pub fn parse_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     // Equipment block (skipped — not surfaced). The client's own read gate:
     // full 9-slot layout for PCs + a few humanoid NPC races, 2-slot otherwise.
     if npc == 0 || race <= 12 || race == 128 || race == 130 || race == 330 || race == 522 {
-        w.skip(36 + 9 * 5 * 4)?;
+        w.skip(40 + 9 * 5 * 4)?;
     } else {
         w.skip(20 + 2 * 5 * 4)?;
     }
 
-    // EQL spawn position block — six 32-bit words follow the equipment. The
-    // 2026-07-14 patch moved Z into the HIGH bits of the 2nd word (NOT the low-19
-    // of the 3rd word the pre-patch layout used, which read garbage Z ~±30000 and
-    // — via the map's z-depth filter — hid nearly every mob, "barely any coming in"):
-    //   word0            velocity / flags
-    //   word1 (z-word)   Z = (w >> 13) & 0x7FFFF, signed 19-bit ×8  — the SAME
-    //                    high-bit packing as OP_ClientUpdate's Z
-    //   word2            flag (~0xa8000000)
-    //   word3 (y-word)   Y in the low 19 bits (+ h2048 heading in bits 19..31)
-    //   word4 (x-word)   X in the low 19 bits
-    //   word5            delta / animation
-    // Re-derived 2026-07-14 by matching ZoneEntry Z to the OP_MobUpdate Z of the
-    // same spawns (35/36 exact, worst 1 unit).
-    // ---- 2026-07-28 patch: the position block was rearranged. ----
-    // The words are still six and still tail-anchored, but the coordinates
-    // moved and one of them is now a PAD that always reads 0 — which is why
-    // the pre-patch read produced a wall of spawns sitting at y=0.
-    //
-    // Located against the only position we can trust: the player's own. Their
-    // breadcrumb (OP_SelfPos) gives verified coordinates, and their own spawn
-    // arrives as a ZoneEntry record, so the record's words can be matched
-    // straight to known values — 30 own-records agreeing on
-    //     Y @(len-95)   Z @(len-91)   pad @(len-87)   X @(len-83)
-    //
-    // The x/y assignment is MobUpdate's, established by tail-scanning 3216 NPC
-    // records against their MobUpdate position (id-verified at 100%, fixed
-    // layout). An earlier revision had these swapped because it was pinned to
-    // the breadcrumb, which reports in /loc order (y first) — self-consistent
-    // with the breadcrumb and transposed against every other position source.
-    // i.e. in packet order: one lead word, then X, Z, pad, Y, one trailing
-    // word. Read sequentially rather than from the tail — the record's tail
-    // length varies with the title/suffix string block.
-    // Upstream's struct (legends 7612d72) independently describes the same
-    // 5-word shape including the pad; it labels the two horizontal words the
-    // other way round, which is the transpose it flags as ambiguous. Ours is
-    // pinned to the same frame the breadcrumb and heading were verified in, so
-    // it stays consistent with the self-position path.
-    //
-    // ---- 2026-08-06: re-derived against upstream's struct + measurement. ----
-    // The previous read took the coordinates as the first THREE consecutive
-    // words (Z, X, Y, all low-19). That is not the block's shape, and the
-    // symptom was unmissable once plotted: word1 is a PAD that reads 0 in
-    // 479 of 952 id-paired records, so half of every zone's spawns rendered
-    // in a straight line at x = 0.
-    //
-    // Upstream's `posData[5]` union (legends everquest.h) describes the real
-    // shape, and its consumer — `spawn.cpp: setPos(s->y >> 3, s->x >> 3,
-    // s->z >> 3)` — supplies the EQL transpose: their `y` field is world X and
-    // their `x` field is world Y. Reading their STRUCT without their CALL SITE
-    // transposes the map; reading the call site without the struct misses that
-    // Z lives in the HIGH bits. Both halves or neither.
-    //
-    // Word roles pinned by scoring every (word, half) against the untouched
-    // OP_MobUpdate stream over 952 id-paired records — median absolute error,
-    // best vs runner-up:
-    //     X = w0 low-19   161 vs 554     (upstream's `y` field)
-    //     Y = w3 low-19   182 vs 1441    (upstream's `x` field)
-    //     Z = w4 high-19    9 vs 43
-    // X/Y carry more error than Z because ZoneEntry reports a spawn-time
-    // position while MobUpdate reports the current one — mobs walk, terrain
-    // does not. Z's 9-unit median is what confirms the alignment.
-    //
-    // w1 is the pad (479/952 zero), w5 is always 0 (952/952). Upstream labels
-    // w4 `heading:12 | padding00:20`, but 12 + 1 + 19 = 32 and Z measurably
-    // lives in that "padding" — so their Z word index is off by two while
-    // their X/Y ones are right. Heading is still NOT recoverable: no word at
-    // 11- or 12-bit width scores better than noise against MobUpdate's facing,
-    // so it stays zeroed rather than pointed in a direction from the wrong bits.
-    //
-    // ---- 2026-08-18: the block was rearranged again. ----
-    // Ported from upstream legends `1cd04be` (`spawnStruct` posData) plus their
-    // call site, which still transposes — `spawn.cpp: setPos(s->y >> 3,
-    // s->x >> 3, s->z >> 3)`, so their `y` field is world X and their `x` field
-    // is world Y. Both halves or neither, same as the 08/06 port.
-    //
-    // ---- 2026-08-25: rearranged again, and no longer word-aligned. ----
-    // MEASURED against OP_MobUpdate over 115 id-paired records (median abs
-    // error, best vs next-best window) — upstream's layout confirmed exactly,
-    // including their call-site transpose:
-    //     map X   bit 10  (w0 >> 10)   0.00 vs 255.62   (upstream's `y`)
-    //     Z       bit 64  (w2 low)     0.00 vs   4.38
-    //     map Y   bit 108 (w3 >> 12)   0.00 vs 400.62   (upstream's `x`)
-    //     heading bit 96  (w3 low 12)  0.9 deg vs 15.1
-    // Scan this block by dumping the words from THIS walk, never by scanning
-    // the record at a fixed offset: the leading name and trailing title/suffix
-    // strings are both variable-length, so no fixed offset lines up and the
-    // scan returns noise that reads like a failed derivation.
-    let w0 = w.u32()?;
-    let _w1 = w.u32()?;
-    let w2 = w.u32()?;
-    let w3 = w.u32()?;
-    let _w4 = w.u32()?;
-    let _w5 = w.u32()?;
-    let x = pos19_word(w0 >> 10);
-    let y = pos19_word(w3 >> 12);
-    let z = pos19_word(w2);
-    // Heading finally has a measured home (w3 low 12, h2048). 0.9 degree median
-    // against OP_MobUpdate's facing over 115 id-paired records, next-best window
-    // 15.1 — the first time any window has beaten noise here, so it stops being
-    // forced to 0.
-    let heading = (w3 & 0xFFF) as u16;
+    // Upstream names posData in the WIRE frame and transposes at its consumer
+    // (`setPos(s->y>>3, s->x>>3, s->z>>3)`); resolved here so we stay map-frame.
+    let p0 = w.u32()?;
+    let _p1 = w.u32()?;
+    let p2 = w.u32()?;
+    let _p3 = w.u32()?;
+    let p4 = w.u32()?;
+    if std::env::var_os("SEQ_EQL_POSDATA_DUMP").is_some() {
+        eprintln!("posdata {name} {id} {p0:08x} {_p1:08x} {p2:08x} {_p3:08x} {p4:08x}");
+    }
+    let y = pos19_word(p0 >> 10);
+    let x = pos19_word(p2 >> 10);
+    let z = pos19_word(p4);
+    // 08/25 had a measured facing at bit 96 — re-check on the first capture.
+    let heading = 0u16;
 
-    // Title/suffix string block: 4 strings on ordinary spawns, 6 (title, suffix,
-    // then the 4) on titled ones — no reliable presence flag. Anchor on the
-    // tail: the record ends with 4 fixed bytes, u8 isMercenary, an ASCII digit
-    // string ('0' run), then 53 fixed bytes. Read strings up to that anchor;
-    // the first two non-empty are title then suffix.
     let mut title = String::new();
     let mut suffix = String::new();
-    if b.len() >= 55 {
-        let d_end = b.len() - 54; // digit-string NUL sits 54 bytes from the end
-        let mut d_start = d_end;
-        while d_start > 0 && b[d_start - 1] == b'0' {
-            d_start -= 1;
-        }
-        if d_start >= 5 {
-            let text_end = d_start - 1 /*isMercenary*/ - 4 /*fixed*/;
-            let mut str_index = 0;
-            while w.pos() < text_end {
-                let s = w.text()?;
-                match str_index {
-                    0 => title = s,
-                    1 => suffix = s,
-                    _ => {}
-                }
-                str_index += 1;
-                if str_index > 6 {
-                    break; // safety: never more than 6 strings
-                }
-            }
-        }
+    if other_data & 0x10 != 0 {
+        title = w.text()?;
+    }
+    if other_data & 0x20 != 0 {
+        suffix = w.text()?;
     }
 
     Ok(ZoneSpawn {
@@ -970,11 +773,8 @@ pub fn parse_spawn(b: &[u8]) -> Result<ZoneSpawn, DecodeError> {
     })
 }
 
-/// `OP_Consider` (Legends) 24B: `{u32 self, u32 target, u32 faction, u32 =7,
-/// pad, pad}`. C>S request has faction=0; the S>C reply fills faction (observed
-/// 2=warmly, 4=amiably — the friendliness word; **level is NOT here**, the
-/// client reads it from the spawn). Maps to the shared `Consider` (level=0) so
-/// the daemon's `SpawnShell::consMessage` path is uniform with Live.
+/// `OP_Consider` (Legends) 24B `{u32 self, u32 target, u32 faction, u32 =7, pad,
+/// pad}`; level is NOT here, so the shared `Consider` carries level=0.
 pub fn parse_consider(b: &[u8]) -> Result<Consider, DecodeError> {
     if b.len() != 24 {
         return Err(DecodeError::BadLength(b.len()));
@@ -987,19 +787,8 @@ pub fn parse_consider(b: &[u8]) -> Result<Consider, DecodeError> {
     })
 }
 
-/// Payload size overrides for the daemon's `SZC_Match` size registry: toml
-/// `typename`s whose eql wire size diverges from the daemon's compiled (Live)
-/// `everquest.h` `sizeof`. The daemon applies these over its C++ size table so a
-/// diverged payload keeps its real struct NAME and size-gates on eql's real
-/// size — not a hardcoded Live `sizeof`, and not a `uint8_t`/`none` placeholder.
-/// Sourced from the pinned `eqstructs` sizes so a size and its decoder move
-/// together. (live/test diverge from nothing; the bridge ships them an empty
-/// list.)
-/// eql `OP_BeginCast` (S>C, 19B): a spawn started casting a spell.
-/// Wire layout validated across 3127 fight-capture packets: spellId u32@0,
-/// casterSpawnId u16@4, castTime_ms u16@6 (cast times 0/2010/4500/5000ms;
-/// spell ids include 74023 > u16, so spellId MUST be read as u32). The stock
-/// 15B beginCastStruct covers only the first 8B; the trailing 11B are flags.
+/// eql `OP_BeginCast` (S>C, 19B): spellId u32@0, casterSpawnId u16@4,
+/// castTime_ms u16@6 — spell ids exceed u16, so spellId must be read as u32.
 pub struct BeginCast {
     pub caster_id: u32,
     pub spell_id: u32,
@@ -1017,15 +806,8 @@ pub fn parse_begin_cast(b: &[u8]) -> Result<BeginCast, DecodeError> {
     })
 }
 
-/// eql `OP_SendAATable` (S>C): one AA ability-rank definition, burst at
-/// zone-in (one record per packet; variable length 130..346B = a 37B fixed
-/// head + a variable prereq/effect tail). Only the fixed head is needed.
-/// Layout matches Live's `aaInfoStruct`: `descID`@0 (== the profile's
-/// `aa_array[].AA`, the per-rank id) and `titleSID`@13 (a dbstr type-1 id
-/// shared by every rank of an AA — the daemon resolves it to the display
-/// name). Verified against 15/15 owned AAs in the fight capture (titleSID@13 →
-/// dbstr type-1 gives the correct names: Packrat, Fury of Magic, Destructive
-/// Fury, Mnemonic Retention, …).
+/// eql `OP_SendAATable` (S>C): one AA ability-rank definition per packet, of
+/// which only the 37B head matters — `descID`@0 and `titleSID`@13.
 pub struct AaTableEntry {
     pub desc_id: u32,
     pub title_sid: u32,
@@ -1043,10 +825,8 @@ pub fn parse_aa_table_entry(b: &[u8]) -> Result<AaTableEntry, DecodeError> {
     })
 }
 
-/// eql OP_Stance / OP_Invocation, S>C echo (authoritative): a
-/// swappable stance or invocation was activated. 4B payload = a single u32
-/// ability id @0 (a stable client enum; the daemon resolves it to a name). The
-/// opcode id distinguishes stance from invocation; the payload shape is shared.
+/// eql OP_Stance / OP_Invocation S>C echo: a 4B `u32` ability id @0 from a
+/// stable client enum. The opcode id, not the payload, picks which one.
 pub fn parse_activate_ability(b: &[u8]) -> Result<u32, DecodeError> {
     if b.len() < 4 {
         Err(DecodeError::Short(b.len()))
@@ -1055,6 +835,8 @@ pub fn parse_activate_ability(b: &[u8]) -> Result<u32, DecodeError> {
     }
 }
 
+/// Payload sizes whose eql wire diverges from Live's compiled `sizeof`. EVERY
+/// mapped `SZC_Match` eql opcode belongs here, or it inherits Live's gate.
 pub fn size_overrides() -> Vec<(&'static str, u32)> {
     vec![
         // eql /consider is 24B both ways; Live's considerStruct is 32B.
@@ -1062,30 +844,12 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
             "considerStruct",
             core::mem::size_of::<eqstructs::considerStruct>() as u32,
         ),
-        // eql OP_CastSpell is a fixed 44B (validated locally 2026-08-03; the gate
-        // was pinned at 40 from the Live struct, so every packet was size-dropped).
-        // slot@0/spellId@4/targetId@18 kept their offsets — the record grew at the
-        // tail. Size comes from that parser, not from Live's 39B sizeof.
+        // eql OP_CastSpell is a fixed 44B, not Live's 39B.
         ("startCastStruct", start_cast::PAYLOAD_LEN as u32),
-        // eql OP_ClientUpdate S>C other-spawn position broadcast: 19-bit ×8 packed
-        // at unaligned bit offsets. The 2026-08-25 rotation grew it 24B -> 28B and
-        // rearranged the body; decoded by this crate's own parse_player_spawn_pos,
-        // re-derived against the OP_MobUpdate stream — see that module.
+        // OP_ClientUpdate S>C other-spawn position broadcast.
         ("playerSpawnPosStruct", player_spawn_pos::PAYLOAD_LEN as u32),
-        // --- De-piggyback (2026-07-10): eql OWNS every mapped SZC_Match gate size ---
-        // The daemon's compiled size table is Live's `everquest.h` sizeof. Before
-        // this block, any mapped eql SZC_Match opcode NOT listed above silently
-        // inherited that Live sizeof as its packet gate — fragile (a Live struct
-        // change moves the eql gate) and the source of the WearChange/SpawnUpdateStruct
-        // 32B collision (a wrong-handler binding that size-matched by coincidence).
-        // So EVERY mapped SZC_Match eql opcode declares its gate size HERE, making the
-        // size eql-owned and severing the Live dependency. `packetinfo.cpp` warns at
-        // load if a mapped SZC_Match eql opcode is missing from this list, so the next
-        // opcode-map can't reintroduce the footgun silently. Sizes equal Live's TODAY
-        // (eql goldens verify byte-for-byte); each is sourced from THIS crate's own
-        // pinned `eqstructs` where a binding exists, so if eql's copy later diverges the
-        // gate tracks it — never Live's. The handful with no pinned binding (eql reuses
-        // the shared decode) carry the capture-confirmed eql size as a literal.
+        // Below: sizes equal to Live's today, declared anyway so the gate is
+        // eql-owned and tracks this crate's own structs if eql later diverges.
         (
             "spawnPositionUpdate",
             core::mem::size_of::<eqstructs::spawnPositionUpdate>() as u32,
@@ -1106,24 +870,19 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
             "skillIncStruct",
             core::mem::size_of::<eqstructs::skillIncStruct>() as u32,
         ),
-        // OP_Stamina (07/14): stock 8B staminaStruct {u32 food, u32 water};
-        // capture-verified food/water tick down together. Pinned so the gate is eql-owned.
+        // OP_Stamina: stock 8B staminaStruct {u32 food, u32 water}.
         (
             "staminaStruct",
             core::mem::size_of::<eqstructs::staminaStruct>() as u32,
         ),
-        // OP_Illusion (07/14): 332B spawnIllusionStruct — the /*0336*/
-        // offset marker in everquest.h is stale; eql's pinned copy is 332 (fires
-        // 332x33 in the fight capture). parse_illusion.
+        // OP_Illusion: 336B on the 09/01 wire, unverified here (was 332).
         (
             "spawnIllusionStruct",
             core::mem::size_of::<eqstructs::spawnIllusionStruct>() as u32,
         ),
-        // OP_TimeOfDay: 8B timeOfDayStruct {u8 hour/min/day/month,u16 year};
-        // no pinned eql binding, literal capture-confirmed size (fires 8x12).
+        // OP_TimeOfDay: 8B {u8 hour/min/day/month, u16 year}, no pinned binding.
         ("timeOfDayStruct", 8),
-        // OP_InspectAnswer: 1956B inspectDataStruct; not seen in the fight
-        // capture (inspect is passive) — size from the struct def.
+        // OP_InspectAnswer: size taken from the struct def, not a capture.
         ("inspectDataStruct", 1956),
         (
             "deleteSpawnStruct",
@@ -1149,66 +908,52 @@ pub fn size_overrides() -> Vec<(&'static str, u32)> {
             "actionAltStruct",
             core::mem::size_of::<eqstructs::actionAltStruct>() as u32,
         ),
-        // OP_SimpleMessage (07/12 rotation): stock 12B {u32 eqstrId, u32
-        // color, u32 0}; pinned binding so the gate tracks eql's own copy.
+        // OP_SimpleMessage: stock 12B {u32 eqstrId, u32 color, u32 0}.
         (
             "simpleMessageStruct",
             core::mem::size_of::<eqstructs::simpleMessageStruct>() as u32,
         ),
-        // No pinned eql binding (eql reuses the shared decode) — capture-confirmed size:
-        ("playerSelfPosStruct", player_self_pos::PAYLOAD_LEN as u32), // OP_ClientUpdate C>S self-pos: 46B post-08/25 (was 42B); floats Y@18/Z@30/X@38, spawnId@2, heading@22
+        // OP_ClientUpdate C>S self-pos: 42B on the 09/01 wire (was 46B).
+        ("playerSelfPosStruct", player_self_pos::PAYLOAD_LEN as u32),
         ("altExpUpdateStruct", 12), // OP_AAExpUpdate: u32 altexp, u32 aaUnspent, u32 tail
-        // eql door rows are 132B (Live doorStruct is 136B); OP_SpawnDoor gates
-        // SZC_Modulus on this and newDoorSpawns strides via door_stride().
+        // eql door rows are 132B, Live's 136B; OP_SpawnDoor strides on this.
         ("doorStruct", spawn_door::PAYLOAD_LEN as u32),
         ("timeOfDayStruct", 8),         // OP_TimeOfDay
         ("zoneServerInfoStruct", 130),  // OP_ZoneServerInfo (world)
         ("spawnAppearance2Struct", 24), // OP_SpawnAppearance2
-        // OP_SpawnAppearance. eql's payload is the WIDE 24B record ({u32 spawnId,
-        // u32 type, u32 value} + 12B of zeros), not Live's 8B struct — eql has one
-        // appearance opcode where Live has two. This entry was missing, so a
-        // mapped SZC_Match opcode silently inherited the compiled Live sizeof of 8
-        // and the gate dropped every packet; --strict-gate-sizes flags exactly
-        // this class. The size comes from eql's own parser, never from Live.
+        // OP_SpawnAppearance carries eql's wide 24B record, not Live's 8B — an
+        // inherited Live size here drops every packet.
         (
             "spawnAppearanceStruct",
             spawn_appearance::PAYLOAD_LEN as u32,
         ),
         ("inspectDataStruct", 1956), // OP_InspectAnswer
-        // Stock-struct reuse (eql size == Live's today, stock layout): declared
-        // so the gate is eql-owned, not silently inherited from everquest.h.
+        // Stock-struct reuse, declared so the gate is eql-owned.
         ("randomStruct", 76), // OP_RandomReply (76B, l-patch addendum 3)
         ("tradeSpellBookSlotsStruct", 8), // OP_SwapSpell
         ("buffWindowSlotStruct", 12), // OP_BuffWindow
-        // 07/14 remap SZC_Match opcodes; no pinned eql binding, gate = eql WIRE size.
-        // OP_BeginCast: eql wire is 19B (spellId u16@0, spawnId u16@4, castTime u16@6 —
-        // Xerxes-confirmed), NOT the stock 15B beginCastStruct; gate at 19 so SZC_Match passes.
+        // eql's OP_BeginCast wire is 19B, not the stock 15B beginCastStruct.
         ("beginCastStruct", 19),        // OP_BeginCast
         ("consentResponseStruct", 193), // OP_ConsentResponse + OP_DenyResponse
         ("GuildMemberUpdate", 88),      // OP_GuildMemberUpdate
-        // OP_Stance + OP_Invocation: 4B {u32 abilityId}. Same
-        // struct/size for both; the opcode id picks stance vs invocation.
+        // OP_Stance + OP_Invocation share one 4B {u32 abilityId} shape.
         ("activateAbilityStruct", 4),
     ]
 }
 
-/// eql `OP_HPUpdate` — the multiplexed stat-sync channel, fully
-/// decoded from the community f-patch's `SpawnShell::spawnStatEQL` (6378 wide
-/// packets across the pcap library, zero layout exceptions).
+/// eql `OP_HPUpdate`, the multiplexed stat-sync channel. It is the sole
+/// endurance feed — Legends has no standalone `OP_EndUpdate`.
 ///
-/// Layout: `u32 spawnId | u8 flags | per-stat payload | [optional u32 tail]`.
-/// `flags`: bit0 = wide form; bit1 = HP; bit2 = mana; bit3 = stamina/endurance;
-/// bits4-5 = reason (event/refresh/tick, ignored). The per-stat payload appears
-/// in bit order (HP, then mana, then endurance): the wide form carries
-/// `{i64 cur, i64 max}` per set stat bit; the narrow form carries one `u8
-/// percent` per stat (`max` = 100). Some packets append a trailing `u32`
-/// (purpose unknown). `flags 0x31` with no stat bits is the 6s keepalive.
-///
-/// Consumers (see `EqlDispatch::statSync`): HP → spawn cur/max (the wide form
-/// supersedes the old percent-only feed); the player's mana → `Player::setMana`
-/// and endurance → `Player::setEndurance` (real cur/max, player-only, wide form
-/// only — Legends has no standalone OP_EndUpdate, so this channel is the sole
-/// endurance feed). Food/water never ride this channel.
+/// ```text
+///   /*0000*/ u32 spawnId
+///   /*0004*/ u8  flags   bit0 wide | bit1 HP | bit2 mana | bit3 endurance
+///                        bits4-5 reason (ignored)
+///   /*0005*/     payload  per set stat bit, in bit order:
+///                           wide  {i64 cur, i64 max}
+///                           narrow u8 percent (max = 100)
+///                [optional trailing u32, purpose unknown]
+///   flags 0x31 with no stat bits is the 6s keepalive.
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct StatSync {
     pub spawn_id: u32,
@@ -1295,10 +1040,8 @@ pub struct BuffListEntry {
     pub spell_id: u32,
     pub remaining_ticks: i32,
     pub slot: u32,
-    /// Who cast it, as spelled on the wire (empty when the name field is).
-    /// Consumers key ownership off this: a non-self owner's list mixes the
-    /// spawn's own buffs with the ones the player put on it, and only the
-    /// caster tells them apart.
+    /// Who cast it. A non-self owner's list mixes its own buffs with the ones
+    /// the player applied, and only the caster tells them apart.
     pub caster: String,
 }
 
@@ -1310,10 +1053,8 @@ pub struct BuffList {
     pub entries: Vec<BuffListEntry>,
 }
 
-/// eql `OP_BuffList` — a per-spawn active-buff list, sent at zone-in
-/// and on every buff change, with real server-side remaining durations (the
-/// patch calls it "the one that makes it work"). Layout (validated 26/26 across
-/// the upperguk capture, cursor lands exactly on the packet end):
+/// eql `OP_BuffList` — a per-spawn active-buff list with real server-side
+/// remaining durations, sent at zone-in and on every buff change.
 ///
 /// ```text
 /// u32 spawnId | u32 (seq/timestamp) | u8 flag=1 | u8 count | u8[5] pad
@@ -1323,8 +1064,8 @@ pub struct BuffList {
 ///   + slot: u32 BETWEEN records, u16 on the FINAL record.
 /// ```
 ///
-/// `remainingTicks <= 0` is permanent. The cursor-lands-on-end check is the
-/// structural canary (a layout drift rejects the whole packet).
+/// `remainingTicks <= 0` is permanent, and the cursor landing exactly on the
+/// packet end is the structural canary.
 pub fn parse_buff_list(b: &[u8]) -> Result<BuffList, DecodeError> {
     if b.len() < 15 {
         return Err(DecodeError::Short(b.len()));
@@ -1413,6 +1154,35 @@ mod tests {
     }
 
     #[test]
+    fn profile_locates_the_spellbook_by_signature() {
+        // Junk whose second word is > 4096 in front, then a real 8B-record book.
+        let mut b = vec![0xAAu8; 2048];
+        let book = b.len();
+        for k in 0..SPELLBOOK_SLOTS {
+            let (id, word): (u32, u32) = if k < 100 {
+                (1000 + k as u32, (k % 60) as u32)
+            } else {
+                (0xffff_ffff, 0)
+            };
+            b.extend_from_slice(&id.to_le_bytes());
+            b.extend_from_slice(&word.to_le_bytes());
+        }
+        assert_eq!(find_profile_spellbook(&b), Some(book));
+        let p = parse_player_profile(&b).unwrap();
+        assert_eq!(p.spell_book.len(), SPELLBOOK_SLOTS);
+        assert_eq!(p.spell_book[0], 1000);
+        assert_eq!(p.spell_book[99], 1099);
+        assert_eq!(p.spell_book[100], -1); // 0xffffffff = empty slot
+    }
+
+    #[test]
+    fn profile_without_a_spellbook_leaves_it_empty() {
+        // A zero-filled profile has no plausible book (id 0 is not a spell id).
+        let p = parse_player_profile(&vec![0u8; 8000]).unwrap();
+        assert!(p.spell_book.is_empty());
+    }
+
+    #[test]
     fn profile_short_buffer_leaves_base_stats_zero() {
         // One byte short of the block: read is skipped, not partial, no panic.
         let p = parse_player_profile(&vec![0u8; 989]).unwrap();
@@ -1422,9 +1192,8 @@ mod tests {
         );
     }
 
-    /// Synthetic profile: 34-byte identity header, then unmapped-middle junk
-    /// (zeros — no 0x40, so no false name-block match), then the name block
-    /// (`u32 64` + 64B name + `u32 32` + 32B lastname) and the positional tail.
+    /// Synthetic profile: identity header, zeroed junk (no 0x40, so no false
+    /// name-block match), then the name block and the positional tail.
     fn profile_with_name_block(name: &str, last: &str) -> Vec<u8> {
         let mut b = vec![0u8; 34];
         b[20] = 1; // gender
@@ -1496,18 +1265,15 @@ mod tests {
         assert_eq!(p.stand_state, 100);
         assert_eq!(p.guild_id, 999);
         assert_eq!(p.guild_server_id, 1);
-        // Money is deliberately NOT part of this walk any more — it is read from
-        // fixed offsets instead (see money_at_fixed_offsets below), so a short
-        // synthetic profile like this one carries none.
+        // Money is read from fixed offsets now, so this short profile has none.
         assert_eq!(p.platinum, 0);
         assert_eq!(p.copper, 0);
     }
 
     #[test]
     fn money_at_fixed_offsets() {
-        // Carried coin sits at 33687 and cursor at 33703, both inside the
-        // fixed prefix; the bank follows the inventory MIRROR of the carried
-        // quadruple, located by signature rather than a constant.
+        // Carried and cursor are fixed-offset; the bank is located by scanning
+        // for the inventory MIRROR of the carried quadruple.
         let mut b = vec![0u8; 40000];
         let put = |b: &mut Vec<u8>, off: usize, v: u32| {
             b[off..off + 4].copy_from_slice(&v.to_le_bytes());
@@ -1629,9 +1395,8 @@ mod tests {
         ((game_units * 8) as u32) & 0x7FFFF
     }
 
-    /// Assemble a full eql zone-spawn payload matching the `fillSpawnStruct`
-    /// walk. Uses the NPC / non-humanoid path (npc=1, race>12 → the 2-slot
-    /// equipment branch); the 9-slot humanoid branch is exercised by the goldens.
+    /// A full eql zone-spawn payload on the NPC / non-humanoid path (npc=1,
+    /// race>12); the 9-slot humanoid branch is exercised by the goldens.
     #[allow(clippy::too_many_arguments)]
     fn build_spawn(
         name: &str,
@@ -1644,7 +1409,6 @@ mod tests {
         z: i32,
         y: i32,
         x: i32,
-        heading: u16,
         last: &str,
         title: &str,
         suffix: &str,
@@ -1655,20 +1419,20 @@ mod tests {
             b.push(0);
         };
         let u32le = |b: &mut Vec<u8>, v: u32| b.extend_from_slice(&v.to_le_bytes());
+        let has_title = !title.is_empty();
+        let has_suffix = !suffix.is_empty();
         text(&mut b, name);
         u32le(&mut b, id);
         b.push(level);
         b.extend_from_slice(&[0u8; 16]);
         b.push(1); // npc
         u32le(&mut b, 0); // miscData
-        b.push(0); // otherData
+        b.extend_from_slice(&[0u8; 4]); // 09/01 pad ahead of the flag byte
+        b.push(u8::from(has_title) << 4 | u8::from(has_suffix) << 5); // otherData
         b.extend_from_slice(&[0u8; 8]);
         b.push(0); // charProperties = 0 (no bodytype loop)
-        b.extend_from_slice(&[0u8; 3]);
-        b.push(0); // appearanceCount = 0
-        b.extend_from_slice(&[0u8; 4]);
         b.push(cur_hp);
-        b.extend_from_slice(&[0u8; 33]);
+        b.extend_from_slice(&[0u8; 37]);
         u32le(&mut b, race);
         b.push(0); // holding
         u32le(&mut b, deity);
@@ -1676,37 +1440,28 @@ mod tests {
         u32le(&mut b, 0); // guildServerID
         u32le(&mut b, class_);
         u32le(&mut b, 0); // classMask
-        b.push(0); // skip1
-        b.push(0); // state
-        b.push(0); // light
-        b.push(0); // skip1
+        b.extend_from_slice(&[0u8; 4]); // skip1, state, light, skip1
         text(&mut b, last); // lastName
         b.extend_from_slice(&[0u8; 2]);
         u32le(&mut b, 0); // petOwnerId
         b.extend_from_slice(&[0u8; 49]); // npc==1 extra
         b.extend_from_slice(&[0u8; 60]); // equipment (else branch: 20 + 2*5*4)
-                                         // 2026-08-25 position block: map X @bit10 (w0), Z @bit64 (w2
-                                         // low-19), heading @bit96 (w3 low-12), map Y @bit108 (w3 >> 12).
-                                         // Every bit OUTSIDE those four fields is deliberately set: an
-                                         // earlier bug read a coordinate out of a pad word, and a
-                                         // zero-filled filler would have let that reading pass.
-        u32le(&mut b, 0x3FF | (pos19(x) << 10) | (0x7u32 << 29)); // w0: pad10 | X | pad3
-        u32le(&mut b, 0xFFFF_FFFF); // w1: pad — deliberately not zero
-        u32le(&mut b, pos19(z) | (0x1FFFu32 << 19)); // w2: Z in the low 19, rest set
-        u32le(
-            &mut b,
-            (u32::from(heading) & 0xFFF) | (pos19(y) << 12) | (1u32 << 31),
-        ); // w3
-        u32le(&mut b, 0xFFFF_FFFF); // w4: pad
-        u32le(&mut b, 0xFFFF_FFFF); // w5: pad
-        text(&mut b, title);
-        text(&mut b, suffix);
-        text(&mut b, ""); // string 3
-        text(&mut b, ""); // string 4
-        b.extend_from_slice(&[0u8; 4]); // 4 fixed
+                                         // Every bit outside the three coordinate fields is set, so a
+                                         // slipped read gets a wrong number, not a plausible zero.
+        u32le(&mut b, 0x3FF | (pos19(y) << 10) | (0x7u32 << 29)); // p0: pad10 | wire x | pad3
+        u32le(&mut b, 0xFFFF_FFFF); // p1: pad
+        u32le(&mut b, 0x3FF | (pos19(x) << 10) | (0x7u32 << 29)); // p2: pad10 | wire y | pad3
+        u32le(&mut b, 0xFFFF_FFFF); // p3: pad
+        u32le(&mut b, pos19(z) | (0x1FFFu32 << 19)); // p4: Z in the low 19, rest set
+        if has_title {
+            text(&mut b, title);
+        }
+        if has_suffix {
+            text(&mut b, suffix);
+        }
+        b.extend_from_slice(&[0u8; 8]); // unknowns
         b.push(0); // isMercenary
-        text(&mut b, "0"); // ASCII digit string
-        b.extend_from_slice(&[0u8; 53]); // 53 fixed tail
+        b.extend_from_slice(&[0u8; 70]); // unknowns
         b
     }
 
@@ -1723,7 +1478,6 @@ mod tests {
             80,
             -15,
             10,
-            1234,
             "",
             "Protector",
             "of Qeynos",
@@ -1741,11 +1495,9 @@ mod tests {
         assert_eq!(s.x, 10);
         assert_eq!(s.y, -15);
         assert_eq!(s.z, 80);
-        // 08/25 gave the facing a measured home again (w3 low 12, h2048); the
-        // surrounding pad bits are all set, so a wrong width or offset here
-        // reads a corrupted angle rather than a plausible one.
-        assert_eq!(s.heading, 1234);
-        // titled spawn: title then suffix out of the tail-anchored string block
+        // 09/01: posData carries no facing, so the surrounding pad bits (all set
+        // here) must not leak into it.
+        assert_eq!(s.heading, 0);
         assert_eq!(s.title, "Protector");
         assert_eq!(s.suffix, "of Qeynos");
     }
@@ -1764,7 +1516,6 @@ mod tests {
             12,
             -4700,
             5200,
-            0,
             "Ironforge",
             "",
             "",

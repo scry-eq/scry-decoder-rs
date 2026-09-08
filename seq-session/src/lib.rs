@@ -2689,7 +2689,7 @@ mod tests {
         let mut session = eql_session(registry);
         let batch = session.decode(
             StreamKind::Zone,
-            OpcodeId(0x1c18),
+            OpcodeId(0x676a),
             Dir::ClientToServer,
             &self_pos(77),
         );
@@ -2703,14 +2703,14 @@ mod tests {
 
         let unmapped = session.decode(
             StreamKind::World,
-            OpcodeId(0x1c18),
+            OpcodeId(0x676a),
             Dir::ClientToServer,
             &[],
         );
         assert_eq!(unmapped.disposition, DecodeDisposition::Unmapped);
 
         let malformed =
-            session.decode(StreamKind::Zone, OpcodeId(0x1c18), Dir::ClientToServer, &[]);
+            session.decode(StreamKind::Zone, OpcodeId(0x676a), Dir::ClientToServer, &[]);
         assert_eq!(malformed.disposition, DecodeDisposition::Malformed);
 
         session.decode(
@@ -2735,7 +2735,7 @@ mod tests {
         let mut session = eql_session(registry);
         session.decode(
             StreamKind::Zone,
-            OpcodeId(0x1c18),
+            OpcodeId(0x676a),
             Dir::ClientToServer,
             &self_pos(77),
         );
@@ -2775,7 +2775,7 @@ mod tests {
         let mut session = eql_session(registry);
         session.decode(
             StreamKind::Zone,
-            OpcodeId(0x1c18),
+            OpcodeId(0x676a),
             Dir::ClientToServer,
             &self_pos(88),
         );
@@ -2893,7 +2893,7 @@ mod tests {
         let mut session = eql_session(registry);
         let decoded = session.decode(
             StreamKind::Zone,
-            OpcodeId(0x514a),
+            OpcodeId(0x603b),
             Dir::ServerToClient,
             &new_zone(),
         );
@@ -2921,13 +2921,13 @@ mod tests {
         let mut session = eql_session(registry);
         session.decode(
             StreamKind::Zone,
-            OpcodeId(0x1c18),
+            OpcodeId(0x676a),
             Dir::ClientToServer,
             &self_pos(99),
         );
         let decoded = session.decode(
             StreamKind::Zone,
-            OpcodeId(0x7560),
+            OpcodeId(0x51e8),
             Dir::ClientToServer,
             &[0; 484],
         );
@@ -2958,13 +2958,13 @@ mod tests {
         let mut second = eql_session(registry);
         first.decode(
             StreamKind::Zone,
-            OpcodeId(0x1c18),
+            OpcodeId(0x676a),
             Dir::ClientToServer,
             &self_pos(101),
         );
         second.decode(
             StreamKind::Zone,
-            OpcodeId(0x1c18),
+            OpcodeId(0x676a),
             Dir::ClientToServer,
             &self_pos(202),
         );
@@ -2978,7 +2978,7 @@ mod tests {
         let mut session = eql_session(Arc::clone(&registry));
         session.decode(
             StreamKind::Zone,
-            OpcodeId(0x1c18),
+            OpcodeId(0x676a),
             Dir::ClientToServer,
             &self_pos(10),
         );

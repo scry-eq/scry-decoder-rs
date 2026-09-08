@@ -16,9 +16,8 @@
 
 include!("bindings.rs");
 
-/// Sign-extend the low `bits` of `v` into an `i32`. Used to recover the
-/// sign of EQ's narrow signed bitfields (e.g. position coordinates are
-/// 19-bit signed values stored in a packed `int64_t`).
+/// Sign-extend the low `bits` of `v` into an `i32`, recovering the sign of EQ's
+/// narrow bitfields (e.g. 19-bit coordinates packed into an `int64_t`).
 #[inline]
 pub fn sign_extend(v: u32, bits: u32) -> i32 {
     debug_assert!(bits > 0 && bits <= 32);
@@ -54,9 +53,7 @@ mod tests {
 
     #[test]
     fn small_fixed_struct_layouts() {
-        // Stage A+3 batch — guards the bindgen-derived sizes against
-        // future struct edits in everquest.h. SZC_Match dispatch in
-        // the daemon enforces these wire sizes today.
+        // The daemon's SZC_Match dispatch gates on exactly these wire sizes.
         assert_eq!(std::mem::size_of::<removeSpawnStruct>(), 5);
         assert_eq!(std::mem::size_of::<hpNpcUpdateStruct>(), 18);
         assert_eq!(std::mem::size_of::<mobHealthStruct>(), 6);
@@ -82,9 +79,8 @@ mod tests {
     #[test]
     fn stage_a5_struct_layouts() {
         assert_eq!(std::mem::size_of::<remDropStruct>(), 12);
-        // Struct's trailing /*0336*/ marker is wrong — actual byte
-        // sum is 332 (4+64+4+1+1+1+1+4+4+248). bindgen agrees.
-        assert_eq!(std::mem::size_of::<spawnIllusionStruct>(), 332);
+        // 336 = 4+64+4+1+1+1+1+4+4+252, per upstream 47a4992; unverified here.
+        assert_eq!(std::mem::size_of::<spawnIllusionStruct>(), 336);
         assert_eq!(std::mem::size_of::<buffStruct>(), 168);
         assert_eq!(std::mem::size_of::<action2Struct>(), 48);
     }

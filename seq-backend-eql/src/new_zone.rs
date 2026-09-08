@@ -1,6 +1,7 @@
-//! Parser for EQ Legends `OP_NewZone`: three NUL-terminated names (short, long, zone
-//! file) followed by a fixed 306-byte environment tail. Derived from the 08/25 wire;
-//! Live's `newZoneStruct` walk does not apply here.
+//! Parser for EQ Legends `OP_NewZone`: three NUL-terminated names (short, long,
+//! zone file) then a fixed 306-byte environment tail; Live's `newZoneStruct` walk
+//! does not apply. Offsets below are measured and disagree with upstream 47a4992's
+//! `newZoneTailStruct`, so one of the two is wrong.
 
 use thiserror::Error;
 

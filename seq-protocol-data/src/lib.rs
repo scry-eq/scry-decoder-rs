@@ -1,9 +1,8 @@
 //! Canonical opcode catalogs shared by every packet-decoding host.
 //!
-//! IDs are qualified by backend and stream. `0xffff` entries in the source
-//! files are patch-day placeholders and never enter the lookup tables. The
-//! schema rejects unknown sections and row fields; documented diagnostic
-//! metadata is accepted but excluded from the semantic content hash.
+//! IDs are qualified by backend and stream, and `0xffff` entries are patch-day
+//! placeholders that never enter the lookup tables. The schema rejects unknown
+//! sections and row fields; diagnostic metadata is excluded from the hash.
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -544,7 +543,7 @@ mod tests {
         assert_eq!(
             registry
                 .snapshot(BackendId::Eql)
-                .lookup(StreamKind::Zone, OpcodeId(0x206a)),
+                .lookup(StreamKind::Zone, OpcodeId(0x5bfb)),
             Some("OP_PlayerProfile")
         );
         assert_eq!(
@@ -557,7 +556,7 @@ mod tests {
         );
         assert_eq!(
             registry.snapshot(BackendId::Eql).content_hash().to_hex(),
-            "4a71bf832ff4593be648812144aa6b97b002e30325a14c15ed1a0dcae9516fc7"
+            "933330a63f08ba1f99aef3308935fa44a78095f417e9a3915c1a130a852fd801"
         );
     }
 
@@ -670,7 +669,7 @@ mod tests {
             assert_eq!(after.generation(), before.generation());
             assert_eq!(after.content_hash(), before.content_hash());
             assert_eq!(
-                after.lookup(StreamKind::Zone, OpcodeId(0x206a)),
+                after.lookup(StreamKind::Zone, OpcodeId(0x5bfb)),
                 Some("OP_PlayerProfile")
             );
         }
@@ -727,7 +726,7 @@ mod tests {
         let mut threads = Vec::new();
         for (backend, id, expected) in [
             (BackendId::Live, 0x3635, "OP_PlayerProfile"),
-            (BackendId::Eql, 0x206a, "OP_PlayerProfile"),
+            (BackendId::Eql, 0x5bfb, "OP_PlayerProfile"),
         ] {
             let registry = Arc::clone(&registry);
             let barrier = Arc::clone(&barrier);

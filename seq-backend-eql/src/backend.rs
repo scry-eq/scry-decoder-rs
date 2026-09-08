@@ -1,13 +1,7 @@
-//! eql implementation of the neutral [`seq_events::Backend`] contract.
-//!
-//! Maps this crate's self-contained EQ Legends parsers into the neutral event
-//! vocabulary. Depends only on `seq-events` (pure vocabulary, no Live decode
-//! code), so it does not breach eql's isolation — no Live wire parser reaches
-//! eql through it.
-//!
-//! Field/heading math mirrors the scry NIF exactly (eql spawn heading is 11-bit
-//! h2048, self-pos is 13-bit, mob/npc updates are 12-bit like Live) so decoded
-//! output stays byte-for-byte identical across the migration.
+//! eql implementation of the neutral [`seq_events::Backend`] contract, mapping
+//! this crate's self-contained parsers into the neutral event vocabulary. It
+//! depends only on `seq-events`, so no Live wire parser reaches eql through it,
+//! and the heading math mirrors the scry NIF so both hosts decode identically.
 
 use seq_events::{
     heading_deg, Backend, BuffEntry, Decoded, Dir, DoorInfo, Event, GroundItemInfo,
@@ -24,10 +18,8 @@ impl Backend for EqlBackend {
     }
 
     fn decode(&self, opcode: &str, dir: Dir, bytes: &[u8]) -> Decoded {
-        // Server-message opcodes are server→client only; the client's own
-        // outgoing sends echo back S→C, so decoding the C→S copy would
-        // double-display (the daemon's DIR_Client guard). OP_CommonMessage is
-        // filtered per-channel instead (see `chat`) — Say isn't echoed.
+        // The client's own sends echo back S→C, so decoding the C→S copy of a
+        // server message would double-display it.
         if dir == Dir::ClientToServer
             && matches!(
                 opcode,
@@ -60,11 +52,8 @@ impl Backend for EqlBackend {
             "OP_ZoneChange" => Decoded::Ignored,
             "OP_LoadoutSwap" => loadout_swap(bytes),
             "OP_ClickObject" => click_object(dir, bytes),
-            // eql's appearance event is the stock opcode carrying the WIDENED
-            // 24-byte struct (upstream calls it spawnEventEQLStruct), so both
-            // names reach the same decoder. Only OP_SpawnAppearance is mapped on
-            // the current patch; before this, 26530 packets a capture arrived
-            // under a name with no arm and were dropped outright.
+            // eql has one appearance opcode carrying the wide 24B struct, so
+            // both names must reach the same decoder.
             "OP_SpawnAppearance" | "OP_SpawnAppearance2" => spawn_appearance2(bytes),
             "OP_TimeOfDay" if dir == Dir::ServerToClient => time_of_day(bytes),
             "OP_TimeOfDay" => Decoded::Ignored,
@@ -188,6 +177,7 @@ fn mob_update(bytes: &[u8]) -> Decoded {
 }
 
 fn npc_move_update(bytes: &[u8]) -> Decoded {
+    // This channel's 12-bit angle is a path bearing, not a facing — no heading.
     match crate::npc_move_update::parse_npc_move_update(bytes) {
         Ok(s) => Decoded::One(Event::SpawnMoved {
             id: u32::from(s.spawn_id),
@@ -195,7 +185,7 @@ fn npc_move_update(bytes: &[u8]) -> Decoded {
                 x: i32::from(s.x),
                 y: i32::from(s.y),
                 z: i32::from(s.z),
-                heading_deg: heading_deg(s.heading as u16, 12),
+                heading_deg: 0,
             },
             velocity: Velocity {
                 x: s.has_delta_x.then_some(i32::from(s.delta_x)),
@@ -240,9 +230,8 @@ fn spawn_rename(bytes: &[u8]) -> Decoded {
     }
 }
 
-// OP_Death (newCorpseStruct): the deceased becomes a corpse, not a removal.
-// seq-session resolves player ownership; direct backend callers retain this
-// low-level result during migration.
+// OP_Death (newCorpseStruct): the deceased becomes a corpse, not a removal;
+// seq-session resolves player ownership.
 fn death(bytes: &[u8]) -> Decoded {
     match crate::death::parse_death(bytes) {
         Ok(d) => Decoded::One(Event::SpawnKilled {
@@ -253,12 +242,8 @@ fn death(bytes: &[u8]) -> Decoded {
     }
 }
 
-// eql OP_HPUpdate is the multiplexed stat-sync channel: spawn HP (real for the
-// self, percent for others) plus the player's mana/endurance, all in one packet.
-// Surface it whole as StatSync and let seq-session split self from other.
-// Emitting one event per packet
-// (rather than one per stat) is deliberate: it keeps a single wire packet from
-// fanning out into several near-identical player snapshots downstream.
+// eql OP_HPUpdate multiplexes spawn HP and the player's mana/endurance; surface
+// it whole as one StatSync so a packet can't fan out into near-identical events.
 fn hp_update(bytes: &[u8]) -> Decoded {
     match crate::parse_stat_sync(bytes) {
         // The keepalive (flags 0x31, no stat bits) carries nothing to report.
@@ -300,11 +285,8 @@ fn new_guild_in_zone(bytes: &[u8]) -> Decoded {
 
 fn self_pos(bytes: &[u8]) -> Decoded {
     match crate::player_self_pos::parse_player_self_pos(bytes) {
-        // eql self heading is an 11-bit COMPASS value (2048 per circle, 0 = N,
-        // increasing clockwise), so it converts straight to degrees — unlike the
-        // spawn headings above it is NOT inverted. Field boundaries from
-        // upstream's struct, sense calibrated against travel direction; see
-        // player_self_pos::HEADING_UNITS.
+        // Self heading is an 11-bit compass value and, unlike the spawn
+        // headings, is NOT inverted; spawn_id is the phantom twin's.
         Ok(s) => Decoded::One(Event::SelfPos {
             pos: Pos {
                 x: s.x.round() as i32,
@@ -312,8 +294,6 @@ fn self_pos(bytes: &[u8]) -> Decoded {
                 z: s.z.round() as i32,
                 heading_deg: heading_deg(s.heading, 11),
             },
-            // The phantom twin's id (see player_self_pos) — the host feeds it
-            // to SelfTracker, which is the only thing allowed to act on it.
             spawn_id: u32::from(s.spawn_id),
             velocity: Velocity::default(),
             delta_heading: None,
@@ -323,11 +303,8 @@ fn self_pos(bytes: &[u8]) -> Decoded {
     }
 }
 
-// OP_SelfPos = the eql self-pos breadcrumb (a position-history trail, N×17B).
-// Wired but INERT: it decodes (so the path is live and validated) yet emits
-// nothing — the trail is redundant with the OP_ClientUpdate self-pos and carries
-// no heading. Return `One(Event::SelfPos ...)` from the last point here if we
-// ever surface the trail.
+// OP_SelfPos, the self-pos breadcrumb trail: wired but INERT, since the trail is
+// redundant with the OP_ClientUpdate self-pos and carries no heading.
 fn self_pos_breadcrumb(bytes: &[u8]) -> Decoded {
     let _ = crate::self_pos_breadcrumb::parse_self_pos_breadcrumb(bytes);
     Decoded::Ignored
@@ -357,9 +334,7 @@ fn consider(bytes: &[u8]) -> Decoded {
 // noise), matching MessageShell::channelMessage.
 fn chat(bytes: &[u8], dir: Dir) -> Decoded {
     match crate::channel_message::parse_channel_message(bytes) {
-        // The server echoes tells/group/guild/etc. back, so drop the C→S copy of
-        // those (matches MessageShell::channelMessage); Say is not echoed — keep
-        // its C→S copy.
+        // The server echoes every player channel but Say, so drop those C→S.
         Ok(c) if dir == Dir::ClientToServer && is_echoed_channel(c.chan_num) => Decoded::Ignored,
         Ok(c) if is_player_channel(c.chan_num) => Decoded::One(Event::Chat {
             channel: c.chan_num,
@@ -517,9 +492,8 @@ fn is_echoed_channel(c: u32) -> bool {
     matches!(c, 0 | 2 | 3 | 4 | 5 | 7 | 15)
 }
 
-// OP_LevelUpdate: the eql packet is an 80B widened container whose HEAD is the
-// stock levelUpUpdateStruct, so feed the parser exactly that head — it length-
-// checks exactly and would otherwise reject the whole packet.
+// The eql packet is an 80B widened container whose HEAD is the stock struct, so
+// feed the parser exactly that head or its exact-length check rejects it.
 fn level_update(bytes: &[u8]) -> Decoded {
     let n = crate::level_update::PAYLOAD_LEN;
     if bytes.len() < n {
@@ -620,9 +594,8 @@ fn loot_drops(bytes: &[u8]) -> Decoded {
     }
 }
 
-// OP_LootTransaction: the subcode-7 confirmation carries an item's sale coin
-// and the subcode-5 record the corpse's coin pile; the request/ack subcodes
-// (3/6) ride the same id but surface nothing.
+// OP_LootTransaction: subcode 7 carries an item's sale coin and subcode 5 the
+// corpse's coin pile; the request/ack subcodes ride the same id and surface none.
 fn loot_transaction(bytes: &[u8]) -> Decoded {
     use crate::loot_transaction::LootTransactionError::Unhandled;
     match crate::loot_transaction::parse_loot_transaction(bytes) {
@@ -672,10 +645,8 @@ fn buff_list(bytes: &[u8]) -> Decoded {
 // eql reuses Live's action2Struct byte-identically (OP_Action2 = damage).
 fn action2(bytes: &[u8]) -> Decoded {
     match crate::action2::parse_action2(bytes) {
-        // The wire marks "no spell" (a melee swing) as -1, which the parser
-        // faithfully keeps as i32 — but casting that to u32 turns it into
-        // 4294967295 and the neutral contract says 0 = melee, so a consumer
-        // then looks up a spell that cannot exist. Normalise here.
+        // The wire marks a melee swing as -1, but the neutral contract says 0 —
+        // uncast, that becomes a spell id no consumer can look up.
         Ok(a) => Decoded::One(Event::Combat {
             source: u32::from(a.source),
             target: u32::from(a.target),
@@ -748,9 +719,8 @@ fn buff(bytes: &[u8]) -> Decoded {
     }
 }
 
-// OP_BeginCast: a spawn started casting. The daemon surfaces this (a transient
-// cast indicator), NOT OP_CastSpell — cast-start buff insertion was noise, buffs
-// ride OP_BuffList.
+// OP_BeginCast: a transient cast indicator. Not OP_CastSpell — cast-start buff
+// insertion was noise, and buffs ride OP_BuffList.
 fn begin_cast(bytes: &[u8]) -> Decoded {
     match crate::parse_begin_cast(bytes) {
         Ok(c) => Decoded::One(Event::SpawnCast {
@@ -884,10 +854,8 @@ fn doors(bytes: &[u8]) -> Decoded {
     Decoded::One(Event::Doors(doors))
 }
 
-// OP_Illusion: a spawn changed race/model (id + new race/gender).
 // OP_Stance / OP_Invocation are both 4B {u32 abilityId}; resolve the id to its
-// display name (stable eqgame.exe GetAbilityName enum), "#<id>" if unknown —
-// matching the daemon's stanceName/invocationName + fallback.
+// display name from the stable client enum, "#<id>" if unknown.
 fn stance_name(id: u32) -> Option<&'static str> {
     Some(match id {
         117 => "Offense",
@@ -926,9 +894,8 @@ fn resolve_ability(bytes: &[u8], name_of: fn(u32) -> Option<&'static str>) -> Op
     )
 }
 fn inspect_answer(bytes: &[u8]) -> Decoded {
-    // 1956B inspectDataStruct: pad[4], spawnId@4, itemNames[23][64]@8,
-    // icons[23]@1480 (dropped — no proto home), mytext[200]@1572, pad[184].
-    // Read through mytext; each name/bio is NUL-terminated latin1 (like strnlen).
+    // 1956B inspectDataStruct; icons@1480 are dropped (no proto home), so the
+    // read stops at mytext. Each name/bio is NUL-terminated latin1.
     const NAMES_OFF: usize = 8;
     const NAME_LEN: usize = 64;
     const BIO_OFF: usize = 1572;
@@ -1004,9 +971,8 @@ fn item_set_event(set: crate::item_packet::ItemSet) -> Event {
 }
 
 fn item_packet(bytes: &[u8]) -> Decoded {
-    // The C>S half is a 0-byte REQUEST that triggers the bulk reply; it carries
-    // nothing to decode, so let it fall through as Malformed rather than
-    // emitting an empty ItemSet a consumer would apply as "you own nothing".
+    // The C>S half is a 0-byte REQUEST; an empty ItemSet would be applied as
+    // "you own nothing", so let it fall through as Malformed.
     match crate::item_packet::parse_item_packet(bytes) {
         Ok(set) if !set.items.is_empty() => Decoded::One(item_set_event(set)),
         _ => Decoded::Malformed,
@@ -1014,10 +980,8 @@ fn item_packet(bytes: &[u8]) -> Decoded {
 }
 
 fn guild_roster(bytes: &[u8]) -> Decoded {
-    // eql wire diverges from the stock struct (wider header, multiclass mask in
-    // the class slot, a rank field, a trailing zone id). The bridge's cxx path
-    // and this share the one parser; the flag/primary-class derivation mirrors
-    // decode_guild_roster in seq-bridge.
+    // eql's roster wire diverges from the stock struct; the bridge's cxx path
+    // shares this one parser.
     match crate::guild_roster::parse_guild_member_list(bytes) {
         Ok(r) => {
             let members: Vec<GuildRosterMember> = r
@@ -1055,9 +1019,8 @@ fn guild_roster(bytes: &[u8]) -> Decoded {
 }
 
 fn expanded_guild_info(bytes: &[u8]) -> Decoded {
-    // Tagged union; only the rank-name action carries a rank-table entry. eql's
-    // wire is byte-identical to Live's here (both dumped from captures). One
-    // entry per packet — the consumer accumulates the rank -> name table.
+    // Tagged union: only the rank-name action carries an entry, one per packet,
+    // so the consumer accumulates the rank -> name table.
     let i = crate::guild_expanded_info::parse_expanded_guild_info(bytes);
     if i.rank_index == 0 || i.rank_name.is_empty() {
         return Decoded::Ignored; // not the rank-name action (misc guild config)
@@ -1082,8 +1045,7 @@ fn invocation(bytes: &[u8]) -> Decoded {
     }
 }
 fn time_of_day(bytes: &[u8]) -> Decoded {
-    // 8B timeOfDayStruct: hour@0 u8, minute@1 u8, day@2 u8, month@3 u8,
-    // year@4 u16 (+ 2B pad). Read the 6 meaningful bytes; tolerate the pad.
+    // 8B timeOfDayStruct: 6 meaningful bytes then pad, so read only those.
     if bytes.len() != 8 {
         return Decoded::Malformed;
     }
@@ -1103,11 +1065,8 @@ fn time_of_day(bytes: &[u8]) -> Decoded {
     })
 }
 fn spawn_appearance2(bytes: &[u8]) -> Decoded {
-    // 24B {u32 spawnId, u32 type, u32 value, u8[12]}. Only type 6 (pose:
-    // 110=sit / 100=stand / 111=duck) carries a spawn field; every other type
-    // (periodic ticks, timestamps, mob-lock 0x2c, …) is consumed silently,
-    // matching the daemon's EqlDispatch::spawnAppearance. Guard on >= 12 like
-    // the daemon (only the first 12 bytes are read).
+    // Only type 6 (pose) carries a spawn field; the rest are consumed silently.
+    // Guard at 12 like the daemon, which reads only the first 12 bytes.
     if bytes.len() < 12 {
         return Decoded::Malformed;
     }
@@ -1123,9 +1082,8 @@ fn spawn_appearance2(bytes: &[u8]) -> Decoded {
     })
 }
 fn click_object(dir: Dir, bytes: &[u8]) -> Decoded {
-    // Dual-direction: the C>S side is the client's click REQUEST (16B, layout
-    // unmapped) which nobody decodes — ignore it, like the daemon (S>C only).
-    // The S>C side is the 12B remDropStruct removal of a ground item.
+    // The C>S side is the client's unmapped click REQUEST; only the S>C
+    // remDropStruct ground-item removal is decoded.
     if dir != Dir::ServerToClient {
         return Decoded::Ignored;
     }
@@ -1138,13 +1096,8 @@ fn click_object(dir: Dir, bytes: &[u8]) -> Decoded {
 }
 fn loadout_swap(bytes: &[u8]) -> Decoded {
     match crate::loadout_swap::parse_loadout_swap(bytes) {
-        // Legends does delete-then-readd on a loadout/appearance change: a
-        // paired OP_DeleteSpawn removes the id moments before this arrives, so
-        // the embedded record IS the re-add. Emit it as a spawn FIRST so the
-        // consumer re-creates a spawn it may have just dropped — otherwise the
-        // next position update resurrects the id as an "Unknown" placeholder.
-        // Consumers upsert on SpawnAdded, so this is idempotent when the spawn
-        // is still tracked. Matches upstream's fix (legends 7612d72).
+        // A paired OP_DeleteSpawn precedes this, so the embedded record IS the
+        // re-add; the SELF variant's tail is an OP_ItemPacket-format inventory.
         Ok(l) => {
             let mut out = vec![
                 spawn_event(&l.record),
@@ -1156,13 +1109,6 @@ fn loadout_swap(bytes: &[u8]) -> Decoded {
                 },
             ];
 
-            // The SELF variant carries a serialized inventory tail in the same
-            // record format OP_ItemPacket uses — confirmed on a captured swap:
-            // 307705 bytes holding 234 items, parsed by the same walk. A
-            // broadcast has no tail (tail_len 0), so nearby players' swaps add
-            // nothing here. No swap follows with an OP_ItemPacket, so without
-            // this a self swap would leave the item cache describing the
-            // PREVIOUS loadout.
             let tail = crate::loadout_swap::tail_of(bytes);
 
             if !tail.is_empty() {
@@ -1304,7 +1250,7 @@ mod tests {
     #[test]
     fn self_heading_is_inverted_like_every_other_heading() {
         let mut b = [0u8; crate::player_self_pos::PAYLOAD_LEN];
-        b[22..24].copy_from_slice(&512u16.to_le_bytes()); // quarter of 2048; @22 as of 08/25
+        b[18..20].copy_from_slice(&512u16.to_le_bytes()); // quarter of 2048; @18 as of 09/01
 
         let Decoded::One(Event::SelfPos { pos, .. }) =
             EqlBackend.decode("OP_ClientUpdate", Dir::ClientToServer, &b)
@@ -1474,10 +1420,8 @@ mod tests {
 
     #[test]
     fn a_self_loadout_swap_also_yields_its_item_set() {
-        // Header + a minimal ZoneEntry-ish record will not parse, so this pins
-        // the SHAPE via tail_of: a payload longer than innerLen has a tail, a
-        // broadcast does not. The end-to-end proof is the captured swap (234
-        // items out of a 307705-byte tail), which cannot ship as a fixture.
+        // A minimal record will not parse, so pin the SHAPE via tail_of: a
+        // payload longer than innerLen has a tail, a broadcast does not.
         let mut p = vec![0u8; 64];
         p[5..7].copy_from_slice(&64u16.to_le_bytes());
         assert!(
@@ -1506,9 +1450,8 @@ mod tests {
 
     #[test]
     fn item_packet_request_does_not_wipe_the_cache() {
-        // The C>S half is a 0-byte REQUEST. It must NOT decode to an empty
-        // ItemSet: the event is authoritative-replacing, so a consumer would
-        // apply that as "you own nothing".
+        // The event is authoritative-replacing, so an empty ItemSet from the
+        // 0-byte C>S request would be applied as "you own nothing".
         assert_eq!(
             EqlBackend.decode("OP_ItemPacket", Dir::ClientToServer, &[]),
             Decoded::Malformed
@@ -1577,9 +1520,8 @@ mod tests {
 mod level_update_tests {
     use super::*;
 
-    // The eql packet is far wider than levelUpUpdateStruct. Reading the whole
-    // thing rejects it on the exact-length check, which is how these went
-    // undecoded: no error surfaced, the packet simply vanished.
+    // Reading the whole wide packet trips the exact-length check, which is how
+    // these silently went undecoded.
     #[test]
     fn decodes_the_wide_container_by_slicing_its_head() {
         let n = crate::level_update::PAYLOAD_LEN;

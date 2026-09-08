@@ -1,28 +1,23 @@
-//! Parser for `OP_FormattedMessage` (2026-07-14 rotation).
-//!
-//! The 07/14 patch rotated the id (3c0a -> 15d0) AND changed the layout to the
-//! stock length-prefixed form (the old 3c0a decoder read a flat spellId@0/
-//! formatId@9/caret@13 blob that no longer exists). Verified against the fight
-//! capture + resolved through the EQL client's `eqstr_us.txt`:
+//! Parser for `OP_FormattedMessage` — a length-prefixed sender name, then the
+//! stock `formatId`/`msgType` header and a length-prefixed arg blob.
 //!
 //! ```text
-//!   u32 @0    always 0
-//!   u8  @4    always 0
-//!   u32 @5    formatId   — eqstr_us.txt format-string id
-//!   u32 @9    msgType    — message type / chat colour
-//!   @13       args       — length-prefixed [u32 len][len bytes] slots; unused
+//!   u32 @0    nameLen    — sender-name length, 0 on nearly every format
+//!   @4        name       — nameLen bytes, not NUL-terminated
+//!   u8        pad        — one byte after the name
+//!   u32 @5+n  formatId   — eqstr_us.txt format-string id
+//!   u32 @9+n  msgType    — message type / chat colour
+//!   @13+n     args       — length-prefixed [u32 len][len bytes] slots; unused
 //!                          trailing slots carry len=0 (packet size lands exact)
 //! ```
 //!
-//! The arg blob is the SAME length-prefixed form `EQStr::formatMessage` consumes
-//! on Live, so `%N` interpolation stays daemon-side (EQStr owns the string DB).
-//! Proven: fmt 9072 "%1 has taken %2 damage from your %3.%4" + ["Lady Vox","197",
-//! "Blood of Pain"] = "Lady Vox has taken 197 damage from your Blood of Pain.";
-//! fmt 447 "You have gained a level! Welcome to level 48!"; fmt 138 exp; etc.
+//! The leading name is `formattedMessageHeaderStruct` from upstream 47a4992,
+//! unverified on our wire; `nameLen == 0` leaves every offset as it was. `%N`
+//! interpolation stays daemon-side, where `EQStr` owns the string DB.
 
 use thiserror::Error;
 
-/// Fixed header length; the length-prefixed arg blob starts here.
+/// Fixed header length past the sender name; the arg blob starts here.
 pub const HEADER_LEN: usize = 13;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,15 +35,23 @@ pub struct FormattedMessage {
 pub enum FormattedMessageError {
     #[error("expected at least {HEADER_LEN} bytes, got {0}")]
     BadLength(usize),
+    #[error("sender name length {0} does not fit in {1} bytes")]
+    BadNameLength(usize, usize),
 }
 
 pub fn parse_formatted_message(bytes: &[u8]) -> Result<FormattedMessage, FormattedMessageError> {
     if bytes.len() < HEADER_LEN {
         return Err(FormattedMessageError::BadLength(bytes.len()));
     }
-    let format_id = u32::from_le_bytes(bytes[5..9].try_into().unwrap());
-    let msg_color = u32::from_le_bytes(bytes[9..13].try_into().unwrap());
-    let args = split_args(&bytes[HEADER_LEN..]);
+    // The header sits AFTER the sender name, whose length is the leading u32.
+    let name_len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
+    if name_len + HEADER_LEN > bytes.len() {
+        return Err(FormattedMessageError::BadNameLength(name_len, bytes.len()));
+    }
+    let head = &bytes[name_len..];
+    let format_id = u32::from_le_bytes(head[5..9].try_into().unwrap());
+    let msg_color = u32::from_le_bytes(head[9..13].try_into().unwrap());
+    let args = split_args(&head[HEADER_LEN..]);
     Ok(FormattedMessage {
         format_id,
         msg_color,
@@ -56,9 +59,8 @@ pub fn parse_formatted_message(bytes: &[u8]) -> Result<FormattedMessage, Formatt
     })
 }
 
-/// Split the length-prefixed arg blob (`[u32 len][len bytes]`…) into positional
-/// args, dropping empty (len=0) slots exactly as `EQStr::formatMessage` does, so
-/// `%N` alignment matches the client. Links are cleaned to a readable name.
+/// Split the arg blob into positional args, dropping empty slots exactly as
+/// `EQStr::formatMessage` does so `%N` alignment matches the client.
 fn split_args(blob: &[u8]) -> Vec<String> {
     let mut out = Vec::new();
     let mut pos = 0usize;
@@ -95,6 +97,29 @@ mod tests {
             b.extend_from_slice(a);
         }
         b
+    }
+
+    #[test]
+    fn skips_a_leading_sender_name() {
+        // Same packet with a 6-byte sender name prepended must decode the same.
+        let plain = pkt(9072, 376, &[b"Lady Vox", b"197"]);
+        let mut named = (6u32).to_le_bytes().to_vec();
+        named.extend_from_slice(b"Sender");
+        named.extend_from_slice(&plain[4..]);
+        assert_eq!(
+            parse_formatted_message(&named).unwrap(),
+            parse_formatted_message(&plain).unwrap()
+        );
+    }
+
+    #[test]
+    fn rejects_a_name_length_past_the_payload() {
+        let mut b = pkt(1, 2, &[b"a"]);
+        b[0..4].copy_from_slice(&9999u32.to_le_bytes());
+        assert!(matches!(
+            parse_formatted_message(&b),
+            Err(FormattedMessageError::BadNameLength(9999, _))
+        ));
     }
 
     #[test]

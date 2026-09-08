@@ -1,40 +1,18 @@
-//! Parser for eql's 24-byte `OP_SpawnAppearance` payload.
-//!
-//! **This is eql's OWN copy and diverges from Live's 8B struct.** eql widens
-//! every field to `u32` and keeps the value on this opcode, where Live moved it
-//! out to a second opcode (`OP_SpawnAppearance2`) and left an 8-byte
-//! `{u32 spawnId, u32 type}` behind. eql has only the ONE appearance opcode and
-//! it already carries the wide record, so Live's two-opcode split does not map
-//! onto it at all:
+//! Parser for eql's OWN 24-byte `OP_SpawnAppearance` payload, which diverges
+//! from Live's 8B struct: eql widens every field to `u32` and has only the ONE
+//! appearance opcode, so Live's two-opcode split does not map onto it.
 //!
 //! ```text
 //!   /*0000*/ u32 spawnId
-//!   /*0004*/ u32 type       eql's own numbering — 6 = pose, and see below
+//!   /*0004*/ u32 type       eql's own numbering — 6 = pose
 //!   /*0008*/ u32 value
-//!   /*0012*/ u32 params[3]  zero in 134 of 157 captured packets
+//!   /*0012*/ u32 params[3]  zero on nearly every packet
 //!   /*0024*/
 //! ```
 //!
-//! Until 2026-07-30 this module read the pinned Live binding instead — the old
-//! `{u16 spawnId, u16 type, u32 parameter}` shape — which is a silent
-//! mis-decode, not a loud one: `type` is a `u32` whose high half is zero, so the
-//! `u16` at offset 2 reads that zero half and every later field shifts one to
-//! the right. Over 157 captured packets the legacy read reports **type 0 in all
-//! 157** with the real type values landing in `parameter`, while the spawn id
-//! decodes identically either way — which is why it hid. It never actually ran
-//! on eql because the size gate rejected all 24 bytes against a Live `sizeof` of
-//! 8; both halves of that bug are fixed together, since correcting only the gate
-//! would just hand 24 bytes to a parser that wants 8.
-//!
-//! Layout independently confirmed against upstream's legends branch, whose
-//! `spawnEventEQLStruct` is field-for-field identical.
-//!
-//! Type numbering is eql's own and only type 6 is confirmed (pose: 110 sit /
-//! 100 stand / 111 duck), wire-verified against scripted toggles and
-//! corroborated by upstream. Upstream additionally labels 13 = anon, 22 =
-//! periodic tick, 36 = LFG, 41 = timestamp. A 26-minute capture also saw types
-//! 43, 11, 26, 3, 8, 5 and 1 with no confirmed meaning. This parser surfaces the
-//! raw triple and leaves interpretation to the caller.
+//! Type 6 is pose (100 stand / 110 sit / 111 duck), wire-verified here; upstream
+//! additionally labels 1 level, 3 invis, 5 light, 15 sneak, 22 guild id, 41
+//! timestamp. This parser surfaces the raw triple, interpretation is the caller's.
 
 use thiserror::Error;
 
@@ -76,8 +54,7 @@ mod tests {
 
     #[test]
     fn rejects_wrong_length() {
-        // 8 is Live's size, and was this parser's own size until 2026-07-30 —
-        // pinned so a regression to the narrow layout fails loudly.
+        // 8 is Live's size; pinned so a regression to it fails loudly.
         assert!(parse_spawn_appearance(&[0; 8]).is_err());
         assert!(parse_spawn_appearance(&[0; 23]).is_err());
         assert!(parse_spawn_appearance(&[0; 25]).is_err());
@@ -95,9 +72,8 @@ mod tests {
         assert_eq!(a.parameter, 110);
     }
 
-    /// The regression this module sat in for two patches: a spawn id above
-    /// 65535 is impossible under the narrow read, and a type whose high half is
-    /// zero decodes as type 0 there. Both must come out right now.
+    /// Under the narrow Live read a spawn id above 65535 truncates and a type
+    /// with a zero high half decodes as 0; both must come out right here.
     #[test]
     fn does_not_read_the_narrow_legacy_layout() {
         let mut buf = [0u8; PAYLOAD_LEN];

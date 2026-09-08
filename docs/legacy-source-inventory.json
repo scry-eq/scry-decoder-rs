@@ -5,314 +5,314 @@
     {
       "name": "decode_aa_table_entry",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1830
+      "line": 1770
     },
     {
       "name": "decode_action",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1831
+      "line": 1771
     },
     {
       "name": "decode_action2",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1822
+      "line": 1762
     },
     {
       "name": "decode_action_alt",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1832
+      "line": 1772
     },
     {
       "name": "decode_activate_ability",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1829
+      "line": 1769
     },
     {
       "name": "decode_begin_cast",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1828
+      "line": 1768
     },
     {
       "name": "decode_buff",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1821
+      "line": 1761
     },
     {
       "name": "decode_buff_list",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1798
+      "line": 1738
     },
     {
       "name": "decode_channel_message",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1846
+      "line": 1786
     },
     {
       "name": "decode_click_object",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1819
+      "line": 1759
     },
     {
       "name": "decode_client_target",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1817
+      "line": 1757
     },
     {
       "name": "decode_consider",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1815
+      "line": 1755
     },
     {
       "name": "decode_corpse_loc",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1836
+      "line": 1776
     },
     {
       "name": "decode_death",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1818
+      "line": 1758
     },
     {
       "name": "decode_delete_spawn",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1763
+      "line": 1709
     },
     {
       "name": "decode_door",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1838
+      "line": 1778
     },
     {
       "name": "decode_dz_info",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1826
+      "line": 1766
     },
     {
       "name": "decode_dz_switch_info",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1827
+      "line": 1767
     },
     {
       "name": "decode_end_update",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1814
+      "line": 1754
     },
     {
       "name": "decode_exp_update",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1809
+      "line": 1749
     },
     {
       "name": "decode_formatted_message",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1843
+      "line": 1783
     },
     {
       "name": "decode_ground_spawn",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1839
+      "line": 1779
     },
     {
       "name": "decode_group_disband",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1833
+      "line": 1773
     },
     {
       "name": "decode_group_follow",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1834
+      "line": 1774
     },
     {
       "name": "decode_group_member_list",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1835
+      "line": 1775
     },
     {
       "name": "decode_guild_expanded_info",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1802
+      "line": 1742
     },
     {
       "name": "decode_guild_member_update",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1803
+      "line": 1743
     },
     {
       "name": "decode_guild_motd",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1801
+      "line": 1741
     },
     {
       "name": "decode_guild_roster",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1804
+      "line": 1744
     },
     {
       "name": "decode_guilds_in_zone_list",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1799
+      "line": 1739
     },
     {
       "name": "decode_hp_update",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1766
+      "line": 1712
     },
     {
       "name": "decode_illusion",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1820
+      "line": 1760
     },
     {
       "name": "decode_level_update",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1810
+      "line": 1750
     },
     {
       "name": "decode_loadout_swap",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1794
+      "line": 1734
     },
     {
       "name": "decode_loot_drops",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1797
+      "line": 1737
     },
     {
       "name": "decode_loot_message",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1845
+      "line": 1785
     },
     {
       "name": "decode_loot_transaction",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1796
+      "line": 1736
     },
     {
       "name": "decode_mana_change",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1812
+      "line": 1752
     },
     {
       "name": "decode_mob_health",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1807
+      "line": 1747
     },
     {
       "name": "decode_mob_update",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1762
+      "line": 1708
     },
     {
       "name": "decode_money_update",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1795
+      "line": 1735
     },
     {
       "name": "decode_new_guild_in_zone",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1800
+      "line": 1740
     },
     {
       "name": "decode_new_zone",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1847
+      "line": 1787
     },
     {
       "name": "decode_npc_move_update",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1852
+      "line": 1792
     },
     {
       "name": "decode_player_profile",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1848
+      "line": 1788
     },
     {
       "name": "decode_player_self_pos",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1850
+      "line": 1790
     },
     {
       "name": "decode_player_spawn_pos",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1851
+      "line": 1791
     },
     {
       "name": "decode_remove_spawn",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1765
+      "line": 1711
     },
     {
       "name": "decode_simple_message",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1842
+      "line": 1782
     },
     {
       "name": "decode_skill_update",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1811
+      "line": 1751
     },
     {
       "name": "decode_spawn",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1764
+      "line": 1710
     },
     {
       "name": "decode_spawn_appearance",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1808
+      "line": 1748
     },
     {
       "name": "decode_spawn_rename",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1816
+      "line": 1756
     },
     {
       "name": "decode_special_message",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1844
+      "line": 1784
     },
     {
       "name": "decode_stamina",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1813
+      "line": 1753
     },
     {
       "name": "decode_stat_sync",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1767
+      "line": 1713
     },
     {
       "name": "decode_ucs_channels",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1806
+      "line": 1746
     },
     {
       "name": "decode_ucs_chat",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1805
+      "line": 1745
     },
     {
       "name": "decode_wear_change",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1824
+      "line": 1764
     },
     {
       "name": "decode_zone_change",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1825
+      "line": 1765
     },
     {
       "name": "decode_zone_point",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1840
+      "line": 1780
     }
   ],
   "standalone_bridge_trackers": [
     {
       "name": "EqlSelfTracker",
       "bridge_declaration": "seq-bridge/src/lib.rs",
-      "line": 1775,
+      "line": 1717,
       "implementation": "seq-backend-eql/src/self_track.rs",
       "methods": [
         "eql_self_tracker_new",
@@ -329,13 +329,13 @@
     {
       "name": "struct_size_overrides",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1857,
+      "line": 1796,
       "purpose": "Backend-specific payload-size gates in the C++ host."
     },
     {
       "name": "door_stride",
       "declaration": "seq-bridge/src/lib.rs",
-      "line": 1864,
+      "line": 1800,
       "purpose": "Backend-specific OP_SpawnDoor row stride in the C++ host."
     }
   ],
