@@ -60,9 +60,8 @@ corpse context. `LootAcquired.complete` distinguishes a paired acquisition from
 an unmatched narration or confirmation closed by `flush`; optional ids and the
 optional request sequence use explicit presence flags. The session suppresses
 duplicate confirmation sequences and repeated corpse-window items. Low-level
-`LootMessage`, `LootTransaction`, and `LootDrops` events, plus `loot_rows`, stay
-additive during the host selector cutover. A host must choose one persistence
-path rather than write both the semantic event and compatibility row.
+`LootMessage`, `LootTransaction`, and `LootDrops` events stay additive
+alongside the semantic pair.
 
 Combat-family consumers use `CombatDamage`, `SpellActionResolved`,
 `SpellCastStarted`, `SpellCastInterrupted`, `BuffAdded`, `BuffUpdated`, and
@@ -126,11 +125,10 @@ and does not reset session state. A malformed lifecycle packet emits no event
 and changes no correlation state.
 
 The batch also returns `protocol_generation`, `SessionDisposition`, and the
-legacy EQL shadow correlation outputs `self_stats` and `loot_rows`. New code
-uses the ordered player and loot events. Call `flush` at shutdown, zone
-transition, and replay end. The returned event batch contains incomplete loot
-meaning before any reset marker, and the same rows remain in the compatibility
-drain.
+legacy EQL shadow correlation output `self_stats`. New code uses the ordered
+player and loot events. Call `flush` at shutdown, zone transition, and replay
+end. The returned event batch contains incomplete loot meaning before any reset
+marker.
 
 The selected bridge backend is fixed at build time. `session_new` is
 fallible: it throws a `rust::Error` for a different or unknown

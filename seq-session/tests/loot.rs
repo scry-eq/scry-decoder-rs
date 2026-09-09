@@ -300,10 +300,6 @@ fn eql_numeric_corpse_fixture_is_timestamped_deduplicated_and_compatible() {
         "low-level compatibility event stays additive"
     );
 
-    let rows = session.take_loot_rows();
-    assert_eq!(rows.len(), 2);
-    assert!(rows.iter().all(|row| row.complete));
-
     let repeated = decode_at(
         &mut session,
         base + DROPS,
@@ -314,7 +310,6 @@ fn eql_numeric_corpse_fixture_is_timestamped_deduplicated_and_compatible() {
     assert!(repeated
         .iter()
         .all(|event| !matches!(event, Event::CorpseLootSnapshot(_))));
-    assert!(session.take_loot_rows().is_empty());
 
     let emptied = decode_at(
         &mut session,

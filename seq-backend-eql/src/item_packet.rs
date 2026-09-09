@@ -28,8 +28,8 @@
 //! record start.
 //!
 //! Confirmed against evidence outside the payload:
-//! - `item_id` and `icon`, 6/6 exact against `loot.db`, which was recorded from
-//!   loot events by an unrelated decode path.
+//! - `item_id` and `icon`, 6/6 exact against a loot history recorded from loot
+//!   events by an unrelated decode path.
 //! - `slot_mask`, 21/21 — every distinct mask decodes to the semantically right
 //!   slot, and the items disagree by CLASS (a Mask reads face, a Bow range, a
 //!   two-handed instrument primary|secondary, a container 0).

@@ -76,7 +76,7 @@ as opaque cxx resources. `SessionDecodeBatch.events` contains ordered
 `{SessionEventKind, payload_index}` references. Each Event payload has a typed
 vector in the same batch. C++ switches on the tag, indexes the matching vector,
 and constructs its `std::variant`; it never interprets a map or opcode name.
-`self_stats` and `loot_rows` carry the phase-2 EQL shadow correlator output.
+`self_stats` carries the phase-2 EQL shadow correlator output.
 
 Lifecycle events add their state boundary to the same ordered batch. A
 `SessionReset` precedes `EnterWorld`, `PlayerProfile`, or a confirmed Live/Test

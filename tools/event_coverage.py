@@ -305,10 +305,6 @@ def inventory_data() -> dict[str, object]:
     tracker_specs = {
         "EqlSelfTracker": (
             "seq-backend-eql/src/self_track.rs",
-            "type EqlLootTracker;",
-        ),
-        "EqlLootTracker": (
-            "seq-backend-eql/src/loot_track.rs",
             "fn decode_loadout_swap(",
         ),
     }

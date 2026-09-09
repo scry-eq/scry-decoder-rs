@@ -13,7 +13,7 @@ compile_error!("seq-session: enable at least one backend feature");
 compile_error!("seq-session: backend-live and backend-test use different struct mirrors");
 
 #[cfg(feature = "backend-eql")]
-use seq_backend_eql::{backend::EqlBackend, LootTracker, SelfTracker};
+use seq_backend_eql::{backend::EqlBackend, LootRow, LootTracker, SelfTracker};
 #[cfg(any(feature = "backend-live", feature = "backend-test"))]
 use seq_backend_live::LiveBackend;
 use seq_events::{
@@ -32,7 +32,7 @@ use std::{
 };
 
 #[cfg(feature = "backend-eql")]
-pub use seq_backend_eql::{LootRow, SelfStat};
+pub use seq_backend_eql::SelfStat;
 pub use seq_events::{Dir, Dir as Direction, Event};
 pub use seq_protocol_data::{
     BackendId, ContentHash, OpcodeId, ProtocolGeneration, ProtocolRegistry, StreamKind,
@@ -119,7 +119,6 @@ struct EqlSession {
     loot_tracker: LootTracker,
     player_name: String,
     self_stats: Vec<SelfStat>,
-    loot_rows: Vec<LootRow>,
 }
 
 #[cfg(feature = "backend-eql")]
@@ -131,7 +130,6 @@ impl Default for EqlSession {
             loot_tracker: LootTracker::new(),
             player_name: String::new(),
             self_stats: Vec::new(),
-            loot_rows: Vec::new(),
         }
     }
 }
@@ -512,18 +510,6 @@ impl Session {
     pub fn take_self_stats(&mut self) -> Vec<SelfStat> {
         match &mut self.decoder {
             BackendSession::Eql(state) => std::mem::take(&mut state.self_stats),
-            #[cfg(feature = "backend-live")]
-            BackendSession::Live(_) => Vec::new(),
-            #[cfg(feature = "backend-test")]
-            BackendSession::Test(_) => Vec::new(),
-        }
-    }
-
-    /// Drain EQL loot rows completed by the session tracker.
-    #[cfg(feature = "backend-eql")]
-    pub fn take_loot_rows(&mut self) -> Vec<LootRow> {
-        match &mut self.decoder {
-            BackendSession::Eql(state) => std::mem::take(&mut state.loot_rows),
             #[cfg(feature = "backend-live")]
             BackendSession::Live(_) => Vec::new(),
             #[cfg(feature = "backend-test")]
@@ -2156,7 +2142,7 @@ impl Session {
                 state.loot_tracker.reset();
                 state.self_tracker.reset();
                 state.self_stats.clear();
-                state.finish_loot_rows(rows)
+                state.loot_acquired_events(rows)
             }
             #[cfg(feature = "backend-live")]
             BackendSession::Live(_) => Vec::new(),
@@ -2462,7 +2448,7 @@ impl EqlSession {
             }
             Event::ZoneChanged(zone) => {
                 let rows = self.loot_tracker.set_zone(&zone.short_name);
-                self.finish_loot_rows(rows)
+                self.loot_acquired_events(rows)
             }
             Event::LootMessage {
                 color,
@@ -2473,7 +2459,7 @@ impl EqlSession {
                 let rows = self
                     .loot_tracker
                     .on_loot_message(*color, text, *item_id, item_name, timestamp);
-                self.finish_loot_rows(rows)
+                self.loot_acquired_events(rows)
             }
             Event::LootTransaction {
                 corpse_id,
@@ -2498,7 +2484,7 @@ impl EqlSession {
                     sequence,
                     timestamp,
                 );
-                self.finish_loot_rows(rows)
+                self.loot_acquired_events(rows)
             }
             Event::LootDrops {
                 corpse_id,
@@ -2508,9 +2494,8 @@ impl EqlSession {
                 let emit_snapshot =
                     self.loot_tracker
                         .observe_window_snapshot(*corpse_id, corpse_name, items);
-                let mut rows = Vec::new();
                 for item in items {
-                    let item_rows = self.loot_tracker.on_loot_drop_item(
+                    self.loot_tracker.on_loot_drop_item(
                         *corpse_id,
                         corpse_name,
                         &item.name,
@@ -2518,11 +2503,7 @@ impl EqlSession {
                         item.item_id,
                         timestamp,
                     );
-                    if !item_rows.is_empty() {
-                        rows.extend(item_rows);
-                    }
                 }
-                self.loot_rows.extend(rows);
                 if !emit_snapshot {
                     Vec::new()
                 } else {
@@ -2552,16 +2533,12 @@ impl EqlSession {
         }
     }
 
-    fn finish_loot_rows(&mut self, rows: Vec<LootRow>) -> Vec<Event> {
-        let events = rows
-            .iter()
+    fn loot_acquired_events(&self, rows: Vec<LootRow>) -> Vec<Event> {
+        rows.into_iter()
             .filter(|row| row.source != seq_backend_eql::loot_track::LootSource::Window)
-            .cloned()
             .map(loot_acquisition)
             .map(|acquisition| Event::LootAcquired(Box::new(acquisition)))
-            .collect();
-        self.loot_rows.extend(rows);
-        events
+            .collect()
     }
 }
 
@@ -3054,19 +3031,26 @@ mod tests {
         transaction[12..16].copy_from_slice(&900u32.to_le_bytes());
         transaction[16..20].copy_from_slice(&1u32.to_le_bytes());
         transaction[20..24].copy_from_slice(&9u32.to_le_bytes());
-        session.decode_at(
+        let batch = session.decode_at(
             StreamKind::Zone,
             OpcodeId(2),
             Dir::ServerToClient,
             &transaction,
             124,
         );
-        let rows = session.take_loot_rows();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].ts, 123);
-        assert_eq!(rows[0].item_name, "Fine Steel Sword");
-        assert_eq!(rows[0].corpse_id, 900);
-        assert_eq!(rows[0].sequence, 9);
+        let acquired: Vec<_> = batch
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                Event::LootAcquired(acquisition) => Some(acquisition),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(acquired.len(), 1);
+        assert_eq!(acquired[0].timestamp, 123);
+        assert_eq!(acquired[0].item_name, "Fine Steel Sword");
+        assert_eq!(acquired[0].corpse_id, Some(900));
+        assert_eq!(acquired[0].sequence, Some(9));
     }
 
     #[test]
@@ -3127,14 +3111,12 @@ mod tests {
             &message,
             123,
         );
-        assert!(session.take_loot_rows().is_empty());
         let events = session.flush(FlushReason::ReplayEnd);
         assert!(matches!(
             events.as_slice(),
             [Event::LootAcquired(acquisition)]
                 if acquisition.timestamp == 123 && !acquisition.complete
         ));
-        assert_eq!(session.take_loot_rows().len(), 1);
     }
 
     #[test]
